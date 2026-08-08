@@ -201,6 +201,14 @@ ARKANA produces an editable hypothesis containing:
 ### Critical rule
 If a concept such as "order block" has multiple definitions, ARKANA must expose the actual deterministic definition before running research.
 
+### Typed research hypothesis
+`Question → Hypothesis → Strategy` are distinct. A hypothesis is a general research abstraction, not necessarily a trading setup. Every hypothesis has a common envelope (question, mode, instrument, period, data requirements, typed definition, outcomes, filters, status, and version) and only mode-relevant fields. `Entry Trigger`, invalidation, position, and risk fields appear only where the selected mode needs them.
+
+Initial modes include price-event-to-pattern, pattern-to-outcome, external-event-to-market, current-state similarity, and open research. `NEEDS_CLARIFICATION` means the question is insufficiently defined; `DATA_DEPENDENCY_MISSING` means it is understood but a required dataset (for example an FOMC timeline) is unavailable.
+
+### Question-flexible, evidence-bounded
+ARKANA accepts market/trading research questions beyond strategy templates. It may create an interpretation and typed hypothesis, but may produce statistical/evidence conclusions only from registered, auditable data and supported analytical capabilities. Missing data or capability is reported honestly and is never automatically added; the owner decides whether it becomes optional future work. LLM output is never an authoritative historical data source.
+
 ---
 
 ## FR-04 Event-to-Pattern Research

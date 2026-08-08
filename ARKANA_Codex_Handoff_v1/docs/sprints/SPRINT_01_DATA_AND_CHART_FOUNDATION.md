@@ -1,235 +1,110 @@
-# Sprint 01 — Data & Chart Foundation
+# Sprint 01 — Application, Data & Chart Foundation
 
-**Checkpoint:** CP1  
-**Status after Sprint 0 audit:** Implementation blocked pending the actual ARKANA application repository and an approved XAUUSD historical dataset/source. This handoff package has no application module to extend and no existing task qualifies as `SKIP — EXISTING/PASS`.
+**Checkpoint:** CP1
+**Status:** Authorized greenfield implementation
+**Architecture decision:** owner-approved on 2026-08-08; see `docs/CURRENT_STATE.md`.
 
-## Sprint 00 audit anchors
+## Goal
 
-- Baseline inventory and exact unavailable components: `docs/CURRENT_STATE.md`.
-- Product/UI intent only: `ui-reference/ARKANA_Trading_Intelligence_UI_v2.html` (static prototype; all data is dummy).
-- Locked data/architecture decisions: `docs/01_PRD.md` §FR-13, `docs/02_TECHNICAL_ARCHITECTURE.md` §2.3, and ADR-005.
-- There are **no existing application file/module pointers** in this workspace: no `src/`, `app/`, backend, API, data pipeline, package manifest, test suite, or dataset exists. When the actual repository is supplied, update the task pointers below before implementation rather than creating parallel modules by assumption.
+Build the first runnable ARKANA application from this greenfield repository. The owner can import a documented MT5-compatible XAUUSD M1 CSV, inspect processed Parquet metadata, and view real imported candles in a web chart at M1/M5/M15/M30/H1/H4.
 
----
+## Locked implementation boundary
 
-## Sprint Goal
+```text
+apps/web             Next.js + TypeScript UI, BFF/API orchestration
+services/research    Python FastAPI + Polars + DuckDB market-data processing
+PostgreSQL           metadata/configuration/application state only
+Parquet              processed historical OHLC data
+Docker Compose       local development
+```
 
-The owner can open ARKANA locally, select XAUUSD and a supported timeframe, and inspect **real historical market data from the repository's validated dataset** with clear data-range/quality metadata.
+- `services/research` is the only PostgreSQL schema owner in this sprint.
+- Historical candles/ticks never go to PostgreSQL; processed bars are Parquet.
+- `apps/web` uses the research service's versioned API; it does not own duplicate data schemas or resampling.
+- No Redis, Kafka, Celery, broker, Kubernetes, cloud object storage, or GPU is allowed in Sprint 01.
+- MT5 EA remains the future realtime execution plane. This sprint contains no realtime MT5, MQL5, order execution, demo trading, or live trading.
 
-No AI research and no auto-trading are required in this sprint.
+## Repository structure
 
----
+```text
+apps/web/                Next.js application
+services/research/       FastAPI data service and tests
+data/raw/                local large source files (ignored)
+data/processed/          generated Parquet (ignored)
+data/fixtures/           small committed test fixture only
+infra/                   only if a local infrastructure asset is needed
+docker-compose.yml
+```
 
-## Primary Owner Story
+## Market-data contract
 
-> Saya membuka ARKANA, memilih XAUUSD dan M1/M5/M15/H1/H4, melihat candlestick real, melihat range data yang tersedia, dan tahu datanya valid atau ada gap.
+Canonical historical bar fields are `timestamp`, `open`, `high`, `low`, `close`, `tick_volume` (optional), `spread` (optional), `real_volume` (optional), `symbol`, `timeframe`, and `source`.
 
----
+The importer accepts CSV with required `timestamp,open,high,low,close`; optional MT5-style `tick_volume`/`tickvol`, `spread`, and `real_volume`/`realvol` are normalized. Timestamp parsing is explicit. The importer does not guess or shift broker time: when no verified timezone is supplied, metadata is recorded as `UNVERIFIED_BROKER_TIME`.
 
-# Tasks
+## Tasks
 
-## S1-T01 Canonical Symbol Configuration
+### S1-T01 — Monorepo and local runtime
 
-Create/reuse a symbol configuration abstraction in the actual backend/domain layer so broker-specific symbol names are not hard-coded throughout the app. **Repository pointer to add after handoff:** existing domain/config module; none exists in this package.
+Create the approved directory structure, Docker Compose services for PostgreSQL, research, and web, environment examples, ignored data locations, and a single documented local start procedure.
 
-Must represent at minimum:
-- canonical symbol: XAUUSD;
-- broker symbol/name;
-- digits;
-- point size;
-- contract metadata if known;
-- point/pip/price-move normalization helpers.
+**Acceptance:** `docker compose up --build` starts PostgreSQL, FastAPI, and Next.js without secrets.
 
-### Acceptance
-A test proves that a user research threshold can be represented as explicit price movement and broker-point equivalent without ambiguous hard-coded assumptions.
+### S1-T02 — Metadata and CSV import pipeline
 
----
+Implement a schema-owned metadata store in the research service and a documented CSV import endpoint/CLI path. Validate schema and OHLC, reject invalid rows, sort deterministically, deduplicate timestamps deterministically, report outcomes, fingerprint the input, and make repeated identical imports idempotent.
 
-## S1-T02 Historical Dataset Registry
+**Acceptance:** a small MT5-compatible M1 fixture imports once, records source/range/count/timezone/import timestamp, and a repeat returns the same dataset rather than duplicate work.
 
-Create/reuse a dataset registry API/model exposing the approved dataset actually supplied to the implementation repository. **Repository pointer to add after handoff:** existing persistence/import metadata module; none exists in this package.
-- source;
-- symbol;
-- resolution;
-- date range;
-- row count;
-- timezone status;
-- quality/gap status;
-- storage location reference, not raw file contents.
+### S1-T03 — Parquet processing and deterministic resampling
 
-### Acceptance
-UI/API can show actual available range for XAUUSD.
+Persist cleaned M1 bars as Parquet and derive M5/M15/M30/H1/H4 from M1 with first-open, max-high, min-low, last-close, and summed volumes. No D1 is added until session/timezone handling is established.
 
----
+**Acceptance:** tests verify all aggregation and timestamp ordering rules.
 
-## S1-T03 Timeframe Data Service
+### S1-T04 — Versioned data API
 
-Create/reuse a single backend service for reading/resampling supported OHLC data. **Repository pointer to add after handoff:** existing market-data reader/resampler; none exists in this package.
+Expose `v1` endpoints for dataset registry/status, import result, and bounded historical bars by symbol/timeframe/range. Enforce a bar limit; never stream an entire multi-year dataset by default.
 
-Required initial TFs:
-- M1;
-- M5;
-- M15;
-- H1;
-- H4.
+**Acceptance:** API tests cover success, empty data, invalid request, and range limit behavior.
 
-Rules:
-- do not implement duplicate resampling logic in frontend;
-- resampling must be deterministic;
-- existing native TF may be reused if verified;
-- otherwise derive from canonical lower-resolution source.
+### S1-T05 — ARKANA web shell and historical chart
 
-### Acceptance
-Same requested range returns stable candles across repeated calls.
+Build reusable React components inspired by the UI reference—not a literal copy—for app shell, sidebar/top bar, Market & Data page, dataset status, timeframe selector, and real candlestick chart. Future navigation may be visible only as disabled/`Coming later`. No dummy market, EA, trade, or performance state is permitted.
 
----
+**Acceptance:** imported data renders on M1/M5/M15/M30/H1/H4 with loading, empty, error, visible-range, and provenance states.
 
-## S1-T04 Chart Data API
+### S1-T06 — Automated checks and documentation
 
-Provide/reuse a paged/range-based chart data API. **Repository pointer to add after handoff:** existing API route/controller and data service; none exists in this package.
+Add Python importer/validation/idempotency/resampling/API tests; web lint/typecheck/component tests where supported; production build; local setup/import instructions. Use only a small fixture in Git.
 
-Input:
-- canonical symbol;
-- timeframe;
-- start/end or window;
+**Acceptance:** all available tests, lint/typecheck, and build pass; owner can follow `docs/LOCAL_DEVELOPMENT.md` without hidden steps.
 
-Output:
-- time;
-- O/H/L/C;
-- optional volume;
-- metadata including source/timezone status.
+## Explicitly out of scope
 
-Do not return the entire multi-year dataset to the browser.
+- AI/LLM, research hypothesis, event/pattern discovery, historical similarity, backtest, and strategy governance;
+- realtime MT5 integration, MQL5/EA, tick collector, execution, demo/live deployment, and trading;
+- fundamental/news data;
+- D1 derivation, because broker-session/timezone correctness is not yet verified;
+- importing, committing, deleting, or duplicating large market datasets.
 
-### Acceptance
-Chart can request a bounded window quickly and navigate to another period.
+## Definition of done
 
----
-
-## S1-T05 ARKANA UI Shell Alignment
-
-Using existing frontend components in the actual application repository wherever possible, implement/adjust only the initial shell needed for:
-- navigation consistent with target IA;
-- Live Decision placeholder state clearly labeled as not yet wired to EA if CP6 is not complete;
-- Research navigation placeholder;
-- MT5 & Data screen;
-- chart component.
-
-Do not fake live execution state.
-
-**Reference pointer:** preserve the information architecture in `ui-reference/ARKANA_Trading_Intelligence_UI_v2.html` (sidebar/top bar and `data` view) but do not reuse its generated prices, EA status, positions, backtest, deployment, or chart data as application state.
-
-### Acceptance
-Any placeholder is visibly labelled `Not connected / future sprint`, not filled with misleading fake execution data in normal development mode.
-
----
-
-## S1-T06 Historical Chart
-
-Implement/reuse candlestick rendering with real API data (not the seeded `draw()` prototype function in `ui-reference/ARKANA_Trading_Intelligence_UI_v2.html`) and:
-- XAUUSD;
-- TF switcher M1/M5/M15/H1/H4;
-- zoom/pan or equivalent navigation;
-- current viewed range;
-- loading/error state;
-- data source/timezone indicator.
-
-Advanced trading overlays are out of scope.
-
-### Acceptance
-Owner can visually inspect real candles across all supported TFs.
-
----
-
-## S1-T07 Data Health Panel
-
-Display real registry/import output from S1-T02:
-- dataset start/end;
-- data source;
-- row count or appropriate summary;
-- missing-gap status;
-- timezone status;
-- tick Bid/Ask availability status;
-- last import/sync state if available.
-
-### Acceptance
-The user can distinguish `READY`, `PARTIAL`, and `UNKNOWN` rather than being shown a fabricated 99.99% quality score.
-
----
-
-## S1-T08 Automated Tests
-
-In the actual repository's established test convention, add at minimum:
-- symbol normalization unit tests;
-- timeframe resampling tests;
-- data API tests;
-- boundary date/range test;
-- invalid symbol/timeframe test;
-- frontend component test where repo convention supports it.
-
-Run the full lint/typecheck/test/build suite that exists in the supplied implementation repository. Sprint 00 found no suite in this handoff package; do not invent a parallel test runner here.
-
----
-
-# Out of Scope
-
-- AI Chart Analyst;
-- order-block detector;
-- support/resistance detector;
-- Research Hypothesis engine;
-- Pattern Discovery;
-- Historical Similarity;
-- backtest changes beyond what is needed for data reuse;
-- MT5 EA execution;
-- Demo Deployment;
-- live account support.
-
----
-
-# Owner Acceptance Test
-
-## OAT-S1-01 Open real historical chart
-
-1. Start ARKANA using documented local procedure.
-2. Open market/data or chart screen.
-3. Select XAUUSD.
-4. Select M1.
-5. Verify candles render from actual repository data.
-6. Switch to M5, M15, H1, H4.
-7. Verify chart changes and no request returns all years unnecessarily.
-
-Expected: all supported TFs render without frontend resampling duplication.
-
-## OAT-S1-02 Verify dataset metadata
-
-1. Open MT5 & Data.
-2. Verify actual start/end date.
-3. Verify source and timezone status.
-4. Verify tick availability state.
-
-Expected: unknown/partial states are explicit.
-
-## OAT-S1-03 Verify movement normalization
-
-Use a test utility/API/UI field created in this sprint to represent a configured price move.
-
-Expected: ARKANA can distinguish an explicit USD price move from broker points and does not silently assume universal "pip" semantics.
-
----
-
-# Definition of Done
-
-- [ ] Existing functionality reused where possible.
-- [ ] Real XAUUSD historical candles visible.
-- [ ] M1/M5/M15/H1/H4 supported.
-- [ ] Dataset metadata visible.
-- [ ] Point/price normalization implemented/tested.
-- [ ] No fake realtime trade execution shown as real.
-- [ ] Automated checks pass.
-- [ ] Owner manual tests documented.
-
-## Entry prerequisites (confirmed by Sprint 00)
-
-- [ ] Actual ARKANA application repository is available in the workspace, including its package/build/test configuration.
-- [ ] Approved XAUUSD historical source/dataset location is available, with permission to inspect/import it.
-- [ ] Existing repository module pointers above have been replaced with concrete paths after inspection.
+- [ ] Local ARKANA web, research service, and PostgreSQL run.
+- [ ] MT5-compatible XAUUSD M1 CSV imports deterministically to Parquet.
+- [ ] M5/M15/M30/H1/H4 derive from M1 deterministically.
+- [ ] Dataset metadata is available and truthful.
+- [ ] Chart uses imported data, never synthetic fallback candles.
+- [ ] API is versioned and bounded.
+- [ ] Automated tests, lint, typecheck, and production build pass.
+- [ ] Local development and import instructions are complete.
+- [ ] No Sprint 02+ capability is implemented.
+
+## Owner acceptance test
+
+1. Follow `docs/LOCAL_DEVELOPMENT.md` and start the stack.
+2. Import the supplied small fixture with the documented command/API.
+3. Open ARKANA and confirm the Market & Data page lists actual metadata and `UNVERIFIED_BROKER_TIME` when no timezone is asserted.
+4. Open the historical chart and switch M1, M5, M15, M30, H1, and H4.
+5. Verify candles are imported/derived data, range/provenance are visible, and no data shows an honest `No data` state.
+6. Run the documented automated commands and confirm they pass.

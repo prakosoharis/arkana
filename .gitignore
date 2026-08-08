@@ -1,0 +1,21 @@
+# Dependencies and build output
+node_modules/
+.next/
+coverage/
+dist/
+__pycache__/
+.pytest_cache/
+.venv/
+*.py[cod]
+
+# Environment and local database state
+.env
+.env.local
+postgres-data/
+
+# Market data: only small fixtures are committed
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+

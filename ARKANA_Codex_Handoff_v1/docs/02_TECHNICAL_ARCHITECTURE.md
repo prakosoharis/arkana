@@ -412,6 +412,11 @@ Names are logical; adapt to existing repo conventions.
 - status
 - version
 
+### Typed hypothesis contract
+The Research Engine receives a structured common envelope, never free text: original question, `research_mode`, instrument, optional historical period, data requirements, typed `definition`, outcomes/measures, optional filters/context, status, and version. Mode-specific definitions are schema-validated JSON (or equivalent), avoiding a table of nullable trading-setup columns. The UI renders fields dynamically by mode; a structured hypothesis remains distinct from a strategy.
+
+Before execution, the application compares declared data and analytical-capability requirements with simple in-service registries. The assessment records availability, reasons, and separate `execution_eligibility`; only `READY_FOR_RESEARCH` + `ELIGIBLE` reaches a future Research Engine.
+
 ## ResearchRun
 - id
 - hypothesis_id

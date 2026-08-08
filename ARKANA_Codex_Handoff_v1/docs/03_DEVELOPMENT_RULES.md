@@ -32,10 +32,12 @@ These rules apply to every Codex implementation session.
 20. Do not store every raw tick in a transactional DB without evidence it is needed.
 21. Precompute/cache expensive reusable features.
 22. Backtest/research runs should have fingerprints to avoid unnecessary recomputation.
+23. Historical evidence may use only registered, auditable data sources; LLM output is never an authoritative data source.
+24. A missing data source or analytical capability must be reported, not silently created or assumed; the owner decides optional capability work.
 
 ## Trading Research
 
-23. A trading concept must have a deterministic definition before backtest.
+25. A trading concept must have a deterministic definition before backtest.
 24. Always report sample size.
 25. Do not confuse `P(feature | outcome)` with `P(outcome | feature)`.
 26. Separate in-sample and out-of-sample where applicable.

@@ -57,19 +57,17 @@ Owner can type the locked example question and verify/edit the resulting hypothe
 
 ---
 
-## CP3 — Event Research + Visual Validation
+## CP3 — Eligible Historical Research Execution + Visual Validation
 
 ### Goal
-Actually scan history for defined events/patterns and inspect samples visually.
+Run only `READY_FOR_RESEARCH` / `ELIGIBLE` hypotheses against registered datasets and capabilities, then inspect samples visually. Missing external data is reported; it is not automatically added to CP3.
 
 ### Includes
-- event-to-pattern engine;
-- pattern-to-outcome engine;
-- occurrence indexing;
-- feature summary;
-- prevalence vs predictive probability;
-- previous/next/winners/losers/random/false detections;
-- chart overlays.
+- eligible price-event descriptive scan;
+- eligible deterministic candle-pattern outcome scan;
+- occurrence/direction or next-bar outcome counts;
+- fingerprinted/reused registered-dataset runs;
+- bounded contextual candle samples and chart visual validation.
 
 ### Exit criteria
 Owner can ask what commonly accompanies a large M15 move and inspect supporting/contradicting historical samples.
@@ -82,15 +80,12 @@ Owner can ask what commonly accompanies a large M15 move and inspect supporting/
 Turn research candidates into reproducible, cost-aware trading experiments.
 
 ### Includes
-- M1 broad execution model;
+- M1 broad execution model for a registered deterministic candidate;
 - conservative ambiguity policy;
-- trade ledger;
-- metrics;
-- out-of-sample;
-- walk-forward;
-- cost sensitivity;
-- run fingerprint/cache;
-- tick precision adapter for candidates.
+- trade ledger and cost-aware price-unit metrics;
+- chronological in/out-of-sample split and rolling-window reporting when data is sufficient;
+- cost sensitivity and run fingerprint/cache;
+- explicit unavailable state for tick precision until Bid/Ask tick data is registered.
 
 ### Exit criteria
 A candidate can be accepted/rejected using reproducible evidence.
