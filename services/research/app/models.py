@@ -65,3 +65,20 @@ class BacktestRun(Base):
     result: Mapped[dict] = mapped_column(JSON, nullable=False)
     trades: Mapped[list] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class StrategyVersion(Base):
+    __tablename__ = "strategy_versions"
+    __table_args__ = (UniqueConstraint("strategy_key", "version", name="uq_strategy_key_version"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    strategy_key: Mapped[str] = mapped_column(String(96), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    profile: Mapped[str] = mapped_column(String(32), nullable=False, default="SCALPING")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="CANDIDATE")
+    backtest_run_id: Mapped[str] = mapped_column(ForeignKey("backtest_runs.id"), nullable=False, index=True)
+    configuration: Mapped[dict] = mapped_column(JSON, nullable=False)
+    checksum: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    supersedes_strategy_version_id: Mapped[str | None] = mapped_column(ForeignKey("strategy_versions.id"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

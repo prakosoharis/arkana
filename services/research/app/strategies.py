@@ -1,0 +1,49 @@
+"""Versioned strategy governance; this module never deploys or executes a strategy."""
+from datetime import datetime
+from hashlib import sha256
+import json
+import re
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+from .models import BacktestRun, StrategyVersion
+
+
+def _slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")[:96] or "strategy"
+
+
+def _config(backtest: BacktestRun, strategy_key: str, version: int, profile: str) -> dict:
+    input_config = backtest.configuration
+    return {"schema_version": 1, "strategy_id": strategy_key, "strategy_version": f"{version}.0.0", "symbol": "XAUUSD", "profile": profile, "enabled": False, "allowed_environment": "DEMO", "entry": {"rule_set": input_config["candidate_id"], "timeframe": input_config["timeframe"]}, "exit": {"stop_distance": input_config["stop_distance"], "target_distance": input_config["target_distance"], "ambiguity_policy": input_config["ambiguity_policy"]}, "risk": {"position_sizing": "NOT_CONFIGURED"}, "guards": {"max_spread_price": input_config["spread_price"], "duplicate_signal": True}, "backtest_fingerprint": backtest.fingerprint}
+
+
+def create_candidate(session: Session, payload: dict) -> StrategyVersion:
+    backtest = session.get(BacktestRun, str(payload.get("backtest_run_id", "")))
+    if not backtest:
+        raise ValueError("completed backtest run is required")
+    name = str(payload.get("name", "Bullish Reversal M1")).strip()
+    if not name:
+        raise ValueError("strategy name is required")
+    profile = str(payload.get("profile", "SCALPING")).upper()
+    if profile not in {"SCALPING", "INTRADAY"}:
+        raise ValueError("profile must be SCALPING or INTRADAY")
+    strategy_key = _slug(str(payload.get("strategy_key") or name))
+    latest = session.scalar(select(func.max(StrategyVersion.version)).where(StrategyVersion.strategy_key == strategy_key)) or 0
+    version = latest + 1
+    prior = session.scalar(select(StrategyVersion).where(StrategyVersion.strategy_key == strategy_key).order_by(StrategyVersion.version.desc()))
+    configuration = _config(backtest, strategy_key, version, profile)
+    checksum = sha256(json.dumps(configuration, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    item = StrategyVersion(strategy_key=strategy_key, version=version, name=name, profile=profile, status="CANDIDATE", backtest_run_id=backtest.id, configuration=configuration, checksum=checksum, supersedes_strategy_version_id=prior.id if prior else None)
+    session.add(item); session.commit(); session.refresh(item)
+    return item
+
+
+def approve_candidate(session: Session, item: StrategyVersion) -> StrategyVersion:
+    if item.status != "CANDIDATE":
+        raise ValueError("only a CANDIDATE strategy version may be approved")
+    item.status = "APPROVED"; item.approved_at = datetime.utcnow(); session.commit(); session.refresh(item)
+    return item
+
+
+def serialize_strategy(item: StrategyVersion) -> dict:
+    return {"id": item.id, "strategy_key": item.strategy_key, "version": item.version, "name": item.name, "profile": item.profile, "status": item.status, "backtest_run_id": item.backtest_run_id, "configuration": item.configuration, "checksum": item.checksum, "supersedes_strategy_version_id": item.supersedes_strategy_version_id, "approved_at": item.approved_at.isoformat() + "Z" if item.approved_at else None, "created_at": item.created_at.isoformat() + "Z"}

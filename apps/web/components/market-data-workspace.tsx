@@ -5,7 +5,9 @@ import { ChangeEvent, useCallback, useEffect, useState } from "react";
 import { CandlestickChart } from "./candlestick-chart";
 import { type BarsResponse, type Dataset, displayTime, TIMEFRAMES, type Timeframe } from "../lib/market";
 
-const menu = ["Live Decision", "Positions", "Research Lab", "Backtest Lab", "Strategy Library", "Demo Deployment", "Journal"];
+const disabledLive = ["Live Decision", "Positions"];
+const disabledStrategies = ["Demo Deployment"];
+const disabledSystem = ["Journal", "Settings"];
 
 export function MarketDataWorkspace() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -49,9 +51,10 @@ export function MarketDataWorkspace() {
   const meta = bars?.meta;
   return <div className="app-shell">
     <aside className="sidebar"><div className="brand"><span>△</span><div><strong>ARKANA</strong><small>TRADING INTELLIGENCE</small></div></div>
-      <p className="section-label">COMMAND CENTER</p><button className="nav active">▦ Market &amp; Data</button>
+      <p className="section-label">LIVE</p>{disabledLive.map((item) => <button className="nav disabled" disabled key={item}>{item}</button>)}
       <p className="section-label">RESEARCH</p><Link className="nav" href="/research">Research Lab</Link><Link className="nav" href="/backtest">Backtest Lab</Link>
-      <p className="section-label">COMING LATER</p>{menu.filter((item) => item !== "Research Lab" && item !== "Backtest Lab").map((item) => <button className="nav disabled" disabled key={item}>{item}</button>)}
+      <p className="section-label">STRATEGIES</p><Link className="nav" href="/strategies">Strategy Library</Link>{disabledStrategies.map((item) => <button className="nav disabled" disabled key={item}>{item}</button>)}
+      <p className="section-label">SYSTEM</p><button className="nav active">▦ Market &amp; Data</button>{disabledSystem.map((item) => <button className="nav disabled" disabled key={item}>{item}</button>)}
       <div className="safety"><strong>RESEARCH MODE</strong><small>No MT5 feed or trading execution in Sprint 01.</small></div>
     </aside>
     <main><header><div><h1>Market &amp; Data</h1><p>Historical XAUUSD from imported files. No synthetic fallback candles.</p></div><label className="import"><input type="file" accept=".csv,text/csv" onChange={importCsv} />Import MT5 CSV</label></header>

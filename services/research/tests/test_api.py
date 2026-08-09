@@ -132,3 +132,19 @@ def test_backtest_rejects_unregistered_candidate_and_invalid_costs():
         assert unknown.status_code == 422
         invalid = client.post("/api/v1/backtests", json={"spread_price": -0.01})
         assert invalid.status_code == 422
+
+
+def test_strategy_candidate_is_versioned_and_requires_manual_approval():
+    with TestClient(app) as client:
+        backtest = client.post("/api/v1/backtests", json={"stop_distance": 0.11, "target_distance": 0.12}).json()
+        candidate = client.post("/api/v1/strategy-versions", json={"backtest_run_id": backtest["id"], "name": "Bullish Reversal M1"})
+        assert candidate.status_code == 200, candidate.text
+        item = candidate.json()
+        assert item["status"] == "CANDIDATE"
+        assert item["configuration"]["allowed_environment"] == "DEMO"
+        assert item["configuration"]["enabled"] is False
+        approved = client.post(f"/api/v1/strategy-versions/{item['id']}/approve")
+        assert approved.status_code == 200
+        assert approved.json()["status"] == "APPROVED"
+        assert approved.json()["approved_at"]
+        assert client.post(f"/api/v1/strategy-versions/{item['id']}/approve").status_code == 422

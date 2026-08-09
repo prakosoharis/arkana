@@ -8,11 +8,12 @@ from sqlalchemy.orm import Session, selectinload
 
 from .database import Base, engine, get_session
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import BacktestRun, Dataset, DatasetBarAsset, ResearchHypothesis, ResearchRun
+from .models import BacktestRun, Dataset, DatasetBarAsset, ResearchHypothesis, ResearchRun, StrategyVersion
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
 from .backtesting import run_backtest
+from .strategies import approve_candidate, create_candidate, serialize_strategy
 from .settings import DATA_ROOT, MAX_BARS_PER_REQUEST
 
 
@@ -208,3 +209,28 @@ def get_backtest_trades(backtest_id: str, limit: int = Query(100, ge=1, le=100),
     if not run:
         raise HTTPException(404, "backtest run not found")
     return {"backtest_id": run.id, "trades": run.trades[:limit], "total": len(run.trades)}
+
+
+@app.get("/api/v1/strategy-versions")
+def list_strategy_versions(session: Session = Depends(get_session)) -> dict:
+    items = session.scalars(select(StrategyVersion).order_by(StrategyVersion.created_at.desc())).all()
+    return {"strategy_versions": [serialize_strategy(item) for item in items]}
+
+
+@app.post("/api/v1/strategy-versions")
+def create_strategy_version(payload: dict, session: Session = Depends(get_session)) -> dict:
+    try:
+        return serialize_strategy(create_candidate(session, payload))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.post("/api/v1/strategy-versions/{strategy_version_id}/approve")
+def approve_strategy_version(strategy_version_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(StrategyVersion, strategy_version_id)
+    if not item:
+        raise HTTPException(404, "strategy version not found")
+    try:
+        return serialize_strategy(approve_candidate(session, item))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error

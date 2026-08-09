@@ -1,0 +1,14 @@
+# Copy to the MT5 Common Files folder as ARKANA/strategy.ini. Keep enabled=false until Owner Acceptance.
+schema_version=1
+strategy_id=bullish-reversal-m1
+strategy_version=1.0.0
+symbol=XAUUSD
+enabled=false
+allowed_environment=DEMO
+rule_set=BULLISH_REVERSAL_M1
+volume=0.01
+stop_distance=0.10
+target_distance=0.10
+max_spread_price=0.05
+max_open_positions=1
+checksum=MANUAL_LOCAL_PROTOTYPE_NOT_DEPLOYED

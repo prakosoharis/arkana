@@ -80,6 +80,17 @@ Open `http://localhost:3000/backtest`. This is a deliberately bounded broad M1 e
 5. Run again without changes. Verify the message reports that the recorded result was reused.
 6. Verify the guardrails say it cannot activate a strategy or place a trade, and that tick precision is unavailable without registered Bid/Ask ticks.
 
+## Sprint 05 Strategy Library acceptance
+
+1. After a backtest result appears, click **Create strategy candidate**.
+2. Open `http://localhost:3000/strategies` and verify it shows a `CANDIDATE`, source backtest ID, checksum, disabled configuration, and `DEMO only` state.
+3. Click **Approve manually**. The label must become `APPROVED · NOT DEPLOYED`.
+4. Confirm that there is no MT5 sync, deployment, live-account option, or trading action.
+
+## Sprint 06 MT5 EA prototype
+
+See [mt5/README.md](../../mt5/README.md) for the exact MetaTrader 5 demo-terminal test. This workspace cannot compile MQL5 because MetaEditor is not installed. Do not use the EA on a live account; it is designed to refuse one.
+
 ## Native automated checks
 
 ```bash

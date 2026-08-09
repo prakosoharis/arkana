@@ -1,7 +1,7 @@
 # ARKANA Current State
 
 **Updated:** 2026-08-09
-**Completed implementation:** Sprint 01, Sprint 02, Sprint 03, Sprint 04
+**Completed implementation:** Sprint 01, Sprint 02, Sprint 03, Sprint 04, Sprint 05, Sprint 06 (source prototype)
 
 ARKANA is a local research application, not a trading system. Its actual architecture is a Next.js web/BFF (`apps/web`), a FastAPI research service (`services/research`), PostgreSQL metadata, and processed Parquet historical bars. Docker Compose starts all three. The MT5 execution plane is deliberately absent.
 
@@ -19,6 +19,8 @@ ARKANA is a local research application, not a trading system. Its actual archite
 | Reproducible runs and sample visual validation | PASS | `ResearchRun`, fingerprint reuse, chart sample browser |
 | Deterministic M1 broad backtest and ledger | PASS | `backtesting.py`, `BacktestRun`, Backtest Lab |
 | Cost assumptions, conservative ambiguity, split/cost sensitivity | PASS | explicit price costs, `STOP_FIRST`, chronological 70/30 split |
+| Strategy candidate/version governance | PASS | immutable version, source backtest, checksum, manual approval, DEMO-only configuration |
+| Generic MT5 demo EA source | PASS (source) | `mt5/Experts/ARKANA_ENGINE.mq5`: local cached config, DEMO guard, M1 evaluator, risk guards, order manager, heartbeat telemetry, emergency-stop guard |
 
 ## Explicitly partial or unavailable
 
@@ -28,6 +30,7 @@ ARKANA is a local research application, not a trading system. Its actual archite
 | Research summaries | PARTIAL | descriptive counts/direction or next-bar outcome only; no statistical inference, discovery, or predictive claim. |
 | Backtest candidate coverage | PARTIAL | only `BULLISH_REVERSAL_M1` long candidate is registered; no strategy is created. |
 | Tick precision validation | MISSING | no registered historical Bid/Ask tick dataset; M1 broad model is explicitly labelled. |
+| MT5 compile/terminal validation and config sync/deployment | PARTIAL | Generic EA source exists but MetaEditor/MT5 is unavailable in this workspace. Manual local config is owner-tested; approved config sync/deployment is Sprint 07. |
 | D1 timeframe | MISSING | Sprint 01 supports through H4 only. |
 | FOMC/external events, news, macro, similarity | NOT ELIGIBLE | no registered auditable source/capability; intentionally not ingested. |
 | Backtest, strategy lifecycle, deployment, MT5, EA/MQL5, tick/Bid/Ask collection | MISSING | future checkpoints only. |
@@ -39,6 +42,8 @@ ARKANA is a local research application, not a trading system. Its actual archite
 - Each run fingerprints hypothesis version, definition, and selected registered dataset. Identical input reuses the saved run.
 - Output is labelled descriptive historical research; it is not a backtest, signal, strategy, or trade instruction.
 - Backtest outputs are price-unit historical experiments. They use fixed `STOP_FIRST` intrabar ambiguity, have no sizing/leverage/slippage model, and cannot approve or activate a strategy.
+- Strategy approval is a manual governance record only. Generated configurations are disabled and DEMO-only; they are never sent to MT5 in the current build.
+- The EA source independently blocks non-demo accounts and requires a valid local configuration. Its telemetry is a local common-file CSV; ARKANA Web does not consume it yet.
 - No code can place a trade. MT5 EA remains the future realtime execution owner; the web app remains research/command center.
 
 ## Dataset and artifact inventory
@@ -53,7 +58,7 @@ ARKANA is a local research application, not a trading system. Its actual archite
 
 ## Verification result
 
-- Python API/unit/integration: **14 passed**.
+- Python/API/static-contract tests: **17 passed**.
 - Frontend component tests: **3 passed**.
 - ESLint: **passed**.
 - TypeScript typecheck: **passed**.
