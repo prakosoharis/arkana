@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
+from glob import glob
+from heapq import heappop, heappush
 import re
 
 import duckdb
@@ -19,6 +21,13 @@ from .models import Dataset, DatasetBarAsset
 TIMEFRAMES = {"M1": "1m", "M5": "5m", "M15": "15m", "M30": "30m", "H1": "1h", "H4": "4h"}
 REQUIRED_COLUMNS = {"timestamp", "open", "high", "low", "close"}
 OPTIONAL_ALIASES = {"tickvol": "tick_volume", "realvol": "real_volume"}
+
+
+def _connection() -> duckdb.DuckDBPyConnection:
+    # Interactive reads must remain bounded even when the bootstrap Parquet
+    # contains millions of bars.  One worker with a spillable memory ceiling
+    # avoids Docker Desktop OOM without changing research data or semantics.
+    return duckdb.connect(config={"threads": "1", "memory_limit": "512MB", "temp_directory": "/tmp"})
 
 
 def _normalise_columns(frame: pl.DataFrame) -> pl.DataFrame:
@@ -67,6 +76,16 @@ def parse_mt5_csv(content: bytes, *, symbol: str, source: str) -> pl.DataFrame:
         rows = ", ".join(str(row + 2) for row in invalid.get_column("_input_row").head(5).to_list())
         raise HTTPException(422, f"CSV contains {invalid.height} invalid row(s), starting at CSV row(s): {rows}")
 
+    # An overlap is safe only when it is byte-for-byte the same market bar.
+    # Never silently choose one of two different OHLC facts for one timestamp.
+    conflicting = (
+        frame.group_by("timestamp")
+        .agg(pl.struct(numeric + ["tick_volume", "spread", "real_volume"]).n_unique().alias("_variants"))
+        .filter(pl.col("_variants") > 1)
+    )
+    if conflicting.height:
+        raise HTTPException(422, f"DATA_INTEGRITY_CONFLICT: CSV has conflicting values at {conflicting.get_column('timestamp')[0].isoformat()}")
+
     # Sort then retain the last original row for each duplicate timestamp, consistently.
     frame = (
         frame.sort(["timestamp", "_input_row"])
@@ -108,6 +127,25 @@ def resample_m1(frame: pl.DataFrame, timeframe: str) -> pl.DataFrame:
     )
 
 
+def resample_completed_m1(frame: pl.DataFrame, timeframe: str) -> pl.DataFrame:
+    """Return only fully populated, completed OHLC buckets from M1 input.
+
+    This is used only by incremental writes.  It deliberately does not invent
+    bars across a broker gap or turn a currently incomplete higher timeframe
+    candle into historical evidence.
+    """
+    if timeframe == "M1":
+        return frame.sort("timestamp")
+    expected = {"M5": 5, "M15": 15, "M30": 30, "H1": 60, "H4": 240}[timeframe]
+    bars = resample_m1(frame, timeframe)
+    counts = (
+        frame.sort("timestamp")
+        .group_by_dynamic("timestamp", every=TIMEFRAMES[timeframe], period=TIMEFRAMES[timeframe], closed="left", label="left")
+        .agg(pl.len().alias("_m1_count"))
+    )
+    return bars.join(counts, on="timestamp", how="inner").filter(pl.col("_m1_count") == expected).drop("_m1_count")
+
+
 def _safe_dataset_directory(data_root: Path, dataset_id: str) -> Path:
     path = (data_root / dataset_id).resolve()
     if data_root.resolve() not in path.parents:
@@ -119,6 +157,52 @@ def _safe_dataset_directory(data_root: Path, dataset_id: str) -> Path:
 def _write_parquet(frame: pl.DataFrame, path: Path) -> None:
     # Polars writes processed columnar data; DuckDB is the query layer in read_bars.
     frame.write_parquet(path, compression="zstd")
+
+
+def _parquet_source(path: str) -> str:
+    """Assets can be a legacy file or an incremental fragment glob."""
+    return path
+
+
+def _fragmented(path: str) -> bool:
+    return "*" in path
+
+
+def read_frame(path: str, *, start: datetime | None = None, end: datetime | None = None) -> pl.DataFrame:
+    clauses = []
+    params: list[object] = [_parquet_source(path)]
+    if start:
+        clauses.append("timestamp >= ?"); params.append(start)
+    if end:
+        clauses.append("timestamp <= ?"); params.append(end)
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    query = (f"""
+      SELECT * EXCLUDE(filename) FROM read_parquet(?, filename=true){where}
+      QUALIFY row_number() OVER (PARTITION BY timestamp ORDER BY filename DESC) = 1
+      ORDER BY timestamp
+    """ if _fragmented(path) else f"SELECT * FROM read_parquet(?) {where} ORDER BY timestamp")
+    connection = _connection()
+    try:
+        cursor = connection.execute(query, params)
+        columns = [column[0] for column in cursor.description]
+        return pl.DataFrame(cursor.fetchall(), schema=columns, orient="row")
+    finally:
+        connection.close()
+
+
+def asset_stats(path: str) -> tuple[int, datetime, datetime]:
+    frame = read_frame(path)
+    return frame.height, frame.get_column("timestamp").min(), frame.get_column("timestamp").max()
+
+
+def write_incremental_fragment(frame: pl.DataFrame, *, directory: Path, name: str) -> str:
+    """Append a self-contained immutable fragment; readers deduplicate by timestamp."""
+    directory.mkdir(parents=True, exist_ok=True)
+    temporary = directory / f".{name}.tmp"
+    final = directory / name
+    _write_parquet(frame, temporary)
+    temporary.replace(final)
+    return str(directory / "*.parquet")
 
 
 def import_csv(
@@ -177,15 +261,16 @@ def serialize_dataset(dataset: Dataset) -> dict:
             {
                 "timeframe": asset.timeframe,
                 "row_count": asset.row_count,
-                "range_start": asset.range_start.isoformat() + "Z",
-                "range_end": asset.range_end.isoformat() + "Z",
+                # Broker timestamps are naive by contract; never decorate them as UTC.
+                "range_start": asset.range_start.isoformat(),
+                "range_end": asset.range_end.isoformat(),
             }
             for asset in sorted(dataset.bars, key=lambda item: list(TIMEFRAMES).index(item.timeframe))
         ],
     }
 
 
-def read_bars(asset: DatasetBarAsset, *, start: datetime | None, end: datetime | None, limit: int) -> list[dict]:
+def read_bars(asset: DatasetBarAsset, *, start: datetime | None, end: datetime | None, limit: int, latest: bool = False) -> list[dict]:
     clauses = []
     params: list[object] = [asset.path]
     if start:
@@ -195,13 +280,94 @@ def read_bars(asset: DatasetBarAsset, *, start: datetime | None, end: datetime |
         clauses.append("timestamp <= ?")
         params.append(end)
     where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-    params.append(limit + 1)
-    query = f"SELECT * FROM read_parquet(?) {where} ORDER BY timestamp LIMIT ?"
-    connection = duckdb.connect()
+    # Bootstrap Parquet is written in chronological order.  Use the registry
+    # count for the interactive latest page instead of sorting all M1 history.
+    if latest and not start and not end and not _fragmented(asset.path):
+        params.extend([limit, max(0, asset.row_count - limit)])
+        query = "SELECT * FROM read_parquet(?) LIMIT ? OFFSET ?"
+    elif _fragmented(asset.path):
+        # Increment fragments only overlap near their write boundary.  Restrict
+        # the dedupe window before the window function; a chart must never
+        # materialise the complete multi-million-row research dataset.
+        if latest and not start and not end:
+            seconds = {"M1": 60, "M5": 300, "M15": 900, "M30": 1800, "H1": 3600, "H4": 14400}[asset.timeframe]
+            clauses.append("timestamp >= ?")
+            params.append(asset.range_end - timedelta(seconds=seconds * limit * 3))
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        query = f"""
+        WITH deduplicated AS (
+          SELECT * EXCLUDE(filename) FROM read_parquet(?, filename=true){where}
+          QUALIFY row_number() OVER (PARTITION BY timestamp ORDER BY filename DESC) = 1
+        )
+        SELECT * FROM deduplicated ORDER BY timestamp {'DESC' if latest else 'ASC'} LIMIT ?
+        """
+    else:
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        query = f"SELECT * FROM read_parquet(?) {where} ORDER BY timestamp {'DESC' if latest else 'ASC'} LIMIT ?"
+    connection = _connection()
     try:
         cursor = connection.execute(query, params)
         columns = [column[0] for column in cursor.description]
         result = [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
     finally:
         connection.close()
-    return result
+    return list(reversed(result)) if latest and not (not start and not end and not _fragmented(asset.path)) else result
+
+
+def iter_bars(asset: DatasetBarAsset, *, chunk_size: int = 10_000):
+    """Yield the complete registered asset in chronological, bounded batches.
+
+    This is deliberately separate from ``read_bars``: the latter is an
+    interactive/chart query with an explicit limit, whereas callers such as a
+    full historical validation must visit every registered bar without ever
+    returning the complete dataset to a browser or building a Python list.
+    """
+    if chunk_size < 1:
+        raise ValueError("chunk_size must be positive")
+    # A global SQL window over a multi-million-row fragment glob can consume
+    # all DuckDB working memory before its first batch is returned.  Each
+    # immutable artifact is already chronological, so merge the small number
+    # of artifact streams and apply the existing filename-desc duplicate rule
+    # at equal timestamps.  This remains exhaustive and bounded in memory.
+    paths = sorted(glob(asset.path)) if _fragmented(asset.path) else [asset.path]
+    if not paths:
+        return
+    connections = []
+    def rows(path: str):
+        connection = _connection(); connections.append(connection)
+        cursor = connection.execute("SELECT * FROM read_parquet(?)", [path])
+        columns = [column[0] for column in cursor.description]
+        while batch := cursor.fetchmany(chunk_size):
+            for row in batch:
+                yield dict(zip(columns, row, strict=True))
+    streams = [iter(rows(path)) for path in paths]
+    heap: list[tuple[Any, int, dict]] = []
+    try:
+        for index, stream in enumerate(streams):
+            try:
+                row = next(stream); heappush(heap, (row["timestamp"], index, row))
+            except StopIteration:
+                pass
+        output: list[dict] = []
+        while heap:
+            timestamp = heap[0][0]; same: list[tuple[int, dict]] = []
+            while heap and heap[0][0] == timestamp:
+                _, index, row = heappop(heap); same.append((index, row))
+            # The prior SQL contract chose the lexicographically latest
+            # artifact for an overlapping timestamp.
+            chosen_index, chosen = max(same, key=lambda item: paths[item[0]])
+            output.append(chosen)
+            for index, _ in same:
+                try:
+                    row = next(streams[index]); heappush(heap, (row["timestamp"], index, row))
+                except StopIteration:
+                    pass
+            if len(output) >= chunk_size:
+                yield output; output = []
+        if output:
+            yield output
+    finally:
+        for connection in connections:
+            connection.close()

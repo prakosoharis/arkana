@@ -1,0 +1,20 @@
+#property strict
+#property version "1.000"
+#property script_show_inputs
+input string InpBrokerSymbol="XAUUSD.m";
+input double InpVolume=0.01;
+
+void WriteCase(int file,string id,ENUM_ORDER_TYPE type,double entry,double exit_price)
+{
+  double profit=0.0; bool ok=OrderCalcProfit(type,InpBrokerSymbol,InpVolume,entry,exit_price,profit);
+  FileWrite(file,"case="+id+"|"+(type==ORDER_TYPE_BUY?"BUY":"SELL")+"|"+DoubleToString(entry,Digits())+"|"+DoubleToString(exit_price,Digits())+"|"+DoubleToString(profit,8)+"|"+(ok?"OK":"FAILED"));
+}
+void OnStart()
+{
+  if(!SymbolSelect(InpBrokerSymbol,true)){Print("ARKANA OrderCalcProfit validation failed: unavailable symbol");return;}
+  double tick=SymbolInfoDouble(InpBrokerSymbol,SYMBOL_TRADE_TICK_SIZE), bid=SymbolInfoDouble(InpBrokerSymbol,SYMBOL_BID); if(tick<=0||bid<=0){Print("ARKANA OrderCalcProfit validation failed: invalid quote/metadata");return;}
+  FolderCreate("ARKANA",FILE_COMMON);FolderCreate("ARKANA\\broker_metadata",FILE_COMMON);
+  int file=FileOpen("ARKANA\\broker_metadata\\order_calc_profit_validation.ini",FILE_WRITE|FILE_TXT|FILE_COMMON|FILE_ANSI);if(file==INVALID_HANDLE){Print("ARKANA validation failed: cannot write FILE_COMMON");return;}
+  double move=10.0*tick;FileWrite(file,"schema_version=1");FileWrite(file,"source=MT5_ORDERCALCPROFIT");FileWrite(file,"broker_symbol="+InpBrokerSymbol);FileWrite(file,"volume="+DoubleToString(InpVolume,8));FileWrite(file,"currency="+AccountInfoString(ACCOUNT_CURRENCY));FileWrite(file,"timestamp="+TimeToString(TimeCurrent(),TIME_DATE|TIME_SECONDS));
+  WriteCase(file,"BUY_WIN",ORDER_TYPE_BUY,bid,bid+move);WriteCase(file,"BUY_LOSS",ORDER_TYPE_BUY,bid,bid-move);WriteCase(file,"SELL_WIN",ORDER_TYPE_SELL,bid,bid-move);WriteCase(file,"SELL_LOSS",ORDER_TYPE_SELL,bid,bid+move);FileClose(file);Print("ARKANA OrderCalcProfit validation exported to FILE_COMMON/ARKANA/broker_metadata/order_calc_profit_validation.ini");
+}

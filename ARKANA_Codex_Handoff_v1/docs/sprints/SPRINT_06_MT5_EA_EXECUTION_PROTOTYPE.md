@@ -1,6 +1,6 @@
 # Sprint 06 — MT5 EA Execution Prototype
 
-**Status: Complete — MT5 demo-terminal owner acceptance pending.**
+**Status: ACCEPTED / COMPLETE.**
 
 ## Delivered
 

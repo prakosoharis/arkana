@@ -27,6 +27,12 @@ def test_invalid_ohlc_is_rejected():
         parse_mt5_csv(content, symbol="XAUUSD", source="test")
 
 
+def test_conflicting_duplicate_timestamp_is_rejected():
+    content = b"timestamp,open,high,low,close\n2026.01.05 00:00,10,11,9,10\n2026.01.05 00:00,10,12,9,10\n"
+    with pytest.raises(HTTPException, match="DATA_INTEGRITY_CONFLICT"):
+        parse_mt5_csv(content, symbol="XAUUSD", source="test")
+
+
 def test_resampling_uses_first_open_max_high_min_low_last_close_and_sums_volume():
     frame = parse_mt5_csv(FIXTURE.read_bytes(), symbol="XAUUSD", source="MT5 fixture")
     m5 = resample_m1(frame, "M5")

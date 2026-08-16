@@ -6,6 +6,12 @@ export type DatasetTimeframe = { timeframe: Timeframe; row_count: number; range_
 export type Dataset = { id: string; symbol: string; source: string; timezone_status: string; imported_at: string; timeframes: DatasetTimeframe[] };
 export type BarsResponse = { bars: Bar[]; meta: { status: "READY" | "NO_DATA"; source?: string; timezone_status?: string; range_start?: string; range_end?: string } };
 
-export function displayTime(value?: string): string {
+export function displayTime(value?: string | null): string {
   return value ? new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(new Date(value)) : "—";
+}
+
+// MT5 historical timestamps are deliberately broker-time-naive.  Do not parse
+// or relabel them as UTC/local time in the presentation layer.
+export function displayBrokerTime(value?: string | null): string {
+  return value ? value.replace("T", " ").replace(/\.\d+$/, "") : "—";
 }

@@ -1,0 +1,1 @@
+import { NextResponse } from "next/server"; const base=`${process.env.RESEARCH_API_URL??"http://localhost:8000"}/api/v1/mt5-historical/sync`; export async function POST(){try{const r=await fetch(base,{method:"POST",cache:"no-store"});return NextResponse.json(await r.json(),{status:r.status})}catch{return NextResponse.json({detail:"Research service is unavailable"},{status:503})}}

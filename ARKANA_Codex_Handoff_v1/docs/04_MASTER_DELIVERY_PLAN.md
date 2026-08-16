@@ -169,9 +169,13 @@ Web UI monitors the EA rather than pretending to be the execution engine.
 ### Exit criteria
 Owner can trace a demo trade from strategy version → decision → broker execution → outcome.
 
+**Sprint 08 implementation note:** the currently confirmed EA compact telemetry supports strategy/deployment → decision traceability only. Broker execution outcome, fills, costs, and exit outcome remain explicitly `NOT_REPORTED` until an owner-approved telemetry contract expands them; they are not inferred by the web application.
+
 ---
 
 ## CP9 — Pattern Discovery & Similarity
+
+**Status: ACCEPTED / COMPLETE (Sprint 09).**
 
 ### Goal
 System can discover candidate patterns and retrieve historical analogs beyond manually named strategies.
@@ -185,11 +189,13 @@ System can discover candidate patterns and retrieve historical analogs beyond ma
 - visual candidate inspection.
 
 ### Exit criteria
-ARKANA produces candidate patterns without LLM-generated fake statistics and each candidate can be pushed into the normal research/backtest lifecycle.
+ARKANA produces candidate patterns without LLM-generated fake statistics and exposes them as research evidence. Candidate-to-strategy/backtest promotion remains an explicit owner-led later action, not an automatic CP9 outcome.
 
 ---
 
 ## CP10 — AI Research Assistant Optimization
+
+**Status: Implementation complete — Owner Acceptance required.**
 
 ### Goal
 Natural-language interface becomes useful without becoming expensive.
@@ -209,6 +215,8 @@ Common chart commands incur no LLM call where deterministic intent is known, and
 ---
 
 ## CP11 — Demo Validation & Live Readiness Assessment
+
+**Status: Implementation complete — real MT5 DEMO Owner Acceptance and forward evidence pending.**
 
 ### Goal
 Evaluate whether any strategy deserves consideration for live trading.

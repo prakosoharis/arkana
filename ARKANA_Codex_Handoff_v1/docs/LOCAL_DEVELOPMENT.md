@@ -41,6 +41,23 @@ The importer validates OHLC, sorts timestamps, keeps the final input row for a d
 
 The browser calls matching versioned BFF endpoints at `http://localhost:3000/api/v1/...`. Historical data is stored in Parquet, while PostgreSQL stores only dataset/import metadata.
 
+## Incremental MT5 historical sync (macOS)
+
+After the first bootstrap dataset is registered, compile `mt5/Experts/ARKANA_DATA_COLLECTOR.mq5` in MetaEditor and attach it to an `XAUUSD.m` chart. It is an `OnTimer` data collector, not a trading EA; it can run with AutoTrading disabled. Confirm the Experts log says `ARKANA_DATA_COLLECTOR active`.
+
+The Docker-mounted MT5 Common `Files` host path must remain in `.env` as
+`MT5_COMMON_FILES_ROOT=<your macOS MT5 Common Files path>`; inside the Research
+container it is always `/workspace/mt5-common`. In Market & Data, **Sync Now**
+creates a request for only missing completed M1 bars. The collector responds
+under `ARKANA/historical/increments/`; the backend picks it up within its
+30-second poll and updates the registry. The default scheduled cadence is one
+hour (`HISTORICAL_SYNC_INTERVAL_SECONDS=3600`).
+
+The page distinguishes **Latest market data (broker time)** from **Last
+successful sync (service time)**. `UNVERIFIED_BROKER_TIME` is retained; no
+session/DST/UTC conversion is made. If MT5 is offline, the last good dataset
+remains available and status becomes stale/offline on the next attempted cycle.
+
 ## Sprint 02/03 research hypothesis and eligible execution
 
 Open `http://localhost:3000/research`, enter a question, then review/edit the returned interpretation before saving it. The form intentionally shows only fields relevant to its research mode; JSON is persisted internally for the typed/auditable contract and is not an owner-facing editing requirement.
@@ -90,6 +107,12 @@ Open `http://localhost:3000/backtest`. This is a deliberately bounded broad M1 e
 ## Sprint 06 MT5 EA prototype
 
 See [mt5/README.md](../../mt5/README.md) for the exact MetaTrader 5 demo-terminal test. This workspace cannot compile MQL5 because MetaEditor is not installed. Do not use the EA on a live account; it is designed to refuse one.
+
+## Sprint 07 DEMO deployment
+
+Set `MT5_COMMON_FILES_ROOT` in `.env` to the MT5 Common Data `Files` directory printed by the EA, then run `docker compose up --build -d`. Docker mounts that **host** path at `/workspace/mt5-common`; the research container internally uses `MT5_COMMON_FILES_ROOT=/workspace/mt5-common`. Do not set the container path in the host `.env`.
+
+Before any deployment, use an APPROVED strategy in `/deployments`, enter the exact chart broker symbol (for example `XAUUSD.m`), and run preflight. The canonical strategy instrument remains `XAUUSD`; no fuzzy mapping occurs. Preflight performs a safe create-folder/write/atomic-replace/readback/cleanup probe against the mounted directory, without writing a trading config. The exact macOS test and rollback procedure is in [Sprint 07](sprints/SPRINT_07_DEMO_DEPLOYMENT_END_TO_END.md).
 
 ## Native automated checks
 

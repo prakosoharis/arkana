@@ -1,0 +1,2 @@
+import { NextRequest, NextResponse } from "next/server";
+export async function POST(_request:NextRequest,{params}:{params:Promise<{id:string}>}){const {id}=await params;try{const r=await fetch(`${process.env.RESEARCH_API_URL??"http://localhost:8000"}/api/v1/deployments/${id}/poll-ack`,{method:"POST",cache:"no-store"});return NextResponse.json(await r.json(),{status:r.status})}catch{return NextResponse.json({detail:"Research service is unavailable"},{status:503})}}

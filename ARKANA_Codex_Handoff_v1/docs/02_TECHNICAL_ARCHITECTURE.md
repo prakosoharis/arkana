@@ -109,6 +109,36 @@ Relational DB
 
 Exact storage engine may reuse the repository's existing choices.
 
+### Incremental MT5 historical synchronization
+
+The initial MT5 snapshot remains an explicit recovery/bootstrap action. Normal
+research freshness is a distinct non-trading path:
+
+```text
+Research service hourly scheduler or Sync Now
+→ FILE_COMMON/ARKANA/historical/requests/<request-id>.ini
+→ ARKANA_DATA_COLLECTOR OnTimer + CopyRates(XAUUSD.m, M1)
+→ FILE_COMMON/.../increments/<request-id>.csv + manifest
+→ validation / exact-overlap reconciliation / Parquet append fragments
+→ dataset registry and freshness state
+```
+
+The request starts at the last successfully imported completed M1 plus one
+minute. The collector excludes the currently forming M1 candle. Existing
+single-file assets are converted once into retained base fragments; subsequent
+syncs append immutable fragments and recompute only the affected M1 tail and
+complete M5/M15/M30/H1/H4 buckets. Readers deterministically deduplicate by
+timestamp. Conflicting same-timestamp OHLC is a data-integrity failure, never a
+last-row-wins update. Broker timestamps stay `UNVERIFIED_BROKER_TIME`.
+
+This path has no dependency on `ARKANA_ENGINE.OnTick`, Web/API requests from
+the EA, AI, trading configuration, or order actions. It is local single-
+instance scheduling only; a future persistent host/VPS is separate work.
+
+### DEMO forward evidence
+
+Sprint 11 adds an idempotent `demo_trades` relational journal populated from MT5 `OnTradeTransaction` Common-Files events. It is an observability path, not an execution dependency: the EA writes local files, then the adapter ingests them after the fact. Each record carries exact deployment/version/checksum identity when available; costs/slippage remain unavailable unless MT5 reports them.
+
 ### Requirements
 - partition by symbol/date where appropriate;
 - idempotent import;
@@ -277,7 +307,7 @@ Never send millions of raw candles.
 
 # 3. Strategy Configuration Contract
 
-Use a versioned, schema-validated strategy configuration. Exact format may be JSON or an equivalent representation supported by the EA integration.
+Use a versioned, schema-validated strategy configuration. Sprint 07 uses the strict line-based `deployment_config_v1` contract in `services/research/app/deployment_contract.py`, mirrored by `mt5/Experts/ARKANA_ENGINE.mq5` and fixture `mt5/contracts/deployment_config_v1.ini`: canonical research instrument and exact broker execution symbol are distinct, decimal risk values have eight fractional digits, and checksum input order is fixed. Unknown, duplicate, and missing fields are rejected.
 
 Conceptual example:
 
