@@ -326,14 +326,22 @@ def _cost_sensitivity(bars: list[dict], config: dict[str, Any]) -> dict[str, Any
 
 
 def run_backtest(session: Session, payload: dict[str, Any]) -> tuple[BacktestRun, bool]:
-    config = validate_backtest_config(payload)
+    strategy_version_id = str((payload or {}).get("strategy_version_id", "")) or None
+    if strategy_version_id:
+        strategy = session.get(StrategyVersion, strategy_version_id)
+        if not strategy or not strategy.strategy_contract:
+            raise ValueError("strategy version with a Strategy Contract is required")
+        from .strategy_adapters import compile_legacy_bullish_reversal
+        config = compile_legacy_bullish_reversal(strategy.strategy_contract)
+    else:
+        config = validate_backtest_config(payload)
     dataset = session.scalar(select(Dataset).where(Dataset.symbol == "XAUUSD").order_by(Dataset.imported_at.desc()))
     if not dataset:
         raise ValueError("Registered XAUUSD dataset is unavailable")
     asset = next((item for item in dataset.bars if item.timeframe == "M1"), None)
     if not asset:
         raise ValueError("Registered M1 dataset is unavailable")
-    fingerprint = sha256(json.dumps({"dataset": dataset.fingerprint, "config": config}, sort_keys=True).encode()).hexdigest()
+    fingerprint = sha256(json.dumps({"dataset": dataset.fingerprint, "config": config, "strategy_version_id": strategy_version_id}, sort_keys=True).encode()).hexdigest()
     existing = session.scalar(select(BacktestRun).where(BacktestRun.fingerprint == fingerprint))
     if existing:
         return existing, True
@@ -354,6 +362,6 @@ def run_backtest(session: Session, payload: dict[str, Any]) -> tuple[BacktestRun
     regime_validation = build_historical_regime_validation(bars, trades)
     trades = regime_validation.pop("trades")
     result = {"dataset_id": dataset.id, "dataset_fingerprint": dataset.fingerprint, "execution_resolution": "M1_BROAD", "ambiguity_policy": "STOP_FIRST", "metrics": _metrics(trades), "split": {"method": "chronological_70_30", "split_timestamp": split_time, "in_sample": _metrics(in_sample), "out_of_sample": _metrics(out_sample)}, "walk_forward": {"available": bool(windows), "windows": windows, "reason": None if windows else "At least 30 M1 bars are required for rolling windows."}, "cost_sensitivity": _cost_sensitivity(bars, config), "regime_validation": regime_validation, "warning": "Backtest experiment only. It is not a strategy approval, trade signal, or MT5 instruction."}
-    run = BacktestRun(dataset_id=dataset.id, fingerprint=fingerprint, configuration=config, result=result, trades=trades)
+    run = BacktestRun(dataset_id=dataset.id, fingerprint=fingerprint, configuration=config, result=result, trades=trades, strategy_version_id=strategy_version_id)
     session.add(run); session.commit(); session.refresh(run)
     return run, False

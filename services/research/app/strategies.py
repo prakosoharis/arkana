@@ -5,7 +5,35 @@ import json
 import re
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-from .models import BacktestRun, StrategyVersion
+from .models import BacktestRun, StrategyCandidate, StrategyVersion
+from .strategy_contracts import fingerprint, validate
+
+SOURCES={"MANUAL","RESEARCH","DISCOVERY","ANALOG","KNOWN_METHOD","AI_ASSISTED"}
+
+def create_strategy_candidate(session: Session, payload: dict) -> StrategyCandidate:
+    name=str(payload.get("name","")).strip(); source=str(payload.get("source","")).upper(); provenance=payload.get("provenance")
+    if not name or source not in SOURCES or not isinstance(provenance,dict): raise ValueError("candidate requires name, supported source, and structured provenance")
+    item=StrategyCandidate(name=name,source=source,provenance=provenance); session.add(item); session.commit(); session.refresh(item); return item
+
+def update_strategy_candidate(session: Session, item: StrategyCandidate, payload: dict) -> StrategyCandidate:
+    if item.status != "DRAFT": raise ValueError("only a DRAFT strategy candidate may be updated")
+    candidate=create_strategy_candidate  # retain one validation policy
+    name=str(payload.get("name",item.name)).strip(); source=str(payload.get("source",item.source)).upper(); provenance=payload.get("provenance",item.provenance)
+    if not name or source not in SOURCES or not isinstance(provenance,dict): raise ValueError("candidate requires name, supported source, and structured provenance")
+    item.name=name; item.source=source; item.provenance=provenance; session.commit(); session.refresh(item); return item
+
+def confirm_strategy_version(session: Session, payload: dict) -> StrategyVersion:
+    candidate=session.get(StrategyCandidate,str(payload.get("strategy_candidate_id",""))); contract=payload.get("strategy_contract")
+    if not candidate: raise ValueError("strategy candidate not found")
+    report=validate(contract)
+    if not report["ready"]: raise ValueError("Strategy Contract is invalid: "+" ".join(report["issues"]))
+    key=_slug(str(payload.get("strategy_key") or candidate.name)); version=(session.scalar(select(func.max(StrategyVersion.version)).where(StrategyVersion.strategy_key==key)) or 0)+1
+    item=StrategyVersion(strategy_key=key,version=version,name=candidate.name,profile="SCALPING",status="CONTRACT_VALID",backtest_run_id=None,strategy_candidate_id=candidate.id,strategy_contract=contract,configuration={"strategy_contract_fingerprint":report["fingerprint"]},checksum=fingerprint(contract))
+    session.add(item); session.commit(); session.refresh(item); return item
+
+def revision(session: Session, item: StrategyVersion) -> StrategyCandidate:
+    if not item.strategy_candidate_id or not item.strategy_contract: raise ValueError("legacy strategy versions must remain on their legacy lifecycle")
+    return create_strategy_candidate(session,{"name":item.name,"source":"MANUAL","provenance":{"revision_of":item.id,"strategy_contract":item.strategy_contract}})
 
 
 def _slug(value: str) -> str:
@@ -46,4 +74,5 @@ def approve_candidate(session: Session, item: StrategyVersion) -> StrategyVersio
 
 
 def serialize_strategy(item: StrategyVersion) -> dict:
-    return {"id": item.id, "strategy_key": item.strategy_key, "version": item.version, "name": item.name, "profile": item.profile, "status": item.status, "backtest_run_id": item.backtest_run_id, "configuration": item.configuration, "checksum": item.checksum, "supersedes_strategy_version_id": item.supersedes_strategy_version_id, "approved_at": item.approved_at.isoformat() + "Z" if item.approved_at else None, "created_at": item.created_at.isoformat() + "Z"}
+    report=validate(item.strategy_contract) if item.strategy_contract else None
+    return {"id": item.id, "strategy_key": item.strategy_key, "version": item.version, "name": item.name, "profile": item.profile, "status": item.status, "backtest_run_id": item.backtest_run_id, "strategy_candidate_id":item.strategy_candidate_id,"strategy_contract":item.strategy_contract,"validation":report,"configuration": item.configuration, "checksum": item.checksum, "supersedes_strategy_version_id": item.supersedes_strategy_version_id, "approved_at": item.approved_at.isoformat() + "Z" if item.approved_at else None, "created_at": item.created_at.isoformat() + "Z"}

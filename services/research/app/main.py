@@ -10,12 +10,13 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, Dataset, DatasetBarAsset, Deployment, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot
+from .models import AIInteraction, BacktestRun, Dataset, DatasetBarAsset, Deployment, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
 from .backtesting import run_backtest, run_supplemental_full_validation
-from .strategies import approve_candidate, create_candidate, serialize_strategy
+from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
+from .strategy_contracts import validate as validate_strategy_contract
 from .deployments import adapter_preflight, create_deployment, poll_ack, preflight, rollback, serialize as serialize_deployment
 from .settings import DATA_ROOT, MAX_BARS_PER_REQUEST
 from .telemetry import serialize as serialize_journal_event, snapshot as telemetry_snapshot, sync as sync_telemetry
@@ -334,7 +335,7 @@ def get_research_samples(run_id: str, limit: int = Query(50, ge=1, le=50), sessi
 
 
 def serialize_backtest(item: BacktestRun, include_trades: bool = False) -> dict:
-    payload = {"id": item.id, "dataset_id": item.dataset_id, "fingerprint": item.fingerprint, "status": item.status, "configuration": item.configuration, "result": item.result, "created_at": item.created_at.isoformat() + "Z"}
+    payload = {"id": item.id, "dataset_id": item.dataset_id, "strategy_version_id":item.strategy_version_id, "fingerprint": item.fingerprint, "status": item.status, "configuration": item.configuration, "result": item.result, "created_at": item.created_at.isoformat() + "Z"}
     if include_trades:
         payload["trades"] = item.trades
     return payload
@@ -428,6 +429,47 @@ def list_supplemental_historical_validations(strategy_version_id: str, session: 
 def list_strategy_versions(session: Session = Depends(get_session)) -> dict:
     items = session.scalars(select(StrategyVersion).order_by(StrategyVersion.created_at.desc())).all()
     return {"strategy_versions": [serialize_strategy(item) for item in items]}
+
+@app.post("/api/v1/strategy-candidates")
+def create_strategy_candidate_route(payload: dict, session: Session = Depends(get_session)) -> dict:
+    try:
+        item=create_strategy_candidate(session,payload); return {"id":item.id,"name":item.name,"source":item.source,"provenance":item.provenance,"status":item.status}
+    except ValueError as error: raise HTTPException(422,str(error)) from error
+
+@app.get("/api/v1/strategy-candidates")
+def list_strategy_candidates(session: Session = Depends(get_session)) -> dict:
+    items=session.scalars(select(StrategyCandidate).order_by(StrategyCandidate.created_at.desc())).all(); return {"strategy_candidates":[{"id":item.id,"name":item.name,"source":item.source,"provenance":item.provenance,"status":item.status} for item in items]}
+
+@app.get("/api/v1/strategy-candidates/{candidate_id}")
+def get_strategy_candidate(candidate_id:str,session:Session=Depends(get_session))->dict:
+    item=session.get(StrategyCandidate,candidate_id)
+    if not item: raise HTTPException(404,"strategy candidate not found")
+    return {"id":item.id,"name":item.name,"source":item.source,"provenance":item.provenance,"status":item.status}
+
+@app.put("/api/v1/strategy-candidates/{candidate_id}")
+def update_strategy_candidate_route(candidate_id:str,payload:dict,session:Session=Depends(get_session))->dict:
+    item=session.get(StrategyCandidate,candidate_id)
+    if not item: raise HTTPException(404,"strategy candidate not found")
+    try:
+        item=update_strategy_candidate(session,item,payload); return {"id":item.id,"name":item.name,"source":item.source,"provenance":item.provenance,"status":item.status}
+    except ValueError as error: raise HTTPException(422,str(error)) from error
+
+@app.post("/api/v1/strategy-candidates/validate")
+def validate_strategy_candidate(payload:dict)->dict:
+    return validate_strategy_contract(payload.get("strategy_contract"))
+
+@app.post("/api/v1/strategy-versions/confirm")
+def confirm_strategy_version_route(payload: dict, session: Session = Depends(get_session)) -> dict:
+    try: return serialize_strategy(confirm_strategy_version(session,payload))
+    except ValueError as error: raise HTTPException(422,str(error)) from error
+
+@app.post("/api/v1/strategy-versions/{strategy_version_id}/revision")
+def create_strategy_revision(strategy_version_id:str,session:Session=Depends(get_session))->dict:
+    item=session.get(StrategyVersion,strategy_version_id)
+    if not item: raise HTTPException(404,"strategy version not found")
+    try:
+        candidate=revision(session,item); return {"id":candidate.id,"name":candidate.name,"source":candidate.source,"provenance":candidate.provenance,"status":candidate.status}
+    except ValueError as error: raise HTTPException(422,str(error)) from error
 
 
 @app.post("/api/v1/strategy-versions")

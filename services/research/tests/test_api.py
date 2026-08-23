@@ -195,6 +195,26 @@ def test_strategy_candidate_is_versioned_and_requires_manual_approval():
         assert client.post(f"/api/v1/strategy-versions/{item['id']}/approve").status_code == 422
 
 
+def test_strategy_factory_candidate_contract_api_lifecycle():
+    from app.strategy_adapters import legacy_bullish_reversal_contract
+    with TestClient(app) as client:
+        contract=legacy_bullish_reversal_contract(stop_distance=.11,target_distance=.12,spread_price=.02)
+        candidate=client.post("/api/v1/strategy-candidates",json={"name":"Compatibility","source":"MANUAL","provenance":{"note":"api test"}})
+        assert candidate.status_code == 200
+        candidate_id=candidate.json()["id"]
+        assert client.put(f"/api/v1/strategy-candidates/{candidate_id}",json={"name":"Compatibility v2","source":"MANUAL","provenance":{"note":"revised"}}).status_code == 200
+        assert client.post("/api/v1/strategy-candidates/validate",json={"strategy_contract":contract}).json()["ready"] is True
+        confirmed=client.post("/api/v1/strategy-versions/confirm",json={"strategy_candidate_id":candidate_id,"strategy_contract":contract})
+        assert confirmed.status_code == 200, confirmed.text
+        version=confirmed.json(); assert version["status"] == "CONTRACT_VALID" and version["strategy_candidate_id"] == candidate_id
+        client.post("/api/v1/imports/csv", files={"file": ("fixture.csv", FIXTURE.read_bytes(), "text/csv")}, params={"symbol":"XAUUSD","source":"factory fixture"})
+        backtest=client.post("/api/v1/backtests",json={"strategy_version_id":version["id"]})
+        assert backtest.status_code == 200, backtest.text
+        assert backtest.json()["strategy_version_id"] == version["id"]
+        assert client.post(f"/api/v1/strategy-versions/{version['id']}/revision").status_code == 200
+        assert client.post("/api/v1/strategy-candidates/validate",json={"strategy_contract":{"schema_version":1}}).json()["ready"] is False
+
+
 def test_demo_deployment_requires_approval_acknowledges_exact_checksum_and_rolls_back(tmp_path, monkeypatch):
     monkeypatch.setattr("app.settings.MT5_COMMON_FILES_ROOT", tmp_path)
     with TestClient(app) as client:
