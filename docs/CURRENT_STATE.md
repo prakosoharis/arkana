@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-24 — ARK-S12-02 Strategy Factory data-model foundation
+**Updated:** 2026-08-24 — ARK-S12-05 Legacy Strategy Contract Adapter
 **Active milestone:** Sprint 12 — Strategy Factory Compatibility Thin Slice
-**Active card:** ARK-S12-02 — Forward Migration & Compatibility Data Model
+**Active card:** ARK-S12-05 — Legacy Strategy Contract Adapter
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -42,7 +42,7 @@ Target:  StrategyCandidate → deterministic StrategyVersion → canonical Backt
 | Backtest V1 | CANONICAL LEGACY FOUNDATION | One stateful simulation kernel exists in `services/research/app/backtesting.py`, with next-bar entry, `STOP_FIRST`, cost semantics, chunk continuity, and legacy parity evidence. It remains the only canonical simulation kernel. |
 | Generic strategy evaluation | MISSING | `validate_backtest_config` accepts only `BULLISH_REVERSAL_M1`, XAUUSD, M1, and fixed V1 semantics. No generic Strategy Evaluator/Adapter exists yet. |
 | Strategy Library | LEGACY PROTOTYPE | Legacy `StrategyVersion` records remain post-backtest wrappers with their original `backtest_run_id` and manual `CANDIDATE → APPROVED` flow. Migration 013 permits a target StrategyVersion to exist before a backtest, but no target API/UI/contract lifecycle exists yet. |
-| Strategy Factory | PARTIAL — data model only | `StrategyCandidate`, nullable pre-backtest StrategyVersion support, and nullable `BacktestRun.strategy_version_id` target lineage are present through migration 013. Deterministic Strategy Contract, block registry, validation, adapter, API, and UI remain missing. |
+| Strategy Factory | PARTIAL — compatibility contract path | `StrategyCandidate`, nullable pre-backtest StrategyVersion support, nullable `BacktestRun.strategy_version_id`, Strategy Contract V1, registry, and a legacy-contract compiler into existing Backtest V1 inputs are present. Confirmation API, persistent target version flow, BacktestRun linkage, and UI remain missing. |
 | OOS/robustness acceptance | PARTIAL / not productized | Quick chronological 70/30 and supplemental full-history evidence exist, but there is no frozen train/holdout/final-OOS protocol or evidence gate for `VALIDATED`. |
 | DEMO deployment and telemetry | IMPLEMENTED legacy foundation; MT5 OAT pending | DEMO-only versioned config, acknowledgement, rollback, journal ingestion, and forward-evidence scaffolding exist. The EA supports the legacy rule only and fixed `0.01` volume. |
 | Capital Simulation and Variant Explorer | MISSING | No equity-path/risk/margin simulation and no bounded variant-comparison product capability exist. |
@@ -107,10 +107,10 @@ behavior.
 ## Continuation point
 
 The next active milestone is **Sprint 12 — Strategy Factory Compatibility Thin
-Slice**. ARK-S12-01 is accepted. The current active card is **ARK-S12-02**:
-the forward-only migration/model foundation. ARK-S12-03 and all later cards are
-not authorized to begin automatically; ARK-S12-02 must first pass independent
-QA and Owner Acceptance.
+Slice**. ARK-S12-01 and ARK-S12-02 are accepted. The current active card is
+**ARK-S12-05**: legacy Strategy Contract adapter. ARK-S12-06 and all later
+cards are not authorized to begin automatically; ARK-S12-05 must first pass
+independent QA and Owner Acceptance.
 
 The intended next technical direction is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:

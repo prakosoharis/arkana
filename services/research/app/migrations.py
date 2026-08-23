@@ -13,6 +13,7 @@ from sqlalchemy import Engine, inspect, text
 
 
 MIGRATION_013 = "013_strategy_factory_foundation"
+MIGRATION_014 = "014_strategy_contract_v1"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -99,7 +100,13 @@ def _migration_013(connection) -> None:
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_strategy_versions_strategy_candidate_id ON strategy_versions(strategy_candidate_id)"))
 
 
-MIGRATIONS = ((MIGRATION_013, _migration_013),)
+def _migration_014(connection) -> None:
+    """Store an inspectable contract without rewriting legacy configuration."""
+    if "strategy_contract" not in _columns(connection, "strategy_versions"):
+        connection.execute(text("ALTER TABLE strategy_versions ADD COLUMN strategy_contract JSON"))
+
+
+MIGRATIONS = ((MIGRATION_013, _migration_013), (MIGRATION_014, _migration_014))
 
 
 def run_migrations(engine: Engine) -> None:

@@ -187,6 +187,7 @@ class StrategyVersion(Base):
     # is created and linked through BacktestRun.strategy_version_id.
     backtest_run_id: Mapped[str | None] = mapped_column(ForeignKey("backtest_runs.id"), nullable=True, index=True)
     strategy_candidate_id: Mapped[str | None] = mapped_column(ForeignKey("strategy_candidates.id"), nullable=True, index=True)
+    strategy_contract: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     configuration: Mapped[dict] = mapped_column(JSON, nullable=False)
     checksum: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     supersedes_strategy_version_id: Mapped[str | None] = mapped_column(ForeignKey("strategy_versions.id"), nullable=True)

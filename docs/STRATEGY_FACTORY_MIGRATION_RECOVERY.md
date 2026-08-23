@@ -2,11 +2,12 @@
 
 ## Scope
 
-Migration `013_strategy_factory_foundation` evolves metadata forward only. It
+Migrations `013_strategy_factory_foundation` and `014_strategy_contract_v1` evolve metadata forward only. They
 adds `strategy_candidates`, `strategy_versions.strategy_candidate_id`, and
 `backtest_runs.strategy_version_id`. It relaxes the legacy
 `strategy_versions.backtest_run_id` requirement on PostgreSQL so a target
-StrategyVersion can exist before its first BacktestRun.
+StrategyVersion can exist before its first BacktestRun. Migration 014 adds the
+nullable `strategy_contract` JSON field for target deterministic contracts.
 
 It does not delete, backfill, relabel, or reinterpret legacy records. PostgreSQL
 alters the nullable constraint in place. For a legacy SQLite database only, the
@@ -30,7 +31,7 @@ then verify:
 
 ```sql
 SELECT version, applied_at FROM schema_migrations
-WHERE version = '013_strategy_factory_foundation';
+WHERE version IN ('013_strategy_factory_foundation', '014_strategy_contract_v1');
 ```
 
 Confirm the new table/columns exist and that legacy `strategy_versions` rows
