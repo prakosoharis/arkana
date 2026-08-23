@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-24 — ARK-S12-06 Strategy Factory API lifecycle
+**Updated:** 2026-08-24 — ARK-S12-07 canonical Backtest V1 integration and golden parity
 **Active milestone:** Sprint 12 — Strategy Factory Compatibility Thin Slice
-**Active card:** ARK-S12-06 — StrategyCandidate / StrategyVersion API
+**Active card:** ARK-S12-07 — canonical Backtest V1 integration and golden parity
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -39,10 +39,10 @@ Target:  StrategyCandidate → deterministic StrategyVersion → canonical Backt
 | Application/data foundation | IMPLEMENTED foundation; runtime/OAT partly unknown | Next.js/FastAPI/PostgreSQL/Docker Compose, registered dataset metadata, Parquet/DuckDB/Polars, MT5 acquisition, fingerprints, and derived timeframes exist. Latest full runtime must be confirmed with Owner/OAT. |
 | Research Lab and deterministic rules | IMPLEMENTED but narrow | Typed hypotheses, owner-confirmed/fingerprinted research rules, historical execution, visual samples, Pattern Discovery, and Historical Similarity exist. Research rules are not executable strategies. |
 | AI research assistance | IMPLEMENTED for research; provider OAT pending | AI is optional, deterministic-first, and used for research draft/explanation paths. It does **not** draft Strategy Factory contracts and is prohibited from deterministic execution. |
-| Backtest V1 | CANONICAL LEGACY FOUNDATION | One stateful simulation kernel exists in `services/research/app/backtesting.py`, with next-bar entry, `STOP_FIRST`, cost semantics, chunk continuity, and legacy parity evidence. It remains the only canonical simulation kernel. |
-| Generic strategy evaluation | MISSING | `validate_backtest_config` accepts only `BULLISH_REVERSAL_M1`, XAUUSD, M1, and fixed V1 semantics. No generic Strategy Evaluator/Adapter exists yet. |
+| Backtest V1 | CANONICAL COMPATIBILITY FOUNDATION | One stateful simulation kernel exists in `services/research/app/backtesting.py`, with next-bar entry, `STOP_FIRST`, cost semantics, chunk continuity, and golden legacy/contract parity evidence. It remains the only canonical simulation kernel. |
+| Generic strategy evaluation | NARROW COMPATIBILITY ADAPTER | A deterministic Strategy Contract V1 adapter compiles only the legacy `BULLISH_REVERSAL_M1` shape into the canonical kernel. Every contract run records the version, contract/checksum, adapter version, costs, and execution semantics in its evidence fingerprint. Broader strategy capability is still missing. |
 | Strategy Library | LEGACY PROTOTYPE | Legacy `StrategyVersion` records remain post-backtest wrappers with their original `backtest_run_id` and manual `CANDIDATE → APPROVED` flow. Migration 013 permits a target StrategyVersion to exist before a backtest, but no target API/UI/contract lifecycle exists yet. |
-| Strategy Factory | PARTIAL — compatibility vertical slice | Candidate/version API lifecycle, contract validation, immutable confirmation/revision, and exact StrategyVersion → BacktestRun lineage now exist for the legacy compatibility contract. UI and broader generic capability remain missing. |
+| Strategy Factory | PARTIAL — executable compatibility vertical slice | Candidate/version API lifecycle, contract validation, immutable confirmation/revision, canonical Backtest V1 execution, exact golden parity, and auditable StrategyVersion → BacktestRun lineage now exist for the legacy compatibility contract. UI and broader generic capability remain missing. |
 | OOS/robustness acceptance | PARTIAL / not productized | Quick chronological 70/30 and supplemental full-history evidence exist, but there is no frozen train/holdout/final-OOS protocol or evidence gate for `VALIDATED`. |
 | DEMO deployment and telemetry | IMPLEMENTED legacy foundation; MT5 OAT pending | DEMO-only versioned config, acknowledgement, rollback, journal ingestion, and forward-evidence scaffolding exist. The EA supports the legacy rule only and fixed `0.01` volume. |
 | Capital Simulation and Variant Explorer | MISSING | No equity-path/risk/margin simulation and no bounded variant-comparison product capability exist. |
@@ -107,17 +107,17 @@ behavior.
 ## Continuation point
 
 The next active milestone is **Sprint 12 — Strategy Factory Compatibility Thin
-Slice**. ARK-S12-01 and ARK-S12-02 are accepted. The current active card is
-**ARK-S12-05**: legacy Strategy Contract adapter. ARK-S12-06 and all later
-cards are not authorized to begin automatically; ARK-S12-05 must first pass
-independent QA and Owner Acceptance.
+Slice**. ARK-S12-01 through ARK-S12-06 are accepted. The current active card
+is **ARK-S12-07**: canonical Backtest V1 integration and golden parity. It is
+awaiting independent QA and Owner Acceptance before ARK-S12-08 may begin.
 
 The intended next technical direction is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:
 introduce a generic deterministic evaluator/adapter before the existing kernel,
-then prove exact golden parity for this legacy prototype. Migration 013 creates
-only the forward-compatible metadata seam; it creates no adapter, strategy
-contract, new acceptance status, or MT5 behavior.
+then prove exact golden parity for this legacy prototype. ARK-S12-07 implements
+only the narrow legacy compatibility adapter and its evidence lineage; it
+creates no second kernel, generic evaluator, new acceptance status, or MT5
+behavior.
 
 ## Evidence locations
 

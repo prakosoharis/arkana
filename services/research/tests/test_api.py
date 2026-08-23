@@ -210,7 +210,17 @@ def test_strategy_factory_candidate_contract_api_lifecycle():
         client.post("/api/v1/imports/csv", files={"file": ("fixture.csv", FIXTURE.read_bytes(), "text/csv")}, params={"symbol":"XAUUSD","source":"factory fixture"})
         backtest=client.post("/api/v1/backtests",json={"strategy_version_id":version["id"]})
         assert backtest.status_code == 200, backtest.text
-        assert backtest.json()["strategy_version_id"] == version["id"]
+        run=backtest.json()
+        assert run["strategy_version_id"] == version["id"]
+        assert run["result"]["strategy_lineage"]["strategy_version_id"] == version["id"]
+        assert run["result"]["strategy_lineage"]["evaluator_version"] == "LEGACY_BULLISH_REVERSAL_CONTRACT_ADAPTER_V1"
+        repeated=client.post("/api/v1/backtests",json={"strategy_version_id":version["id"]}).json()
+        assert repeated["reused"] is True and repeated["id"] == run["id"]
+        changed_contract=legacy_bullish_reversal_contract(stop_distance=.11,target_distance=.13,spread_price=.02)
+        changed=client.post("/api/v1/strategy-versions/confirm",json={"strategy_candidate_id":candidate_id,"strategy_contract":changed_contract}).json()
+        changed_run=client.post("/api/v1/backtests",json={"strategy_version_id":changed["id"]}).json()
+        assert changed_run["fingerprint"] != run["fingerprint"]
+        assert changed_run["result"]["strategy_lineage"]["strategy_version_id"] == changed["id"]
         assert client.post(f"/api/v1/strategy-versions/{version['id']}/revision").status_code == 200
         assert client.post("/api/v1/strategy-candidates/validate",json={"strategy_contract":{"schema_version":1}}).json()["ready"] is False
 

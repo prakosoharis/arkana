@@ -29,6 +29,11 @@ DEFAULT_CONFIG = {
     "execution_resolution": "M1_BROAD",
 }
 
+# This identifies the deterministic adapter that compiles a Strategy Contract
+# into the inputs of the sole Backtest V1 kernel.  It is evidence metadata, not
+# a second evaluator or a versioned execution path.
+STRATEGY_EVALUATOR_VERSION = "LEGACY_BULLISH_REVERSAL_CONTRACT_ADAPTER_V1"
+
 
 def validate_backtest_config(payload: dict[str, Any]) -> dict[str, Any]:
     config = {**DEFAULT_CONFIG, **(payload or {})}
@@ -327,6 +332,7 @@ def _cost_sensitivity(bars: list[dict], config: dict[str, Any]) -> dict[str, Any
 
 def run_backtest(session: Session, payload: dict[str, Any]) -> tuple[BacktestRun, bool]:
     strategy_version_id = str((payload or {}).get("strategy_version_id", "")) or None
+    strategy = None
     if strategy_version_id:
         strategy = session.get(StrategyVersion, strategy_version_id)
         if not strategy or not strategy.strategy_contract:
@@ -341,7 +347,22 @@ def run_backtest(session: Session, payload: dict[str, Any]) -> tuple[BacktestRun
     asset = next((item for item in dataset.bars if item.timeframe == "M1"), None)
     if not asset:
         raise ValueError("Registered M1 dataset is unavailable")
-    fingerprint = sha256(json.dumps({"dataset": dataset.fingerprint, "config": config, "strategy_version_id": strategy_version_id}, sort_keys=True).encode()).hexdigest()
+    fingerprint_input: dict[str, Any] = {"dataset": dataset.fingerprint, "config": config, "strategy_version_id": strategy_version_id}
+    strategy_lineage = None
+    if strategy:
+        # A contract run is reusable only when every deterministic input at the
+        # adapter/kernel boundary is identical.  The legacy no-version path
+        # deliberately retains its pre-S12-07 fingerprint shape.
+        strategy_lineage = {
+            "strategy_version_id": strategy.id,
+            "strategy_contract_fingerprint": strategy.configuration.get("strategy_contract_fingerprint"),
+            "strategy_checksum": strategy.checksum,
+            "evaluator_version": STRATEGY_EVALUATOR_VERSION,
+            "cost_contract": {"spread_price": config["spread_price"], "commission_price": config["commission_price"]},
+            "execution_semantics": {"execution_resolution": config["execution_resolution"], "ambiguity_policy": config["ambiguity_policy"], "entry_timing": "NEXT_BAR_OPEN"},
+        }
+        fingerprint_input["strategy_lineage"] = strategy_lineage
+    fingerprint = sha256(json.dumps(fingerprint_input, sort_keys=True).encode()).hexdigest()
     existing = session.scalar(select(BacktestRun).where(BacktestRun.fingerprint == fingerprint))
     if existing:
         return existing, True
@@ -361,7 +382,7 @@ def run_backtest(session: Session, payload: dict[str, Any]) -> tuple[BacktestRun
             windows.append({"start": str(bars[start]["timestamp"]), "end": str(bars[start + window_size - 1]["timestamp"]), "metrics": _metrics(_simulate(bars[start:start + window_size], config))})
     regime_validation = build_historical_regime_validation(bars, trades)
     trades = regime_validation.pop("trades")
-    result = {"dataset_id": dataset.id, "dataset_fingerprint": dataset.fingerprint, "execution_resolution": "M1_BROAD", "ambiguity_policy": "STOP_FIRST", "metrics": _metrics(trades), "split": {"method": "chronological_70_30", "split_timestamp": split_time, "in_sample": _metrics(in_sample), "out_of_sample": _metrics(out_sample)}, "walk_forward": {"available": bool(windows), "windows": windows, "reason": None if windows else "At least 30 M1 bars are required for rolling windows."}, "cost_sensitivity": _cost_sensitivity(bars, config), "regime_validation": regime_validation, "warning": "Backtest experiment only. It is not a strategy approval, trade signal, or MT5 instruction."}
+    result = {"dataset_id": dataset.id, "dataset_fingerprint": dataset.fingerprint, "strategy_lineage": strategy_lineage, "execution_resolution": "M1_BROAD", "ambiguity_policy": "STOP_FIRST", "metrics": _metrics(trades), "split": {"method": "chronological_70_30", "split_timestamp": split_time, "in_sample": _metrics(in_sample), "out_of_sample": _metrics(out_sample)}, "walk_forward": {"available": bool(windows), "windows": windows, "reason": None if windows else "At least 30 M1 bars are required for rolling windows."}, "cost_sensitivity": _cost_sensitivity(bars, config), "regime_validation": regime_validation, "warning": "Backtest experiment only. It is not a strategy approval, trade signal, or MT5 instruction."}
     run = BacktestRun(dataset_id=dataset.id, fingerprint=fingerprint, configuration=config, result=result, trades=trades, strategy_version_id=strategy_version_id)
     session.add(run); session.commit(); session.refresh(run)
     return run, False
