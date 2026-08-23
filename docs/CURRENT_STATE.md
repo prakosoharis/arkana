@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-24 — ARK-S12-08 Strategy Factory UI compatibility slice
+**Updated:** 2026-08-24 — ARK-S12-09 Strategy Factory verification and Owner Acceptance
 **Active milestone:** Sprint 12 — Strategy Factory Compatibility Thin Slice
-**Active card:** ARK-S12-08 — Strategy Factory UI compatibility slice
+**Active card:** ARK-S12-09 — Strategy Factory verification and Owner Acceptance
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -107,9 +107,10 @@ behavior.
 ## Continuation point
 
 The next active milestone is **Sprint 12 — Strategy Factory Compatibility Thin
-Slice**. ARK-S12-01 through ARK-S12-07 are accepted. The current active card
-is **ARK-S12-08**: Strategy Factory UI compatibility slice. It is awaiting
-independent QA and Owner Acceptance before ARK-S12-09 may begin.
+Slice**. ARK-S12-01 through ARK-S12-08 are accepted. The current active card
+is **ARK-S12-09**: full verification and Owner Acceptance. Its automated
+evidence and Owner runbook are recorded in
+`docs/SPRINT_12_STRATEGY_FACTORY_OAT.md`; it awaits Owner Acceptance.
 
 The intended next technical direction is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:
@@ -124,6 +125,11 @@ provenanced draft candidate, validate the supported contract shape, confirm an
 immutable version, run canonical backtest evidence, inspect lineage, and create
 a revision draft. The UI makes no `VALIDATED`, approval, deployment, MT5, order,
 or LIVE claim; legacy manual approval remains visibly separate.
+
+ARK-S12-09 adds a repeatable end-to-end acceptance regression and an Owner OAT
+runbook. The compatibility slice is complete only after the Owner accepts that
+evidence; it still cannot create a `VALIDATED`, DEMO-ready, or LIVE-ready
+claim.
 
 ## Evidence locations
 
@@ -143,3 +149,5 @@ or LIVE claim; legacy manual approval remains visibly separate.
   `services/research/app/migrations.py`,
   `services/research/migrations/013_strategy_factory_foundation.sql`, and
   `docs/STRATEGY_FACTORY_MIGRATION_RECOVERY.md`.
+- Sprint 12 automated evidence and Owner Acceptance runbook:
+  `docs/SPRINT_12_STRATEGY_FACTORY_OAT.md`.
