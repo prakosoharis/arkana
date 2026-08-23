@@ -1,4 +1,10 @@
-# ARKANA Current State
+# ARKANA Historical Handoff Snapshot — Not Canonical Current State
+
+> **Historical snapshot only (2026-08-16).** The canonical current
+> implementation state is [`docs/CURRENT_STATE.md`](../../docs/CURRENT_STATE.md).
+> This document is retained unchanged below as accepted-sprint/handoff evidence,
+> including its full-history results and OAT notes. Do not update this snapshot
+> as a second active `CURRENT_STATE`; update the canonical document instead.
 
 **Updated:** 2026-08-16
 **Accepted:** Sprint 06, Sprint 07, Sprint 09.

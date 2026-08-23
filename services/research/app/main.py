@@ -8,6 +8,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session, selectinload
 
 from .database import Base, SessionLocal, engine, get_session
+from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
 from .models import AIInteraction, BacktestRun, Dataset, DatasetBarAsset, Deployment, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot
 from .hypotheses import parse_prompt, validate_definition
@@ -45,6 +46,7 @@ app.add_middleware(
 def startup() -> None:
     DATA_ROOT.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    run_migrations(engine)
     # Reproducible forward-only Sprint 02 migration for databases created before versioning.
     with engine.connect() as connection:
         try:

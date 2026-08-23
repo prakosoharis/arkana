@@ -111,3 +111,15 @@ def test_completed_resampling_does_not_create_incomplete_higher_timeframe():
         symbol="XAUUSD", source="MT5",
     )
     assert acquisition.resample_completed_m1(frame, "M5").height == 0
+
+
+def test_incremental_append_handles_a_response_beyond_the_existing_tail(isolated):
+    """A gap larger than the four-hour resampling tail must not create Null-schema concat."""
+    with SessionLocal() as session:
+        seeded = _seed(session, isolated)
+        incoming = acquisition.parse_mt5_csv(
+            b"timestamp,open,high,low,close\n2026.01.06 00:00,2640,2641,2639,2640.5\n",
+            symbol="XAUUSD",
+            source="MT5",
+        )
+        assert acquisition._append_incremental(seeded, incoming, request_id="empty-tail") == 1

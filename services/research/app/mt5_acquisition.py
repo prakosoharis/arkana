@@ -130,7 +130,11 @@ def _append_incremental(dataset: Dataset, incoming: pl.DataFrame, *, request_id:
     m1 = _asset(dataset, "M1")
     start = novel.get_column("timestamp").min() - timedelta(hours=4)
     tail = read_frame(m1.path, start=start)
-    combined = pl.concat([tail, novel]).sort("timestamp").unique(subset=["timestamp"], keep="last", maintain_order=True)
+    # DuckDB returns an empty frame with Null-typed columns when the requested
+    # tail is wholly beyond the existing asset.  Do not concatenate that empty
+    # schema with a typed MT5 response; the response itself is the complete
+    # boundary input in this case.
+    combined = novel if not tail.height else pl.concat([tail, novel]).sort("timestamp").unique(subset=["timestamp"], keep="last", maintain_order=True)
     dataset_dir = Path(m1.path).parent
     m1.path = write_incremental_fragment(novel, directory=dataset_dir, name=f"999999_{request_id}_m1.parquet")
     m1.row_count += novel.height

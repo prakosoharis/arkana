@@ -125,6 +125,9 @@ class BacktestRun(Base):
     configuration: Mapped[dict] = mapped_column(JSON, nullable=False)
     result: Mapped[dict] = mapped_column(JSON, nullable=False)
     trades: Mapped[list] = mapped_column(JSON, nullable=False)
+    # Sprint 12 target lineage: a StrategyVersion may exist before its first
+    # BacktestRun.  The legacy reverse link on StrategyVersion remains intact.
+    strategy_version_id: Mapped[str | None] = mapped_column(ForeignKey("strategy_versions.id"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -158,6 +161,18 @@ class DerivedFinancialEvidence(Base):
     created_at: Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,nullable=False)
 
 
+class StrategyCandidate(Base):
+    """Pre-backtest strategy intent with explicit source and provenance."""
+    __tablename__ = "strategy_candidates"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    provenance: Mapped[dict] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="DRAFT")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 class StrategyVersion(Base):
     __tablename__ = "strategy_versions"
     __table_args__ = (UniqueConstraint("strategy_key", "version", name="uq_strategy_key_version"),)
@@ -167,7 +182,11 @@ class StrategyVersion(Base):
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     profile: Mapped[str] = mapped_column(String(32), nullable=False, default="SCALPING")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="CANDIDATE")
-    backtest_run_id: Mapped[str] = mapped_column(ForeignKey("backtest_runs.id"), nullable=False, index=True)
+    # This legacy post-backtest relationship remains readable for all existing
+    # records.  New pre-backtest versions will leave it NULL until a BacktestRun
+    # is created and linked through BacktestRun.strategy_version_id.
+    backtest_run_id: Mapped[str | None] = mapped_column(ForeignKey("backtest_runs.id"), nullable=True, index=True)
+    strategy_candidate_id: Mapped[str | None] = mapped_column(ForeignKey("strategy_candidates.id"), nullable=True, index=True)
     configuration: Mapped[dict] = mapped_column(JSON, nullable=False)
     checksum: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     supersedes_strategy_version_id: Mapped[str | None] = mapped_column(ForeignKey("strategy_versions.id"), nullable=True)
