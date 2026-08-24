@@ -1,0 +1,15 @@
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import { isVariantAcceptanceReady, VariantEvidence, VariantExplorer, type HoldoutRun, type VariantVerification } from "./variant-explorer";
+
+const pass = { status: "PASS" as const };
+const checks = { immutable_contract: pass, complete_train_matrix: pass, train_split_isolation: pass, complete_holdout_matrix: pass, holdout_final_oos_isolation: pass, comparison_eligibility_ranking: pass, immutable_selection_lock: pass, revision_oos_lineage: pass, single_winner_idempotency: pass, lifecycle_safety: pass };
+const verification: VariantVerification = { status: "PASSED", owner_acceptance_readiness: "READY_FOR_OWNER_ACCEPTANCE", terminal_state: "NO_ELIGIBLE_VARIANT", checks, fingerprint: "v".repeat(64), warning: "Integrity only; no trading authorization." };
+const holdout: HoldoutRun = { id: "holdout", fingerprint: "h".repeat(64), status: "COMPLETED", result: { baseline_parity: { status: "PASS" }, split_access: { final_oos: { accessed: false } }, matrix: { variants: [{ ordinal: 0, fingerprint: "f".repeat(64), parameters: { "stop_loss_rule.distance": .1, "take_profit_rule.distance": .2 }, baseline: false, comparison: { classification: "DOMINATES_BASELINE" }, eligibility: { eligible: false }, scenarios: { baseline: { holdout: { metrics: { net_pnl_price: -5, profit_factor: .7 } } }, adverse_cost: { holdout: { metrics: { net_pnl_price: -7, profit_factor: .6 } } } } }] } }, selection: { id: "lock", fingerprint: "l".repeat(64), status: "NO_ELIGIBLE_VARIANT", selected_variant_fingerprint: null, result: { eligible_count: 0, ranked_eligible_variants: [], final_oos_accessed: false, locked: true } } };
+
+describe("VariantExplorer", () => {
+  it("renders bounded-search and final-OOS safety boundaries", () => { const markup = renderToStaticMarkup(<VariantExplorer />); expect(markup).toContain("HISTORICAL ONLY · FINAL-OOS LOCKED"); expect(markup).toContain("NO_ELIGIBLE_VARIANT is terminal evidence"); expect(markup).toContain("No optimizer claim"); });
+  it("requires the complete verifier schema and every check to pass", () => { expect(isVariantAcceptanceReady(verification)).toBe(true); expect(isVariantAcceptanceReady({ ...verification, checks: { ...checks, lifecycle_safety: { status: "FAIL" } } })).toBe(false); const incomplete = { ...checks }; delete (incomplete as Partial<typeof checks>).immutable_contract; expect(isVariantAcceptanceReady({ ...verification, checks: incomplete })).toBe(false); });
+  it("renders truthful no-eligible evidence and disables final-OOS", () => { const markup = renderToStaticMarkup(<VariantEvidence train={null} holdout={holdout} verification={verification} busy={false} onConfirm={() => undefined} onVerify={() => undefined} />); expect(markup).toContain("NO_ELIGIBLE_VARIANT"); expect(markup).toContain("Final-OOS blocked — no eligible variant"); expect(markup).toContain("disabled"); expect(markup).toContain("DOMINATES_BASELINE"); expect(markup).toContain("READY_FOR_OWNER_ACCEPTANCE"); });
+});

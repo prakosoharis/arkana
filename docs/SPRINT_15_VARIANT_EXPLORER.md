@@ -2,13 +2,12 @@
 
 ## Proposal status
 
-**ACCEPTED DEVELOPMENT CONTRACT. ARK-S15-01 through ARK-S15-03 are accepted;
-ARK-S15-04 is complete and awaiting Owner acceptance.**
+**SPRINT 15 COMPLETE. ARK-S15-01 through ARK-S15-05 are accepted.**
 
 The Owner accepted this Sprint 15 development contract on 2026-08-25. ARK-S15-01
 was subsequently accepted and pushed. ARK-S15-02 was accepted and pushed at
-`1fdc28c`; ARK-S15-03 was accepted and pushed at `32ed834` before ARK-S15-04
-began. The current authorization does not extend to ARK-S15-05.
+`1fdc28c`; ARK-S15-03 at `32ed834`; and ARK-S15-04 at `e41e422` before
+ARK-S15-05 began.
 
 ## Milestone objective
 
@@ -467,7 +466,7 @@ decisions, or trading.
 
 ### ARK-S15-04 verification report — 2026-08-25
 
-Implementation status: **COMPLETE, awaiting Owner acceptance**.
+Implementation status: **ACCEPTED and pushed at `e41e422`.**
 
 - S15-03 was accepted, committed, and pushed at `32ed834` before this card;
 - additive migration 026 is applied and recorded in live PostgreSQL;
@@ -524,6 +523,43 @@ accepted Sprint 15 invariant from persisted evidence.
   reads are fast and side-effect free;
 - independent final review reports no unresolved correctness, look-ahead,
   lineage, concurrency, security, status-overclaim, or DEMO/LIVE finding.
+
+### ARK-S15-05 verification report — 2026-08-25
+
+Implementation status: **ACCEPTED.**
+
+- S15-04 was accepted, committed, and pushed at `e41e422` before this card;
+- additive migration 027 created the single-winner materialized verification
+  table and was applied to live PostgreSQL;
+- complete research-service regression passed 161 tests on Python 3.13;
+- web typecheck, lint, 21 component tests, and two production builds passed;
+- `/variants` now exposes bounded contract declaration, exact persisted
+  experiment reopening, train/holdout actions, the locked terminal result,
+  split-use ledger, nine-row marginal-value matrix, eligibility/classification,
+  fingerprints, safety boundaries, and an explicit verifier action;
+- live verifier artifact `22bf3b8e-d6ec-4c1a-9980-f995a708f19a` returned
+  `PASSED`, `READY_FOR_OWNER_ACCEPTANCE`, and `NO_ELIGIBLE_VARIANT`; all ten
+  contract, matrix, parity, isolation, calculation, lock, lineage,
+  idempotency, and lifecycle checks are `PASS`;
+- repeated POST reused the same artifact and fingerprint
+  `8359b002bf785589dc0aaa7e7440a2732b92961acf028331feb0e2317bb9b18b`;
+  final repeated POST took 0.033 seconds and lightweight GET took 0.008
+  seconds, returned the same id/fingerprint, and left the row count at one;
+- live database evidence remains one verifier, zero confirmations, zero
+  derived revisions, and a `CONTRACT_VALID` baseline with no validation
+  evidence or timestamp;
+- browser OAT loaded the real 2,985,994-bar lineage, visibly kept final-OOS
+  disabled, reused the verifier through the UI, showed readiness and all ten
+  required PASS checks, and recorded no console warning/error;
+- responsive browser QA found and corrected the 960px two-column overflow;
+  the final measurement showed viewport and body scroll width both 664px,
+  while only the 900px matrix scrolls inside its 606px local container;
+- final review found no second kernel, look-ahead/final-OOS bypass, incomplete
+  matrix acceptance, ranking drift, duplicate-winner path, status overclaim,
+  or DEMO/LIVE/capital/Router side effect. Premature materialization is rejected
+  before a row is created, so an incomplete chain cannot poison the immutable
+  verifier fingerprint. Framework deprecation warnings are pre-existing and do
+  not change the evidence result.
 
 ## Sprint 15 definition of done
 

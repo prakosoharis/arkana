@@ -250,6 +250,20 @@ class VariantRevisionConfirmation(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class VariantExperimentVerification(Base):
+    """Materialized read-only verification of one Sprint 15 experiment chain."""
+    __tablename__ = "variant_experiment_verifications"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_variant_experiment_verification_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    experiment_contract_id: Mapped[str] = mapped_column(ForeignKey("variant_experiment_contracts.id"), nullable=False, index=True)
+    experiment_contract_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    verifier_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class FixedLotCapitalSimulation(Base):
     """Immutable realized-equity evidence produced by the sole backtest kernel."""
     __tablename__ = "fixed_lot_capital_simulations"

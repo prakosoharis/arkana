@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
-from app.migrations import MIGRATION_013, MIGRATION_014, MIGRATION_015, MIGRATION_016, MIGRATION_017, MIGRATION_021, MIGRATION_022, MIGRATION_023, MIGRATION_024, MIGRATION_025, MIGRATION_026, run_migrations
+from app.migrations import MIGRATION_013, MIGRATION_014, MIGRATION_015, MIGRATION_016, MIGRATION_017, MIGRATION_021, MIGRATION_022, MIGRATION_023, MIGRATION_024, MIGRATION_025, MIGRATION_026, MIGRATION_027, run_migrations
 from app.models import BacktestRun, StrategyCandidate, StrategyVersion
 
 
@@ -69,6 +69,7 @@ def test_strategy_factory_migration_preserves_legacy_and_supports_pre_backtest_l
     assert "variant_holdout_runs" in metadata.get_table_names()
     assert "variant_selection_locks" in metadata.get_table_names()
     assert "variant_revision_confirmations" in metadata.get_table_names()
+    assert "variant_experiment_verifications" in metadata.get_table_names()
     assert {"strategy_candidate_id", "strategy_contract"}.issubset({column["name"] for column in metadata.get_columns("strategy_versions")})
     assert {"validation_evidence_id", "validated_at"}.issubset({column["name"] for column in metadata.get_columns("strategy_versions")})
     assert {"strategy_version_id"}.issubset({column["name"] for column in metadata.get_columns("backtest_runs")})
@@ -106,3 +107,4 @@ def test_strategy_factory_migration_preserves_legacy_and_supports_pre_backtest_l
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_024}).scalar_one() == 1
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_025}).scalar_one() == 1
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_026}).scalar_one() == 1
+        assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_027}).scalar_one() == 1

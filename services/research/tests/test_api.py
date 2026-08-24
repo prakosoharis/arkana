@@ -176,9 +176,19 @@ def test_variant_experiment_contract_api_validates_confirms_reuses_lists_and_rea
         listed = client.get(f"/api/v1/strategy-versions/{strategy_id}/variant-experiment-contracts")
         assert listed.status_code == 200
         assert listed.json()["variant_experiment_contracts"][0]["fingerprint"] == first.json()["fingerprint"]
+        global_list = client.get("/api/v1/variant-experiment-contracts")
+        assert global_list.status_code == 200
+        assert any(item["id"] == first.json()["id"] for item in global_list.json()["variant_experiment_contracts"])
         detail = client.get(f"/api/v1/variant-experiment-contracts/{first.json()['id']}")
         assert detail.status_code == 200 and detail.json()["id"] == first.json()["id"]
         assert client.get("/api/v1/variant-experiment-contracts/missing").status_code == 404
+
+        verification_path = f"/api/v1/variant-experiment-contracts/{first.json()['id']}/verification"
+        assert client.get(verification_path).status_code == 404
+        verification = client.post(verification_path)
+        assert verification.status_code == 409
+        assert "Complete train, holdout, and selection-lock evidence" in verification.json()["detail"]
+        assert client.get(verification_path).status_code == 404
 
         invalid = {**contract, "axes": {**contract["axes"], "cost_assumptions.commission_price": [0.0, 0.01]}}
         invalid_report = client.post(

@@ -38,6 +38,7 @@ from .variant_experiment_contracts import PROTOCOL_VERSION as VARIANT_CONTRACT_P
 from .variant_train_runs import TrainRunConflict, run as run_variant_train_evaluation, serialize as serialize_variant_train_run
 from .variant_holdout_runs import HoldoutRunConflict, get_selection as get_variant_selection, run as run_variant_holdout_evaluation, serialize as serialize_variant_holdout_run, serialize_selection as serialize_variant_selection
 from .variant_revision_lifecycle import RevisionRunConflict, confirm_and_run as confirm_variant_revision, serialize as serialize_variant_revision_confirmation
+from .variant_experiment_verification import get_materialized as get_variant_experiment_verification, materialize as materialize_variant_experiment_verification, serialize as serialize_variant_experiment_verification
 
 
 app = FastAPI(title="ARKANA Research Service", version="0.1.0")
@@ -445,6 +446,12 @@ def list_variant_experiment_contracts(strategy_version_id: str, session: Session
     return {"variant_experiment_contracts": [serialize_variant_experiment_contract(item) for item in items]}
 
 
+@app.get("/api/v1/variant-experiment-contracts")
+def list_all_variant_experiment_contracts(session: Session = Depends(get_session)) -> dict:
+    items = session.scalars(select(VariantExperimentContract).order_by(VariantExperimentContract.created_at.desc())).all()
+    return {"variant_experiment_contracts": [serialize_variant_experiment_contract(item) for item in items]}
+
+
 @app.get("/api/v1/variant-experiment-contracts/{contract_id}")
 def get_variant_experiment_contract(contract_id: str, session: Session = Depends(get_session)) -> dict:
     item = session.get(VariantExperimentContract, contract_id)
@@ -543,6 +550,29 @@ def get_variant_revision_confirmation(confirmation_id: str, session: Session = D
     if not item:
         raise HTTPException(404, "variant revision confirmation not found")
     return serialize_variant_revision_confirmation(item)
+
+
+@app.get("/api/v1/variant-experiment-contracts/{contract_id}/verification")
+def get_variant_experiment_acceptance_verification(contract_id: str, session: Session = Depends(get_session)) -> dict:
+    experiment = session.get(VariantExperimentContract, contract_id)
+    if not experiment:
+        raise HTTPException(404, "variant experiment contract not found")
+    item = get_variant_experiment_verification(session, experiment)
+    if not item:
+        raise HTTPException(404, "variant experiment verification has not been materialized")
+    return serialize_variant_experiment_verification(item)
+
+
+@app.post("/api/v1/variant-experiment-contracts/{contract_id}/verification")
+def materialize_variant_experiment_acceptance_verification(contract_id: str, session: Session = Depends(get_session)) -> dict:
+    experiment = session.get(VariantExperimentContract, contract_id)
+    if not experiment:
+        raise HTTPException(404, "variant experiment contract not found")
+    try:
+        item, reused = materialize_variant_experiment_verification(session, experiment)
+        return serialize_variant_experiment_verification(item, reused=reused)
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
 
 
 @app.post("/api/v1/capital-contracts/{capital_contract_id}/fixed-lot-simulations")

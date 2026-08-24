@@ -26,6 +26,7 @@ MIGRATION_023 = "023_variant_experiment_contract_foundation"
 MIGRATION_024 = "024_variant_train_evaluation"
 MIGRATION_025 = "025_variant_holdout_selection"
 MIGRATION_026 = "026_variant_revision_final_oos"
+MIGRATION_027 = "027_variant_experiment_verification"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -403,6 +404,23 @@ def _migration_026(connection) -> None:
         connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_variant_revision_confirmations_{column} ON variant_revision_confirmations({column})"))
 
 
+def _migration_027(connection) -> None:
+    connection.execute(text("""
+        CREATE TABLE IF NOT EXISTS variant_experiment_verifications (
+            id VARCHAR(36) PRIMARY KEY,
+            experiment_contract_id VARCHAR(36) NOT NULL,
+            experiment_contract_fingerprint VARCHAR(64) NOT NULL,
+            verifier_version VARCHAR(64) NOT NULL,
+            fingerprint VARCHAR(64) NOT NULL UNIQUE,
+            status VARCHAR(32) NOT NULL,
+            result JSON NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            FOREIGN KEY(experiment_contract_id) REFERENCES variant_experiment_contracts(id)
+        )
+    """))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_variant_experiment_verifications_experiment_contract_id ON variant_experiment_verifications(experiment_contract_id)"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -418,6 +436,7 @@ MIGRATIONS = (
     (MIGRATION_024, _migration_024),
     (MIGRATION_025, _migration_025),
     (MIGRATION_026, _migration_026),
+    (MIGRATION_027, _migration_027),
 )
 
 
