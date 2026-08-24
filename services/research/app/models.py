@@ -230,6 +230,20 @@ class ConstrainedCapitalPoint(Base):
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
 
 
+class ConstrainedCapitalVerification(Base):
+    """Persisted single-winner full replay; GET never performs heavy work."""
+    __tablename__ = "constrained_capital_verifications"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_constrained_capital_verification_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    simulation_id: Mapped[str] = mapped_column(ForeignKey("constrained_capital_simulations.id"), nullable=False, index=True)
+    simulation_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    verifier_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class SupplementalHistoricalValidation(Base):
     """Immutable full-history evidence linked to, but never replacing, approval evidence."""
     __tablename__ = "supplemental_historical_validations"

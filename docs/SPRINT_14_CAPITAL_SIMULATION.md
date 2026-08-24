@@ -380,4 +380,96 @@ Implementation status: **COMPLETE, awaiting Owner acceptance**.
   tamper resistance, V2 margin metrics, additive migration, both runtime paths,
   lifecycle boundary, and frozen-snapshot disclosure were independently checked.
 
-ARK-S14-05 has not started.
+## ARK-S14-05 Owner UI and acceptance verifier
+
+The `/capital` Owner workspace completes the Sprint 14 operating loop without
+introducing a new execution engine. It loads eligible StrategyVersions and the
+latest immutable MT5 snapshot, validates and confirms fixed-lot or
+fractional-risk contracts, selects exact completed full-history evidence, runs
+or reuses `BROKER_CONSTRAINED_CAPITAL_V1`, and reopens recorded results.
+
+`POST /api/v1/constrained-capital-simulations/{id}/verification` explicitly
+materializes one immutable replay artifact keyed by the simulation fingerprint
+and verifier version. A single-winner `RUNNING` row blocks concurrent duplicate
+work; identical later POSTs reuse the completed artifact. `GET` only reads that
+artifact and never runs the kernel. It returns `READY_FOR_OWNER_ACCEPTANCE`
+only when every check passes:
+
+- completed result and exact source-trade accounting;
+- total, distinct, reported, and contiguous normalized path points;
+- read-only canonical-kernel replay with a fresh broker accumulator, requiring
+  every stored point payload and all recomputed metrics to match exactly;
+- exact contract, full-validation, StrategyVersion, dataset, and broker
+  fingerprint lineage;
+- exact MT5 OrderCalcProfit and OrderCalcMargin parity;
+- volume, margin, and unable-to-trade boundaries;
+- single-frozen-snapshot disclosure; and
+- no validation, liquidation, mark-to-market, DEMO, or LIVE side effect.
+
+The UI shows concrete balance/drawdown/trade/rejection metrics, every verifier
+check, typed rejection totals, immutable lineage and boundaries, and the first
+and last two path points. `READY_FOR_OWNER_ACCEPTANCE` means stored historical
+evidence integrity only; it is not `VALIDATED`, deployment authorization, or a
+trade recommendation.
+
+## Owner Acceptance Test — ARK-S14-05
+
+1. Open `http://localhost:3000/capital` and verify the latest MT5 snapshot and
+   eligible `CONTRACT_VALID` StrategyVersion load.
+2. Validate a contract and verify confirmation stays disabled until
+   `CAPITAL_CONTRACT_READY`.
+3. Select a completed full-history validation and run or reuse its constrained
+   simulation.
+4. Open the result and verify all ten checklist groups are `PASS`, the first
+   sequence is 0, the last is 704706, and the reported total is 704707.
+5. Verify rejection reasons, exact fingerprints, frozen-snapshot warning, and
+   explicit historical-only/lifecycle boundaries remain visible.
+
+## ARK-S14-05 verification report — 2026-08-25
+
+Implementation status: **COMPLETE, awaiting Owner acceptance**.
+
+- S14-04 was accepted, committed, and pushed at `0b2b041` before this card;
+- additive migration 022 persists immutable, idempotent full-replay verifier
+  artifacts; legacy simulation and path rows are not rewritten;
+- complete research-service regression: 133 passed on the official Python
+  3.13 image;
+- web regression: lint and typecheck passed, 18 tests passed, and the
+  production build generated `/capital` plus all BFF routes;
+- fixed result `80cc7ddd-cdc8-451a-b0ca-33e9a1df695e`: verifier `PASSED`,
+  704,707 total/distinct points, sequence 0–704706, 247,483 executed and
+  457,223 rejected trades;
+- fractional result `d6c01994-1c09-47e6-b056-427e405d78a1`: verifier
+  `PASSED`, 704,707 total/distinct points, sequence 0–704706, 1,037 executed
+  and 703,669 rejected trades;
+- both returned `READY_FOR_OWNER_ACCEPTANCE` with all ten groups passing,
+  exact dataset fingerprint
+  `90607bc61349a86c17670bb5a328c58afdb2b00d828950d753eded5d878ae9bc`,
+  and exact broker snapshot `5a39bd31-a9ac-4250-ae1b-74bdef4fe5da`;
+- in-browser OAT loaded the real strategy, snapshot, contracts, and validation,
+  enabled confirmation only after validation, opened fractional evidence,
+  displayed all passing checks and boundary path samples, and produced no
+  browser console error;
+- lifecycle remained `CONTRACT_VALID` with null validation evidence/timestamp
+  and no DEMO/LIVE action.
+- post-review hardened fractional verification replayed all 2,985,994 bars and
+  compared all 704,707 stored payloads plus recomputed metrics exactly; final
+  materialization completed in 69.80 seconds as artifact
+  `d089001e-87cd-4728-8066-0893f7d35a06`. All ten groups passed. Tampered and truncated ledger tests
+  deterministically return `FAILED` rather than acceptance or an HTTP error.
+- the same rebuilt-runtime replay for the fixed result compared all 704,707
+  payloads and recomputed metrics exactly in 65.29 seconds as artifact
+  `212f8821-4dd9-4c1c-893e-a68287a804c6`; all ten groups passed with no failed
+  check.
+- heavy replay is never performed by GET: explicit POST materializes once,
+  concurrent/duplicate work fails closed or reuses the winner, and subsequent
+  GET/POST reads the fingerprint-bound artifact. Runtime GET completed in
+  0.010–0.045 seconds and reused POST in 0.006–0.008 seconds; exactly two
+  completed artifact rows exist.
+- a ten-minute row-lock lease recovers stale `RUNNING` attempts after process
+  failure, while a fresh `RUNNING` attempt returns conflict and `FAILED`
+  attempts are explicitly retriable.
+- independent final review: PASS with no P0–P3 finding; canonical replay,
+  tamper/truncation failure, exact lineage/parity/lifecycle, materialization,
+  lease recovery, migration 022, GET availability, exact UI schema, and docs
+  were independently checked.

@@ -33,7 +33,7 @@ from .financial_evidence import materialize as materialize_financial
 from .capital_contracts import PROTOCOL_VERSION as CAPITAL_CONTRACT_PROTOCOL_VERSION, create as create_capital_contract, serialize as serialize_capital_contract, validation_report as capital_contract_validation_report
 from .capital_simulations import run as run_fixed_lot_capital_simulation, serialize as serialize_fixed_lot_capital_simulation
 from .fractional_risk_simulations import run as run_fractional_risk_simulation, serialize as serialize_fractional_risk_simulation
-from .constrained_capital_simulations import run as run_constrained_capital_simulation, serialize as serialize_constrained_capital_simulation
+from .constrained_capital_simulations import get_materialized_verification, materialize_verification, run as run_constrained_capital_simulation, serialize as serialize_constrained_capital_simulation, serialize_verification
 
 
 app = FastAPI(title="ARKANA Research Service", version="0.1.0")
@@ -503,6 +503,26 @@ def get_constrained_capital_path(simulation_id: str, offset: int = Query(0, ge=0
     points = session.scalars(select(ConstrainedCapitalPoint).where(ConstrainedCapitalPoint.simulation_id == item.id, ConstrainedCapitalPoint.sequence >= offset).order_by(ConstrainedCapitalPoint.sequence).limit(limit)).all()
     total = int((item.result or {}).get("metrics", {}).get("capital_path_points", 0))
     return {"simulation_id": item.id, "offset": offset, "limit": limit, "total": total, "capital_path": [point.payload for point in points]}
+
+
+@app.get("/api/v1/constrained-capital-simulations/{simulation_id}/verification")
+def verify_constrained_capital_simulation(simulation_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(ConstrainedCapitalSimulation, simulation_id)
+    if not item:
+        raise HTTPException(404, "constrained capital simulation not found")
+    artifact = get_materialized_verification(session, item)
+    if not artifact: raise HTTPException(404, "full-history verification has not been materialized")
+    return serialize_verification(artifact)
+
+
+@app.post("/api/v1/constrained-capital-simulations/{simulation_id}/verification")
+def materialize_constrained_capital_verification(simulation_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(ConstrainedCapitalSimulation, simulation_id)
+    if not item: raise HTTPException(404, "constrained capital simulation not found")
+    try:
+        artifact, reused = materialize_verification(session, item)
+        return serialize_verification(artifact, reused=reused)
+    except ValueError as error: raise HTTPException(409, str(error)) from error
 
 
 def serialize_oos_validation(item: OosValidation, *, reused: bool | None = None) -> dict:

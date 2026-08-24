@@ -155,14 +155,18 @@ without creating a second backtest kernel or changing that strategy status.
 4. **ARK-S14-04:** margin, unable-to-trade, and broker constraints.
 5. **ARK-S14-05:** Owner UI, full-history verification, and acceptance.
 
-ARK-S14-01 through ARK-S14-03 are accepted and pushed. The active checkpoint is
-**ARK-S14-04**, implemented and awaiting Owner acceptance.
+ARK-S14-01 through ARK-S14-04 are accepted and pushed. The active checkpoint is
+**ARK-S14-05**, implemented and awaiting Owner acceptance.
 `BROKER_CONSTRAINED_CAPITAL_V1` reuses the sole canonical kernel, binds an exact
 MT5 `OrderCalcMargin` parity report to the selected broker snapshot, applies the
 frozen volume and maximum-margin rules, and records an explicit rejection while
 continuing after every unable-to-trade source event. Unsupported broker margin
-modes fail closed. Liquidation and intratrade mark-to-market remain outside the
-implemented boundary; no `VALIDATED`, DEMO, or LIVE status is granted.
+modes fail closed. The Owner UI can validate and confirm immutable contracts,
+select exact full-history evidence, run or reuse constrained simulations, and
+inspect a read-only verifier over every normalized point, lineage, constraint,
+disclosure, and lifecycle boundary. Liquidation and intratrade mark-to-market
+remain outside the implemented boundary; acceptance readiness grants no
+`VALIDATED`, DEMO, or LIVE status.
 
 Do not begin a later card automatically. Complete the accepted card, perform
 self-verification and an independent diff review, update evidence-backed

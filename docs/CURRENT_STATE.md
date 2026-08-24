@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-24 — ARK-S14-04 broker constraints and continuation
+**Updated:** 2026-08-25 — ARK-S14-05 Owner UI and full-history verification
 **Active milestone:** Sprint 14 — Broker-Realistic Historical Capital Simulation
-**Active card:** ARK-S14-04 — complete, awaiting Owner acceptance
+**Active card:** ARK-S14-05 — complete, awaiting Owner acceptance
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -45,7 +45,7 @@ Target:  StrategyCandidate → deterministic StrategyVersion → canonical Backt
 | Strategy Factory | PARTIAL — executable compatibility vertical slice | Candidate/version API lifecycle, contract validation, immutable confirmation/revision, canonical Backtest V1 execution, exact golden parity, auditable StrategyVersion → BacktestRun lineage, and a guarded Strategy Factory UI now exist for the legacy compatibility contract. Broader generic capability remains missing. |
 | OOS/robustness acceptance | IMPLEMENTED gate and Owner UI; full-history OAT completed with FAIL | Protocol V3 deterministically returns `PASS`, `FAIL`, or `INSUFFICIENT_EVIDENCE` from minimum trade count, positive nominal OOS PnL, strict PF, adverse final-OOS, and train-calibrated year/regime concentration checks. The Strategy Factory can run and reopen exact evidence. The registered 2,985,994-bar Owner dataset produced FAIL for the compatibility strategy, which correctly remains `CONTRACT_VALID`. Only PASS links evidence and sets historical-only `VALIDATED`. |
 | DEMO deployment and telemetry | IMPLEMENTED legacy foundation; MT5 OAT pending | DEMO-only versioned config, acknowledgement, rollback, journal ingestion, and forward-evidence scaffolding exist. The EA supports the legacy rule only and fixed `0.01` volume. |
-| Capital Simulation | BROKER-CONSTRAINED FIXED/FRACTIONAL HISTORY IMPLEMENTED; UI pending | Immutable `CAPITAL_BROKER_CONTRACT_V1` and `BROKER_CONSTRAINED_CAPITAL_V1` evidence bind exact StrategyVersion, full-history validation, dataset, MT5 profit/margin parity, sizing, and broker assumptions. One canonical kernel emits every source trade; valid trades apply realized PnL while invalid-volume or insufficient-margin events are explicitly rejected and traversal continues. MT5 CFD mode 2 is supported only through exact snapshot-bound `OrderCalcMargin` parity; other modes and currency conversion fail closed. One frozen 2026 snapshot is applied to the full 2017–2026 ledger, not reconstructed historical broker terms. Liquidation and intratrade mark-to-market remain explicitly unimplemented. |
+| Capital Simulation | BROKER-CONSTRAINED FIXED/FRACTIONAL HISTORY AND OWNER UI IMPLEMENTED | Immutable `CAPITAL_BROKER_CONTRACT_V1` and `BROKER_CONSTRAINED_CAPITAL_V1` evidence bind exact StrategyVersion, full-history validation, dataset, MT5 profit/margin parity, sizing, and broker assumptions. The Owner UI validates/confirms contracts, runs or reuses results, and explicitly materializes one fingerprint-bound full-replay verifier artifact; GET is lightweight and never reruns the kernel. The verifier compares every normalized point and recomputed metric, exact lineage, constraints, disclosures, and lifecycle safety. One frozen 2026 snapshot is applied to the full 2017–2026 ledger, not reconstructed historical broker terms. Acceptance readiness is not `VALIDATED`, DEMO/LIVE authorization, or a trade recommendation. |
 | Variant Explorer | MISSING | No bounded variant-comparison or marginal-value capability exists. |
 | Strategy Router / Current or Live Decision | MISSING | No deterministic eligibility/router or current LONG/SHORT/NO-TRADE decision product exists. Existing UI/telemetry must not be interpreted as this capability. |
 
@@ -110,12 +110,12 @@ runtime behavior.
 
 Sprint 12 and all four Sprint 13 checkpoints are accepted and complete. The
 active milestone is **Sprint 14 — Broker-Realistic Historical Capital
-Simulation**. ARK-S14-01 through ARK-S14-03 are accepted; S14-03 was pushed at
-commit `b9c8daa`. The current card is **ARK-S14-04**: exact MT5 margin parity,
-broker volume/margin rejection, and deterministic unable-to-trade continuation,
-implemented and awaiting Owner acceptance. Both full-history sizing modes have
-704,707-point runtime evidence recorded in
-`docs/SPRINT_14_CAPITAL_SIMULATION.md`. ARK-S14-05 has not started.
+Simulation**. ARK-S14-01 through ARK-S14-04 are accepted and pushed; S14-04 is
+commit `0b2b041`. The final card, **ARK-S14-05**, is implemented and awaiting
+Owner acceptance. The Owner UI and read-only verifier expose both full-history
+sizing modes; each has 704,707-point runtime evidence with every acceptance
+check passing. Concrete evidence is recorded in
+`docs/SPRINT_14_CAPITAL_SIMULATION.md`.
 
 The intended next technical direction is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:

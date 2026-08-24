@@ -1,4 +1,6 @@
 from pathlib import Path
+from datetime import datetime
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -178,7 +180,15 @@ def test_constrained_capital_api_exposes_rejections_and_paged_path(monkeypatch):
         assert detail.status_code==200 and detail.json()["status"]=="COMPLETED_WITH_REJECTIONS"
         page=client.get(f"/api/v1/constrained-capital-simulations/{item_id}/capital-path",params={"offset":2,"limit":1})
         assert page.json()["total"]==3 and page.json()["capital_path"][0]["reason"]=="INSUFFICIENT_MARGIN"
+        artifact=SimpleNamespace(id="verification",simulation_id=item_id,simulation_fingerprint="constrained-fp",verifier_version="V1",fingerprint="verification-fp",status="COMPLETED",result={"status":"PASSED","owner_acceptance_readiness":"READY_FOR_OWNER_ACCEPTANCE","checks":{}},created_at=datetime.utcnow())
+        monkeypatch.setattr(main_module,"get_materialized_verification",lambda session,item:artifact)
+        monkeypatch.setattr(main_module,"materialize_verification",lambda session,item:(artifact,True))
+        verified=client.get(f"/api/v1/constrained-capital-simulations/{item_id}/verification")
+        assert verified.status_code==200 and verified.json()["owner_acceptance_readiness"]=="READY_FOR_OWNER_ACCEPTANCE"
+        materialized=client.post(f"/api/v1/constrained-capital-simulations/{item_id}/verification")
+        assert materialized.status_code==200 and materialized.json()["reused"] is True
         assert client.get("/api/v1/constrained-capital-simulations/missing").status_code==404
+        assert client.get("/api/v1/constrained-capital-simulations/missing/verification").status_code==404
     monkeypatch.setattr(main_module,"run_constrained_capital_simulation",lambda *args:(_ for _ in ()).throw(ValueError("Exact MT5 OrderCalcMargin parity is unavailable")))
     with TestClient(app) as client:
         blocked=client.post("/api/v1/capital-contracts/constrained-contract/constrained-simulations",json={"source_full_validation_id":"constrained-full"})

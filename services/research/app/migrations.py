@@ -21,6 +21,7 @@ MIGRATION_018 = "018_fixed_lot_capital_simulation"
 MIGRATION_019 = "019_normalized_fixed_lot_equity_points"
 MIGRATION_020 = "020_fractional_risk_capital_simulation"
 MIGRATION_021 = "021_constrained_capital_simulation"
+MIGRATION_022 = "022_constrained_capital_verification"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -266,6 +267,23 @@ def _migration_021(connection) -> None:
     """))
 
 
+def _migration_022(connection) -> None:
+    connection.execute(text("""
+        CREATE TABLE IF NOT EXISTS constrained_capital_verifications (
+            id VARCHAR(36) PRIMARY KEY,
+            simulation_id VARCHAR(36) NOT NULL,
+            simulation_fingerprint VARCHAR(64) NOT NULL,
+            verifier_version VARCHAR(64) NOT NULL,
+            fingerprint VARCHAR(64) NOT NULL UNIQUE,
+            status VARCHAR(32) NOT NULL,
+            result JSON NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            FOREIGN KEY(simulation_id) REFERENCES constrained_capital_simulations(id)
+        )
+    """))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_constrained_capital_verifications_simulation_id ON constrained_capital_verifications(simulation_id)"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -276,6 +294,7 @@ MIGRATIONS = (
     (MIGRATION_019, _migration_019),
     (MIGRATION_020, _migration_020),
     (MIGRATION_021, _migration_021),
+    (MIGRATION_022, _migration_022),
 )
 
 
