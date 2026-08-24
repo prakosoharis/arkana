@@ -24,6 +24,7 @@ MIGRATION_021 = "021_constrained_capital_simulation"
 MIGRATION_022 = "022_constrained_capital_verification"
 MIGRATION_023 = "023_variant_experiment_contract_foundation"
 MIGRATION_024 = "024_variant_train_evaluation"
+MIGRATION_025 = "025_variant_holdout_selection"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -332,6 +333,48 @@ def _migration_024(connection) -> None:
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_variant_train_runs_baseline_oos_validation_id ON variant_train_runs(baseline_oos_validation_id)"))
 
 
+def _migration_025(connection) -> None:
+    connection.execute(text("""
+        CREATE TABLE IF NOT EXISTS variant_holdout_runs (
+            id VARCHAR(36) PRIMARY KEY,
+            train_run_id VARCHAR(36) NOT NULL,
+            experiment_contract_id VARCHAR(36) NOT NULL,
+            strategy_version_id VARCHAR(36) NOT NULL,
+            dataset_id VARCHAR(36) NOT NULL,
+            baseline_oos_validation_id VARCHAR(36) NOT NULL,
+            fingerprint VARCHAR(64) NOT NULL UNIQUE,
+            protocol_version VARCHAR(64) NOT NULL,
+            status VARCHAR(32) NOT NULL,
+            result JSON NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP NOT NULL,
+            FOREIGN KEY(train_run_id) REFERENCES variant_train_runs(id),
+            FOREIGN KEY(experiment_contract_id) REFERENCES variant_experiment_contracts(id),
+            FOREIGN KEY(strategy_version_id) REFERENCES strategy_versions(id),
+            FOREIGN KEY(dataset_id) REFERENCES datasets(id),
+            FOREIGN KEY(baseline_oos_validation_id) REFERENCES oos_validations(id)
+        )
+    """))
+    for column in ("train_run_id", "experiment_contract_id", "strategy_version_id", "dataset_id", "baseline_oos_validation_id"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_variant_holdout_runs_{column} ON variant_holdout_runs({column})"))
+    connection.execute(text("""
+        CREATE TABLE IF NOT EXISTS variant_selection_locks (
+            id VARCHAR(36) PRIMARY KEY,
+            holdout_run_id VARCHAR(36) NOT NULL UNIQUE,
+            experiment_contract_id VARCHAR(36) NOT NULL,
+            fingerprint VARCHAR(64) NOT NULL UNIQUE,
+            selection_version VARCHAR(64) NOT NULL,
+            status VARCHAR(48) NOT NULL,
+            selected_variant_fingerprint VARCHAR(64),
+            result JSON NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            FOREIGN KEY(holdout_run_id) REFERENCES variant_holdout_runs(id),
+            FOREIGN KEY(experiment_contract_id) REFERENCES variant_experiment_contracts(id)
+        )
+    """))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_variant_selection_locks_experiment_contract_id ON variant_selection_locks(experiment_contract_id)"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -345,6 +388,7 @@ MIGRATIONS = (
     (MIGRATION_022, _migration_022),
     (MIGRATION_023, _migration_023),
     (MIGRATION_024, _migration_024),
+    (MIGRATION_025, _migration_025),
 )
 
 

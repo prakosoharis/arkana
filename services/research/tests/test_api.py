@@ -6,13 +6,14 @@ from fastapi.testclient import TestClient
 
 from app.database import Base, SessionLocal, engine
 from app.main import app
-from app.models import BrokerMetadataSnapshot, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, StrategyVersion, VariantTrainRun
+from app.models import BrokerMetadataSnapshot, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, StrategyVersion, VariantHoldoutRun, VariantSelectionLock, VariantTrainRun
 import app.capital_contracts as capital_contracts
 import app.main as main_module
 from app.strategy_contracts import fingerprint as strategy_contract_fingerprint
 from app.strategy_adapters import legacy_bullish_reversal_contract
 from app.variant_experiment_contracts import COST_SCENARIOS, PARTITION_POLICY, SELECTION_POLICY
 from app.variant_train_runs import TrainRunConflict
+from app.variant_holdout_runs import HoldoutRunConflict
 
 
 FIXTURE = Path(__file__).parents[3] / "data" / "fixtures" / "xauusd_m1_sample.csv"
@@ -241,6 +242,40 @@ def test_variant_train_run_api_creates_lists_reads_and_reports_conflict(monkeypa
     )
     with TestClient(app) as client:
         conflict = client.post("/api/v1/variant-experiment-contracts/api-variant-contract/train-runs")
+        assert conflict.status_code == 409 and conflict.json()["detail"] == "already running"
+
+
+def test_variant_holdout_api_creates_lists_reads_selection_and_reports_conflict(monkeypatch):
+    with SessionLocal() as session:
+        item = VariantHoldoutRun(
+            train_run_id="api-train", experiment_contract_id="api-contract", strategy_version_id="api-strategy",
+            dataset_id="api-dataset", baseline_oos_validation_id="api-oos", fingerprint="api-holdout-fingerprint",
+            protocol_version="VARIANT_HOLDOUT_MARGINAL_VALUE_V1", status="COMPLETED",
+            result={"status": "COMPLETED", "baseline_parity": {"status": "PASS"}, "split_access": {"final_oos": {"accessed": False}}},
+        )
+        session.add(item); session.flush()
+        lock = VariantSelectionLock(
+            holdout_run_id=item.id, experiment_contract_id="api-contract", fingerprint="api-selection-fingerprint",
+            selection_version="VARIANT_SELECTION_LOCK_V1", status="NO_ELIGIBLE_VARIANT", selected_variant_fingerprint=None,
+            result={"status": "NO_ELIGIBLE_VARIANT", "locked": True, "final_oos_accessed": False},
+        )
+        session.add(lock); session.commit(); session.refresh(item); session.refresh(lock)
+        item_id, lock_id = item.id, lock.id
+    monkeypatch.setattr(main_module, "run_variant_holdout_evaluation", lambda session, _train_id: (session.get(VariantHoldoutRun, item_id), session.get(VariantSelectionLock, lock_id), True))
+    with TestClient(app) as client:
+        created = client.post("/api/v1/variant-train-runs/api-train/holdout-runs")
+        assert created.status_code == 200 and created.json()["reused"] is True
+        assert created.json()["selection"]["result"]["locked"] is True
+        listed = client.get("/api/v1/variant-train-runs/api-train/holdout-runs")
+        assert listed.status_code == 200 and listed.json()["holdout_runs"][0]["id"] == item_id
+        detail = client.get(f"/api/v1/variant-holdout-runs/{item_id}")
+        assert detail.status_code == 200 and detail.json()["result"]["split_access"]["final_oos"]["accessed"] is False
+        selection = client.get(f"/api/v1/variant-holdout-runs/{item_id}/selection")
+        assert selection.status_code == 200 and selection.json()["id"] == lock_id
+        assert client.get("/api/v1/variant-holdout-runs/missing").status_code == 404
+    monkeypatch.setattr(main_module, "run_variant_holdout_evaluation", lambda *_args: (_ for _ in ()).throw(HoldoutRunConflict("already running")))
+    with TestClient(app) as client:
+        conflict = client.post("/api/v1/variant-train-runs/api-train/holdout-runs")
         assert conflict.status_code == 409 and conflict.json()["detail"] == "already running"
 
 

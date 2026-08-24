@@ -2,13 +2,13 @@
 
 ## Proposal status
 
-**ACCEPTED DEVELOPMENT CONTRACT. ARK-S15-01 is accepted; ARK-S15-02 is complete
-and awaiting Owner acceptance; ARK-S15-03 has not started.**
+**ACCEPTED DEVELOPMENT CONTRACT. ARK-S15-01 and ARK-S15-02 are accepted;
+ARK-S15-03 is complete and awaiting Owner acceptance.**
 
 The Owner accepted this Sprint 15 development contract on 2026-08-25. ARK-S15-01
-was subsequently accepted and pushed; only ARK-S15-02 is currently authorized.
-That authorization does not extend to later cards or to a new strategy
-lifecycle claim.
+was subsequently accepted and pushed. ARK-S15-02 was accepted and pushed at
+`1fdc28c` before ARK-S15-03 began. The current authorization does not extend to
+ARK-S15-04 or to a new strategy lifecycle claim.
 
 ## Milestone objective
 
@@ -236,7 +236,7 @@ row. Partial progress is never returned as completed evidence.
 
 ### ARK-S15-02 verification report — 2026-08-25
 
-Implementation status: **COMPLETE, awaiting Owner acceptance**.
+Implementation status: **ACCEPTED and pushed at commit `1fdc28c`**.
 
 - S15-01 was accepted, committed, and pushed at `736175e` before this card;
 - additive migration 024 is applied and recorded in live PostgreSQL; legacy
@@ -302,6 +302,85 @@ and lock at most one deterministic selection without touching final-OOS.
 - baseline failure and `NO_ELIGIBLE_VARIANT` remain successful, inspectable
   outcomes rather than system errors;
 - full regression, runtime OAT, and independent anti-overfitting review pass.
+
+### Implemented S15-03 evidence and lock contract
+
+`VARIANT_HOLDOUT_MARGINAL_VALUE_V1` requires one completed, parity-passing
+S15-02 train run and regenerates its exact frozen matrix before execution. It
+reuses the canonical evaluator for nominal and adverse-cost traversals over the
+half-open holdout range only. The generated baseline must exactly equal the
+stored protocol-V3 holdout evidence or the run fails closed.
+
+Each challenger stores exact holdout metrics, baseline values and deltas, plus
+one truthful comparison classification. Eligibility is separate from relative
+classification: even a challenger that dominates a negative baseline remains
+ineligible unless both scenarios have at least 100 trades, positive net PnL,
+and profit factor strictly above 1.10. The baseline is always excluded.
+
+`VARIANT_SELECTION_LOCK_V1` is created atomically with completed holdout
+evidence. It records either one deterministically ranked fingerprint or
+`NO_ELIGIBLE_VARIANT`; it permanently discloses that final-OOS was not
+accessed. The run has a single-winner lease, heartbeat, typed failure, safe
+recovery, and exact idempotent reuse. It creates no StrategyVersion or
+`VALIDATED`, DEMO/LIVE, Router, or trading-decision side effect.
+
+### S15-03 API contract
+
+- `POST /api/v1/variant-train-runs/{id}/holdout-runs` executes or reuses the
+  exact holdout matrix and immutable selection lock.
+- `GET /api/v1/variant-train-runs/{id}/holdout-runs` lists recorded evidence.
+- `GET /api/v1/variant-holdout-runs/{id}` reads one exact run and its lock.
+- `GET /api/v1/variant-holdout-runs/{id}/selection` reads the lock without
+  execution.
+
+### Owner Acceptance Test — ARK-S15-03
+
+1. Reopen accepted train run `8b5a1180-e8cf-4aa0-8ad2-438fc6c1fc57` and POST
+   its holdout run.
+2. Verify nine variants, nominal/adverse metrics and deltas, and exact baseline
+   parity `PASS`.
+3. Verify holdout is `[1791596, 2388795)` while train is source evidence only
+   and final-OOS is `accessed: false`.
+4. Verify the locked result is `NO_ELIGIBLE_VARIANT`, eligible count is zero,
+   and no selected fingerprint exists; two challengers may truthfully dominate
+   the negative baseline but still fail the absolute eligibility gate.
+5. Repeat POST and verify the same run and selection ids/fingerprints return
+   with `reused: true`.
+6. Verify the baseline remains `CONTRACT_VALID` with null validation evidence
+   and timestamp, and that no revision, validation, deployment, or decision was
+   created.
+
+### ARK-S15-03 verification report — 2026-08-25
+
+Implementation status: **COMPLETE, awaiting Owner acceptance**.
+
+- S15-02 was accepted, committed, and pushed at `1fdc28c` before this card;
+- additive migration 025 is applied and recorded in live PostgreSQL, with one
+  holdout row and one immutable selection-lock row;
+- focused domain/API/migration regression: 41 passed on Python 3.13;
+- complete research-service regression: 150 passed on Python 3.13;
+- web regression: lint and typecheck passed, 18 tests passed, and production
+  build completed successfully; S15-03 adds no UI or BFF route;
+- runtime holdout run `45df85ec-d463-4df9-b100-2db711400484`, fingerprint
+  `16ce5486b133021c3910ee0ecebf3ebf43f1fa5fc616876ae5588bad9bb650ed`,
+  completed nine variants in 325.163 seconds with exact baseline parity `PASS`;
+- all 18 canonical traversals were bounded to holdout `[1791596, 2388795)`;
+  train was referenced as accepted evidence only and final-OOS remained
+  unaccessed;
+- classifications were four `TRADE_OFF`, two `DOMINATES_BASELINE`, two
+  `INFERIOR`, and one baseline. Every challenger failed the absolute gate
+  because nominal and adverse net PnL were negative and profit factors were
+  below 1.10, so the truthful result is `NO_ELIGIBLE_VARIANT`;
+- selection lock `93e905a4-251f-4c8c-8377-ed1ea12d87e3`, fingerprint
+  `9b6c4602ee87269bac08f20c10fc35367ad146e1eecf7cc560b2c57c8c37c23f`,
+  has zero eligible variants, no selected fingerprint, `locked: true`, and
+  `final_oos_accessed: false`;
+- repeated POST reused both exact artifacts in 0.038 seconds. The baseline
+  remains `CONTRACT_VALID` with null validation evidence/timestamp;
+- final review found no second kernel, final-OOS access path, baseline parity
+  bypass, least-bad selection, ranking nondeterminism, partial-result claim,
+  duplicate winner, lifecycle overclaim, or DEMO/LIVE side effect. Observed
+  warnings remain the documented pre-existing framework deprecations.
 
 ## ARK-S15-04 — Selected revision and final-OOS lifecycle
 

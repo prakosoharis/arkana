@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -36,6 +36,7 @@ from .fractional_risk_simulations import run as run_fractional_risk_simulation, 
 from .constrained_capital_simulations import get_materialized_verification, materialize_verification, run as run_constrained_capital_simulation, serialize as serialize_constrained_capital_simulation, serialize_verification
 from .variant_experiment_contracts import PROTOCOL_VERSION as VARIANT_CONTRACT_PROTOCOL_VERSION, create as create_variant_experiment_contract, serialize as serialize_variant_experiment_contract, validation_report as variant_experiment_validation_report
 from .variant_train_runs import TrainRunConflict, run as run_variant_train_evaluation, serialize as serialize_variant_train_run
+from .variant_holdout_runs import HoldoutRunConflict, get_selection as get_variant_selection, run as run_variant_holdout_evaluation, serialize as serialize_variant_holdout_run, serialize_selection as serialize_variant_selection
 
 
 app = FastAPI(title="ARKANA Research Service", version="0.1.0")
@@ -478,6 +479,42 @@ def get_variant_train_run(run_id: str, session: Session = Depends(get_session)) 
     if not item:
         raise HTTPException(404, "variant train run not found")
     return serialize_variant_train_run(item)
+
+
+@app.post("/api/v1/variant-train-runs/{train_run_id}/holdout-runs")
+def create_variant_holdout_run(train_run_id: str, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, lock, reused = run_variant_holdout_evaluation(session, train_run_id)
+        return serialize_variant_holdout_run(item, lock, reused=reused)
+    except HoldoutRunConflict as error:
+        raise HTTPException(409, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/variant-train-runs/{train_run_id}/holdout-runs")
+def list_variant_holdout_runs(train_run_id: str, session: Session = Depends(get_session)) -> dict:
+    items = session.scalars(select(VariantHoldoutRun).where(VariantHoldoutRun.train_run_id == train_run_id).order_by(VariantHoldoutRun.created_at.desc())).all()
+    return {"holdout_runs": [serialize_variant_holdout_run(item, get_variant_selection(session, item)) for item in items]}
+
+
+@app.get("/api/v1/variant-holdout-runs/{run_id}")
+def get_variant_holdout_run(run_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(VariantHoldoutRun, run_id)
+    if not item:
+        raise HTTPException(404, "variant holdout run not found")
+    return serialize_variant_holdout_run(item, get_variant_selection(session, item))
+
+
+@app.get("/api/v1/variant-holdout-runs/{run_id}/selection")
+def get_variant_holdout_selection(run_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(VariantHoldoutRun, run_id)
+    if not item:
+        raise HTTPException(404, "variant holdout run not found")
+    lock = get_variant_selection(session, item)
+    if not lock:
+        raise HTTPException(404, "variant selection lock not found")
+    return serialize_variant_selection(lock)
 
 
 @app.post("/api/v1/capital-contracts/{capital_contract_id}/fixed-lot-simulations")

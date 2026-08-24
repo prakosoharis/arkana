@@ -191,6 +191,42 @@ class VariantTrainRun(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class VariantHoldoutRun(Base):
+    """Single-winner marginal-value evidence over holdout only."""
+    __tablename__ = "variant_holdout_runs"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_variant_holdout_run_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    train_run_id: Mapped[str] = mapped_column(ForeignKey("variant_train_runs.id"), nullable=False, index=True)
+    experiment_contract_id: Mapped[str] = mapped_column(ForeignKey("variant_experiment_contracts.id"), nullable=False, index=True)
+    strategy_version_id: Mapped[str] = mapped_column(ForeignKey("strategy_versions.id"), nullable=False, index=True)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id"), nullable=False, index=True)
+    baseline_oos_validation_id: Mapped[str] = mapped_column(ForeignKey("oos_validations.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class VariantSelectionLock(Base):
+    """Immutable at-most-one selection after holdout; final-OOS is untouched."""
+    __tablename__ = "variant_selection_locks"
+    __table_args__ = (
+        UniqueConstraint("holdout_run_id", name="uq_variant_selection_lock_holdout_run"),
+        UniqueConstraint("fingerprint", name="uq_variant_selection_lock_fingerprint"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    holdout_run_id: Mapped[str] = mapped_column(ForeignKey("variant_holdout_runs.id"), nullable=False, index=True)
+    experiment_contract_id: Mapped[str] = mapped_column(ForeignKey("variant_experiment_contracts.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    selection_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(48), nullable=False)
+    selected_variant_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class FixedLotCapitalSimulation(Base):
     """Immutable realized-equity evidence produced by the sole backtest kernel."""
     __tablename__ = "fixed_lot_capital_simulations"
