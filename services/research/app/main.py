@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, Dataset, DatasetBarAsset, Deployment, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, Dataset, DatasetBarAsset, Deployment, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -30,6 +30,7 @@ from .research_contracts import compile_contract, confirm_and_run
 from .demo_validation import readiness as demo_readiness
 from .broker_metadata import import_snapshot, import_order_calc_validation
 from .financial_evidence import materialize as materialize_financial
+from .capital_contracts import PROTOCOL_VERSION as CAPITAL_CONTRACT_PROTOCOL_VERSION, create as create_capital_contract, serialize as serialize_capital_contract, validation_report as capital_contract_validation_report
 
 
 app = FastAPI(title="ARKANA Research Service", version="0.1.0")
@@ -362,6 +363,40 @@ def create_oos_validation(strategy_version_id: str, session: Session = Depends(g
 def list_oos_validations(strategy_version_id: str, session: Session = Depends(get_session)) -> dict:
     items = session.scalars(select(OosValidation).where(OosValidation.strategy_version_id == strategy_version_id).order_by(OosValidation.created_at.desc())).all()
     return {"validations": [serialize_oos_validation(item) for item in items]}
+
+
+@app.post("/api/v1/capital-contracts/validate")
+def validate_capital_contract(payload: dict, session: Session = Depends(get_session)) -> dict:
+    try:
+        contract, assessment = capital_contract_validation_report(
+            session,
+            str(payload.get("strategy_version_id", "")),
+            str(payload.get("broker_metadata_snapshot_id", "")),
+            payload.get("contract"),
+        )
+        return {"protocol_version": CAPITAL_CONTRACT_PROTOCOL_VERSION, "contract": contract, "broker_assessment": assessment}
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.post("/api/v1/strategy-versions/{strategy_version_id}/capital-contracts")
+def confirm_capital_contract(strategy_version_id: str, payload: dict, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = create_capital_contract(
+            session,
+            strategy_version_id,
+            str(payload.get("broker_metadata_snapshot_id", "")),
+            payload.get("contract"),
+        )
+        return serialize_capital_contract(item, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/strategy-versions/{strategy_version_id}/capital-contracts")
+def list_capital_contracts(strategy_version_id: str, session: Session = Depends(get_session)) -> dict:
+    items = session.scalars(select(CapitalBrokerContract).where(CapitalBrokerContract.strategy_version_id == strategy_version_id).order_by(CapitalBrokerContract.created_at.desc())).all()
+    return {"capital_contracts": [serialize_capital_contract(item) for item in items]}
 
 
 def serialize_oos_validation(item: OosValidation, *, reused: bool | None = None) -> dict:

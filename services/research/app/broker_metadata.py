@@ -33,14 +33,21 @@ def money_pnl(metadata:dict,*,side:str,entry:float,exit:float,volume:float)->flo
     validate_volume(metadata,volume);delta=(exit-entry) if side=="BUY" else (entry-exit)
     return delta/float(metadata["tick_size"])*float(metadata["tick_value_profit"])*volume
 
-def import_order_calc_validation(session:Session)->dict:
+def import_order_calc_validation(session:Session,snapshot_id:str|None=None)->dict:
     path=Path(MT5_COMMON_FILES_ROOT)/"ARKANA/broker_metadata/order_calc_profit_validation.ini"
     if not path.exists(): return {"status":"WAITING_FOR_MT5_ARTIFACT"}
     raw=_read(path)
-    if raw.get("schema_version")!="1" or raw.get("source")!="MT5_ORDERCALCPROFIT": raise ValueError("Invalid OrderCalcProfit validation artifact")
-    snapshot=session.scalar(select(BrokerMetadataSnapshot).where(BrokerMetadataSnapshot.broker_symbol==raw.get("broker_symbol")).order_by(BrokerMetadataSnapshot.created_at.desc()))
+    if raw.get("schema_version") not in {"1","2"} or raw.get("source")!="MT5_ORDERCALCPROFIT": raise ValueError("Invalid OrderCalcProfit validation artifact")
+    snapshot=session.get(BrokerMetadataSnapshot,snapshot_id) if snapshot_id else session.scalar(select(BrokerMetadataSnapshot).where(BrokerMetadataSnapshot.broker_symbol==raw.get("broker_symbol")).order_by(BrokerMetadataSnapshot.created_at.desc()))
     if not snapshot: raise ValueError("No matching imported broker metadata snapshot")
+    latest_path=Path(MT5_COMMON_FILES_ROOT)/"ARKANA/broker_metadata/latest.ini"
+    if not latest_path.exists(): raise ValueError("Exact broker metadata artifact is unavailable")
+    latest=_read(latest_path); latest_fingerprint=sha256(json.dumps(latest,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+    if latest_fingerprint!=snapshot.fingerprint: raise ValueError("Selected broker snapshot does not match the exact latest.ini artifact")
+    bound_collected_at=raw.get("metadata_collected_at") if raw.get("schema_version")=="2" else raw.get("timestamp")
+    if not bound_collected_at or bound_collected_at!=snapshot.collected_at or latest.get("collected_at")!=snapshot.collected_at: raise ValueError("OrderCalcProfit artifact is not bound to the selected broker snapshot collection time")
     volume=float(raw.get("volume","0")); validate_volume(snapshot.snapshot,volume)
+    if raw.get("broker_symbol")!=snapshot.broker_symbol: raise ValueError("OrderCalcProfit broker symbol does not match selected metadata")
     if raw.get("currency")!=snapshot.snapshot["account_currency"]: raise ValueError("OrderCalcProfit currency does not match metadata account currency")
     cases=[]
     for line in path.read_text().splitlines():
@@ -52,4 +59,4 @@ def import_order_calc_validation(session:Session)->dict:
         ours=money_pnl(snapshot.snapshot,side=side,entry=float(entry),exit=float(exit_price),volume=volume); native=float(mt5); difference=abs(ours-native)
         cases.append({"case_id":case_id,"side":side,"entry":float(entry),"exit":float(exit_price),"mt5_result":native,"arkana_result":ours,"absolute_difference":difference,"tolerance":1e-8,"status":"PASS" if difference<=1e-8 else "FAIL"})
     if {item["case_id"] for item in cases}!={"BUY_WIN","BUY_LOSS","SELL_WIN","SELL_LOSS"}: raise ValueError("OrderCalcProfit artifact must contain four required cases")
-    return {"status":"PASSED" if all(item["status"]=="PASS" for item in cases) else "FAILED","metadata_fingerprint":snapshot.fingerprint,"currency":raw["currency"],"volume":volume,"timestamp":raw.get("timestamp"),"cases":cases}
+    return {"status":"PASSED" if all(item["status"]=="PASS" for item in cases) else "FAILED","metadata_fingerprint":snapshot.fingerprint,"metadata_collected_at":snapshot.collected_at,"binding":"EXACT_FINGERPRINT_AND_COLLECTION_TIME" if raw.get("schema_version")=="2" else "LEGACY_EXACT_FILE_AND_TIMESTAMP","currency":raw["currency"],"volume":volume,"timestamp":raw.get("timestamp"),"cases":cases}

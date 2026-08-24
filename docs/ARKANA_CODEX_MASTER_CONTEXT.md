@@ -140,28 +140,25 @@ StrategyVersion to the BacktestRun subsequently created from it.
 | SF-11 | Journal, controlled learning, and LIVE-readiness governance |
 | SF-12 | Dynamic Discovery enhancement after validation is trustworthy |
 
-## Active milestone — Sprint 13 OOS and robustness acceptance
+## Active milestone — Sprint 14 broker-realistic capital simulation
 
-Sprint 12 is accepted and complete. Sprint 13 builds the frozen historical
-validation path required before any `VALIDATED` claim may exist, while keeping
-Backtest V1 as the sole kernel and preserving all legacy evidence.
+Sprint 12 and Sprint 13 are accepted and complete. The compatibility strategy
+failed the frozen protocol-V3 robustness gate and remains useful only as
+negative/plumbing evidence. Sprint 14 adds an auditable account-capital layer
+without creating a second backtest kernel or changing that strategy status.
 
-The initial Sprint 13 path remains deliberately limited to the compatibility
-XAUUSD/M1/LONG `BULLISH_REVERSAL_M1` contract. ARK-S13-01 records review
-evidence only; it cannot label that negative legacy prototype `VALIDATED`,
-DEMO-ready, LIVE-ready, or a trade recommendation.
+### Sprint 14 card sequence
 
-### Sprint 13 card sequence
+1. **ARK-S14-01:** immutable capital and broker contract foundation.
+2. **ARK-S14-02:** deterministic fixed-lot equity engine.
+3. **ARK-S14-03:** fractional risk, compounding, and volume rounding.
+4. **ARK-S14-04:** margin, unable-to-trade, and broker constraints.
+5. **ARK-S14-05:** Owner UI, full-history verification, and acceptance.
 
-1. **ARK-S13-01:** immutable chronological 60/20/20 protocol and evidence.
-2. **ARK-S13-02:** cost stress and canonical OOS evaluator expansion.
-3. **ARK-S13-03:** deterministic robustness decision gate.
-4. **ARK-S13-04:** Owner UI, full verification, and acceptance.
-
-ARK-S13-01/02/03 are accepted. The active checkpoint is **ARK-S13-04**; it adds
-the Owner-facing robustness evidence controls and completes full regression
-verification. It is implemented and awaiting Owner acceptance. Only a complete
-PASS may claim `VALIDATED`, which remains distinct from DEMO or LIVE readiness.
+The active checkpoint is **ARK-S14-01**. It records exact capital, sizing,
+leverage, margin/failure policies, MT5 broker snapshot, and OrderCalcProfit
+parity as an immutable contract. It implements no equity simulation and grants
+no `VALIDATED`, DEMO, or LIVE status.
 
 Do not begin a later card automatically. Complete the accepted card, perform
 self-verification and an independent diff review, update evidence-backed

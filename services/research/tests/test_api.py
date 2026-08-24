@@ -2,8 +2,11 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.database import Base, engine
+from app.database import Base, SessionLocal, engine
 from app.main import app
+from app.models import BrokerMetadataSnapshot, StrategyVersion
+import app.capital_contracts as capital_contracts
+from app.strategy_contracts import fingerprint as strategy_contract_fingerprint
 
 
 FIXTURE = Path(__file__).parents[3] / "data" / "fixtures" / "xauusd_m1_sample.csv"
@@ -52,6 +55,43 @@ def test_invalid_timeframe_and_unknown_symbol_are_truthful():
         unknown = client.get("/api/v1/bars", params={"symbol": "UNKNOWN", "timeframe": "M1"})
         assert unknown.status_code == 200
         assert unknown.json()["meta"]["status"] == "NO_DATA"
+
+
+def test_capital_contract_api_validates_persists_reuses_and_never_promotes(monkeypatch):
+    snapshot = {
+        "source": "MT5", "broker_symbol": "XAUUSD.m", "canonical_symbol": "XAUUSD", "digits": "2", "point": "0.01",
+        "tick_size": "0.01", "tick_value": "1", "tick_value_profit": "1", "tick_value_loss": "1", "contract_size": "100",
+        "volume_min": "0.01", "volume_max": "50", "volume_step": "0.01", "currency_base": "XAU", "currency_profit": "USD",
+        "currency_margin": "USD", "trade_calc_mode": "0", "account_currency": "USD", "collected_at": "2026-08-24T00:00:00Z",
+    }
+    with SessionLocal() as session:
+        metadata = BrokerMetadataSnapshot(fingerprint="api-capital-broker-fingerprint", source="MT5", broker_symbol="XAUUSD.m", canonical_symbol="XAUUSD", collected_at=snapshot["collected_at"], snapshot=snapshot)
+        strategy_contract = {"schema_version":1,"instrument":"XAUUSD","direction_eligibility":"LONG","context_timeframes":["M1"],"setup_timeframes":["M1"],"execution_timeframe":"M1","context_rules":[{"block_id":"ALWAYS","uses_completed_candles":True}],"setup_rules":[{"block_id":"ALWAYS","uses_completed_candles":True}],"trigger_rules":[{"block_id":"ALWAYS","uses_completed_candles":True}],"entry_rule":{"block_id":"NEXT_BAR_OPEN","uses_completed_candles":True,"uses_future_ohlc":False},"invalidation_rule":{"block_id":"ALWAYS","uses_completed_candles":True},"stop_loss_rule":{"block_id":"FIXED_PRICE_DISTANCE_SL","uses_completed_candles":True,"unit":"PRICE"},"take_profit_rule":{"block_id":"FIXED_PRICE_DISTANCE_TP","uses_completed_candles":True,"unit":"PRICE"},"position_sizing_rule":{"block_id":"FIXED_LOT_DEMO","uses_completed_candles":True},"no_trade_conditions":[{"block_id":"STOP_FIRST","uses_completed_candles":True}],"cost_assumptions":{},"provenance":{"source":"TEST"}}
+        strategy_fp = strategy_contract_fingerprint(strategy_contract)
+        strategy = StrategyVersion(strategy_key="api-capital-contract", version=1, name="API capital contract", profile="SCALPING", status="CONTRACT_VALID", strategy_contract=strategy_contract, configuration={"strategy_contract_fingerprint":strategy_fp}, checksum=strategy_fp)
+        session.add_all([metadata, strategy]); session.commit(); strategy_id, metadata_id = strategy.id, metadata.id
+    monkeypatch.setattr(capital_contracts, "import_order_calc_validation", lambda _, __: {"status": "PASSED", "metadata_fingerprint": "api-capital-broker-fingerprint", "currency": "USD", "volume": 0.01, "cases": []})
+    contract = {
+        "schema_version": 1,
+        "starting_capital": {"amount": 10000, "currency": "USD"},
+        "sizing_policy": {"mode": "FIXED_LOT", "fixed_volume": 0.01, "compounding": False},
+        "account_assumptions": {"leverage": 500, "leverage_source": "OWNER_INPUT"},
+        "margin_policy": {"max_margin_fraction": 0.8, "insufficient_margin_action": "REJECT_TRADE"},
+        "failure_policy": {"invalid_volume": "REJECT_TRADE", "missing_broker_metadata": "BLOCK_SIMULATION", "unverified_profit_conversion": "BLOCK_SIMULATION"},
+    }
+    payload = {"strategy_version_id": strategy_id, "broker_metadata_snapshot_id": metadata_id, "contract": contract}
+    with TestClient(app) as client:
+        report = client.post("/api/v1/capital-contracts/validate", json=payload)
+        assert report.status_code == 200 and report.json()["broker_assessment"]["ready"] is True
+        first = client.post(f"/api/v1/strategy-versions/{strategy_id}/capital-contracts", json={"broker_metadata_snapshot_id": metadata_id, "contract": contract})
+        assert first.status_code == 200 and first.json()["status"] == "CAPITAL_CONTRACT_READY" and first.json()["reused"] is False
+        second = client.post(f"/api/v1/strategy-versions/{strategy_id}/capital-contracts", json={"broker_metadata_snapshot_id": metadata_id, "contract": contract})
+        assert second.json()["id"] == first.json()["id"] and second.json()["reused"] is True
+        listed = client.get(f"/api/v1/strategy-versions/{strategy_id}/capital-contracts").json()["capital_contracts"]
+        assert listed[0]["fingerprint"] == first.json()["fingerprint"]
+    with SessionLocal() as session:
+        strategy = session.get(StrategyVersion, strategy_id)
+        assert strategy.status == "CONTRACT_VALID" and strategy.validation_evidence_id is None
 
 
 def test_hypothesis_api_persists_assessment_and_version():

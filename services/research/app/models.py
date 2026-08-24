@@ -144,6 +144,21 @@ class OosValidation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class CapitalBrokerContract(Base):
+    """Immutable capital/broker assumptions; this is not a simulation result."""
+    __tablename__ = "capital_broker_contracts"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_capital_broker_contract_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    strategy_version_id: Mapped[str] = mapped_column(ForeignKey("strategy_versions.id"), nullable=False, index=True)
+    broker_metadata_snapshot_id: Mapped[str] = mapped_column(ForeignKey("broker_metadata_snapshots.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(64), nullable=False)
+    contract: Mapped[dict] = mapped_column(JSON, nullable=False)
+    broker_assessment: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class SupplementalHistoricalValidation(Base):
     """Immutable full-history evidence linked to, but never replacing, approval evidence."""
     __tablename__ = "supplemental_historical_validations"

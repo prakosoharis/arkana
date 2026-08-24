@@ -16,6 +16,7 @@ MIGRATION_013 = "013_strategy_factory_foundation"
 MIGRATION_014 = "014_strategy_contract_v1"
 MIGRATION_015 = "015_oos_validation_evidence"
 MIGRATION_016 = "016_strategy_validation_lineage"
+MIGRATION_017 = "017_capital_broker_contract_foundation"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -135,11 +136,32 @@ def _migration_016(connection) -> None:
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_strategy_versions_validation_evidence_id ON strategy_versions(validation_evidence_id)"))
 
 
+def _migration_017(connection) -> None:
+    connection.execute(text("""
+        CREATE TABLE IF NOT EXISTS capital_broker_contracts (
+            id VARCHAR(36) PRIMARY KEY,
+            strategy_version_id VARCHAR(36) NOT NULL,
+            broker_metadata_snapshot_id VARCHAR(36) NOT NULL,
+            fingerprint VARCHAR(64) NOT NULL UNIQUE,
+            protocol_version VARCHAR(64) NOT NULL,
+            status VARCHAR(64) NOT NULL,
+            contract JSON NOT NULL,
+            broker_assessment JSON NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            FOREIGN KEY(strategy_version_id) REFERENCES strategy_versions(id),
+            FOREIGN KEY(broker_metadata_snapshot_id) REFERENCES broker_metadata_snapshots(id)
+        )
+    """))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_capital_broker_contracts_strategy_version_id ON capital_broker_contracts(strategy_version_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_capital_broker_contracts_broker_metadata_snapshot_id ON capital_broker_contracts(broker_metadata_snapshot_id)"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
     (MIGRATION_015, _migration_015),
     (MIGRATION_016, _migration_016),
+    (MIGRATION_017, _migration_017),
 )
 
 

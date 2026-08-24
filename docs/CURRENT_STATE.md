@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-24 — ARK-S13-04 Owner UI and final verification
-**Active milestone:** Sprint 13 — OOS and Robustness Acceptance
-**Active card:** ARK-S13-04 — complete, awaiting Owner acceptance
+**Updated:** 2026-08-24 — ARK-S14-01 capital/broker contract foundation
+**Active milestone:** Sprint 14 — Broker-Realistic Historical Capital Simulation
+**Active card:** ARK-S14-01 — complete, awaiting Owner acceptance
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -45,7 +45,8 @@ Target:  StrategyCandidate → deterministic StrategyVersion → canonical Backt
 | Strategy Factory | PARTIAL — executable compatibility vertical slice | Candidate/version API lifecycle, contract validation, immutable confirmation/revision, canonical Backtest V1 execution, exact golden parity, auditable StrategyVersion → BacktestRun lineage, and a guarded Strategy Factory UI now exist for the legacy compatibility contract. Broader generic capability remains missing. |
 | OOS/robustness acceptance | IMPLEMENTED gate and Owner UI; full-history OAT completed with FAIL | Protocol V3 deterministically returns `PASS`, `FAIL`, or `INSUFFICIENT_EVIDENCE` from minimum trade count, positive nominal OOS PnL, strict PF, adverse final-OOS, and train-calibrated year/regime concentration checks. The Strategy Factory can run and reopen exact evidence. The registered 2,985,994-bar Owner dataset produced FAIL for the compatibility strategy, which correctly remains `CONTRACT_VALID`. Only PASS links evidence and sets historical-only `VALIDATED`. |
 | DEMO deployment and telemetry | IMPLEMENTED legacy foundation; MT5 OAT pending | DEMO-only versioned config, acknowledgement, rollback, journal ingestion, and forward-evidence scaffolding exist. The EA supports the legacy rule only and fixed `0.01` volume. |
-| Capital Simulation and Variant Explorer | MISSING | No equity-path/risk/margin simulation and no bounded variant-comparison product capability exist. |
+| Capital Simulation | FOUNDATION IMPLEMENTED; engine missing | Immutable `CAPITAL_BROKER_CONTRACT_V1` records exact StrategyVersion, MT5 broker snapshot/parity, capital, sizing, leverage, margin, and failure assumptions. No equity traversal, compounding, margin calculation, or capital acceptance result exists yet. |
+| Variant Explorer | MISSING | No bounded variant-comparison or marginal-value capability exists. |
 | Strategy Router / Current or Live Decision | MISSING | No deterministic eligibility/router or current LONG/SHORT/NO-TRADE decision product exists. Existing UI/telemetry must not be interpreted as this capability. |
 
 ## Legacy Backtest and strategy classification
@@ -107,11 +108,11 @@ runtime behavior.
 
 ## Continuation point
 
-Sprint 12 plus ARK-S13-01/02/03 are accepted and complete. The active milestone
-is **Sprint 13 — OOS and Robustness Acceptance**. The current card is
-**ARK-S13-04**: Owner UI and final verification, implemented and awaiting Owner
-acceptance. Its contract and Owner OAT are recorded in
-`docs/SPRINT_13_OOS_ROBUSTNESS.md`.
+Sprint 12 and all four Sprint 13 checkpoints are accepted and complete. The
+active milestone is **Sprint 14 — Broker-Realistic Historical Capital
+Simulation**. The current card is **ARK-S14-01**: immutable capital and broker
+contract foundation, implemented and awaiting Owner acceptance. Its contract
+and Owner OAT are recorded in `docs/SPRINT_14_CAPITAL_SIMULATION.md`.
 
 The intended next technical direction is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:
@@ -154,3 +155,5 @@ claim.
   `docs/SPRINT_12_STRATEGY_FACTORY_OAT.md`.
 - Sprint 13 OOS/robustness protocol and current Owner OAT:
   `docs/SPRINT_13_OOS_ROBUSTNESS.md`.
+- Sprint 14 capital/broker contract and current Owner OAT:
+  `docs/SPRINT_14_CAPITAL_SIMULATION.md`.

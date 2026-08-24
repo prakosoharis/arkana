@@ -13,7 +13,7 @@ def materialize(session:Session, full_id:str, volume:float=.01):
     if not full: raise ValueError("Full historical evidence not found")
     strategy=session.get(StrategyVersion,full.strategy_version_id); metadata=session.scalar(select(BrokerMetadataSnapshot).where(BrokerMetadataSnapshot.broker_symbol=="XAUUSD.m").order_by(BrokerMetadataSnapshot.created_at.desc()))
     if not strategy or not metadata: raise ValueError("Strategy or imported broker metadata unavailable")
-    validate_volume(metadata.snapshot,volume); parity=import_order_calc_validation(session)
+    validate_volume(metadata.snapshot,volume); parity=import_order_calc_validation(session,metadata.id)
     if parity["status"]!="PASSED": raise ValueError("MT5 OrderCalcProfit parity must be PASSED")
     fp=sha256(json.dumps({"full":full.id,"metadata":metadata.fingerprint,"volume":volume,"contract":CONTRACT},sort_keys=True).encode()).hexdigest(); old=session.scalar(select(DerivedFinancialEvidence).where(DerivedFinancialEvidence.fingerprint==fp))
     if old:return old,True
