@@ -155,10 +155,11 @@ without creating a second backtest kernel or changing that strategy status.
 4. **ARK-S14-04:** margin, unable-to-trade, and broker constraints.
 5. **ARK-S14-05:** Owner UI, full-history verification, and acceptance.
 
-The active checkpoint is **ARK-S14-01**. It records exact capital, sizing,
-leverage, margin/failure policies, MT5 broker snapshot, and OrderCalcProfit
-parity as an immutable contract. It implements no equity simulation and grants
-no `VALIDATED`, DEMO, or LIVE status.
+ARK-S14-01 is accepted and pushed. The active checkpoint is **ARK-S14-02**.
+`FIXED_LOT_REALIZED_EQUITY_V1` uses the sole canonical kernel and exact
+full-history lineage to produce an immutable, paginable realized-equity path
+for a frozen fixed volume. It does not apply compounding, margin/liquidation,
+intratrade mark-to-market, or grant `VALIDATED`, DEMO, or LIVE status.
 
 Do not begin a later card automatically. Complete the accepted card, perform
 self-verification and an independent diff review, update evidence-backed

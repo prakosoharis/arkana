@@ -57,6 +57,8 @@ def test_strategy_factory_migration_preserves_legacy_and_supports_pre_backtest_l
     assert "strategy_candidates" in metadata.get_table_names()
     assert "oos_validations" in metadata.get_table_names()
     assert "capital_broker_contracts" in metadata.get_table_names()
+    assert "fixed_lot_capital_simulations" in metadata.get_table_names()
+    assert "fixed_lot_equity_points" in metadata.get_table_names()
     assert {"strategy_candidate_id", "strategy_contract"}.issubset({column["name"] for column in metadata.get_columns("strategy_versions")})
     assert {"validation_evidence_id", "validated_at"}.issubset({column["name"] for column in metadata.get_columns("strategy_versions")})
     assert {"strategy_version_id"}.issubset({column["name"] for column in metadata.get_columns("backtest_runs")})
@@ -85,3 +87,5 @@ def test_strategy_factory_migration_preserves_legacy_and_supports_pre_backtest_l
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_015}).scalar_one() == 1
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_016}).scalar_one() == 1
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_017}).scalar_one() == 1
+        assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": "018_fixed_lot_capital_simulation"}).scalar_one() == 1
+        assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": "019_normalized_fixed_lot_equity_points"}).scalar_one() == 1

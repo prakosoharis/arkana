@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
-from app.backtesting import _metrics, _simulate, _simulate_legacy, DEFAULT_CONFIG, STRATEGY_EVALUATOR_VERSION, simulate_kernel
+from app.backtesting import _metrics, _simulate, _simulate_legacy, _strategy_config, DEFAULT_CONFIG, STRATEGY_EVALUATOR_VERSION, simulate_kernel
+from app.models import BacktestRun, StrategyVersion
+from app.strategy_contracts import fingerprint as contract_fingerprint
 from app.strategy_adapters import compile_legacy_bullish_reversal, legacy_bullish_reversal_contract
 
 
@@ -31,3 +33,19 @@ def test_contract_adapter_has_golden_legacy_parity_across_chunk_boundaries():
     assert [trade["entry_timestamp"] for trade in actual] == [str(bars[2]["timestamp"]),str(bars[5]["timestamp"])]
     assert actual[0]["exit_reason"] == "AMBIGUOUS_STOP_FIRST"
     assert STRATEGY_EVALUATOR_VERSION.endswith("V1")
+
+
+def test_pre_backtest_contract_resolves_only_its_exact_linked_backtest_lineage():
+    contract=legacy_bullish_reversal_contract(stop_distance=.1,target_distance=.1,spread_price=.02)
+    fingerprint=contract_fingerprint(contract)
+    strategy=StrategyVersion(id="strategy",strategy_key="strategy",version=1,name="strategy",status="CONTRACT_VALID",strategy_contract=contract,configuration={"strategy_contract_fingerprint":fingerprint},checksum=fingerprint)
+    config=compile_legacy_bullish_reversal(contract)
+    lineage={"strategy_version_id":strategy.id,"strategy_contract_fingerprint":fingerprint,"strategy_checksum":fingerprint,"evaluator_version":STRATEGY_EVALUATOR_VERSION}
+    backtest=BacktestRun(id="backtest",dataset_id="dataset",strategy_version_id=strategy.id,fingerprint="backtest-fingerprint",configuration=config,result={"strategy_lineage":lineage},trades=[])
+    assert _strategy_config(strategy,backtest)==config
+    backtest.result={"strategy_lineage":{**lineage,"strategy_checksum":"wrong"}}
+    try:
+        _strategy_config(strategy,backtest)
+        assert False,"mismatched lineage should fail"
+    except ValueError as error:
+        assert "exact Strategy Contract lineage" in str(error)

@@ -16,7 +16,7 @@ The legacy compatibility strategy failed protocol V3. Capital simulation may
 describe its account consequences, but it cannot relabel it `VALIDATED` or
 authorize DEMO/LIVE.
 
-## ARK-S14-01 implemented contract
+## ARK-S14-01 accepted contract
 
 `CAPITAL_BROKER_CONTRACT_V1` freezes the assumptions required by later capital
 simulation:
@@ -95,7 +95,7 @@ API scenario:
 
 ## Verification report — 2026-08-24
 
-Implementation status: **COMPLETE, awaiting Owner acceptance**.
+Implementation status: **ACCEPTED and pushed at commit `52fd5e9`**.
 
 - focused broker/capital/API/migration OAT: 29 passed;
 - complete research-service regression: 108 passed;
@@ -130,4 +130,84 @@ Implementation status: **COMPLETE, awaiting Owner acceptance**.
   instead of returning an unhandled uniqueness error.
 
 Existing FastAPI/naive-UTC/SQLite and frontend tooling deprecation warnings
-remain non-failing. ARK-S14-02 has not started.
+remain non-failing.
+
+## ARK-S14-02 implemented engine
+
+`FIXED_LOT_REALIZED_EQUITY_V1` produces immutable historical account evidence
+from an exact `CAPITAL_CONTRACT_READY` fixed-lot contract and an exact completed
+supplemental full-history validation. It:
+
+- resolves a pre-backtest Strategy Contract only through its exact linked
+  BacktestRun lineage and compatibility adapter;
+- invokes `simulate_kernel` as the sole canonical trade traversal;
+- fails closed unless trade count and summed after-cost price PnL reproduce the
+  source full-history evidence;
+- converts each canonical `net_pnl_price` using the frozen MT5 tick size,
+  profit/loss tick value, and fixed volume;
+- applies decimal half-even arithmetic at eight decimal places;
+- records starting capital and every realized trade-close balance, peak, and
+  drawdown as normalized, paginable equity points;
+- fingerprints strategy, capital contract, full validation, dataset, broker
+  snapshot, evaluator, and configuration; identical inputs reuse one result;
+- persists all points and the final result atomically, including concurrent
+  unique-winner recovery.
+
+This is realized balance at trade close only. Negative balances are recorded
+truthfully because margin rejection, liquidation, and unable-to-trade rules are
+deliberately reserved for ARK-S14-04. The result makes those boundaries
+machine-readable. It applies no fractional risk, compounding, volume rounding,
+intratrade mark-to-market, StrategyVersion promotion, DEMO/LIVE action, or
+`VALIDATED` claim.
+
+## ARK-S14-02 API contract
+
+- `POST /api/v1/capital-contracts/{id}/fixed-lot-simulations` creates or reuses
+  the exact simulation for `source_full_validation_id`.
+- `GET /api/v1/capital-contracts/{id}/fixed-lot-simulations` lists immutable
+  results without loading the full path.
+- `GET /api/v1/fixed-lot-capital-simulations/{id}` returns metrics and lineage.
+- `GET /api/v1/fixed-lot-capital-simulations/{id}/equity-path` returns bounded
+  sequence-based pages with `offset`, `limit`, and exact total.
+
+## Owner Acceptance Test — ARK-S14-02
+
+1. Use capital contract `cb7c739b-0961-4b94-b555-ede84ccd638e` and completed
+   full validation `ae83634e-7411-46f9-9dc5-4f1d8d1deb7f`.
+2. POST the fixed-lot simulation and verify status `COMPLETED`, protocol
+   `FIXED_LOT_REALIZED_EQUITY_V1`, and all exact lineage fingerprints.
+3. Repeat the POST and verify the same id/fingerprint with `reused: true`.
+4. Page sequence 0 and sequence 704706; verify total 704707 and contiguous
+   stored sequences from 0 through 704706.
+5. Verify the strategy remains `CONTRACT_VALID`, with no validation evidence,
+   validation timestamp, deployment, or trade action.
+6. Verify fractional-risk or non-ready contracts fail before traversal.
+
+## ARK-S14-02 verification report — 2026-08-24
+
+Implementation status: **COMPLETE, awaiting Owner acceptance**.
+
+- focused adapter/capital/API/migration OAT: 35 passed;
+- complete research-service regression: 115 passed;
+- web regression: lint passed, typecheck passed, 15 tests passed, and production
+  build completed successfully;
+- migrations 018 and 019 are recorded in live PostgreSQL; normalized point
+  storage replaced an unsafe monolithic equity JSON design before acceptance;
+- exact source full validation: `ae83634e-7411-46f9-9dc5-4f1d8d1deb7f`,
+  fingerprint `2cde152de4c5cd8538374a94146108c987b9d20274c85c7878a47d5039907691`,
+  2,985,994 M1 bars, 704,706 trades, net price PnL -34,055.0, period
+  2017-04-12 23:00 through 2026-08-20 18:00;
+- runtime simulation: `4f294f3d-eb3b-4f66-8cba-a300978520cf`, fingerprint
+  `e4bc4aed256680085081b428e98a60b58fe2e269bb54a34827b2076108be10fa`;
+- runtime fixed 0.01 lot metrics: starting USD 10,000, ending -24,055,
+  net -34,055, 182,078 wins, 522,628 losses, profit factor 0.34838929,
+  maximum realized drawdown USD 34,055;
+- persistence: exactly 704,707 normalized points, sequences 0–704706; first and
+  last pages returned correctly and repeat confirmation reused the exact result;
+- lifecycle safety: StrategyVersion `cd10121c-dffc-4b0e-9558-2abca2433298`
+  remains `CONTRACT_VALID`, with null validation evidence/timestamp.
+- independent review: PASS with no remaining correctness, security, or domain
+  finding; point count/distinct sequences, single fingerprint row, lifecycle,
+  and all deferred-boundary claims were independently verified.
+
+ARK-S14-03 has not started.

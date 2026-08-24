@@ -4,8 +4,9 @@ from fastapi.testclient import TestClient
 
 from app.database import Base, SessionLocal, engine
 from app.main import app
-from app.models import BrokerMetadataSnapshot, StrategyVersion
+from app.models import BrokerMetadataSnapshot, FixedLotCapitalSimulation, FixedLotEquityPoint, StrategyVersion
 import app.capital_contracts as capital_contracts
+import app.main as main_module
 from app.strategy_contracts import fingerprint as strategy_contract_fingerprint
 
 
@@ -92,6 +93,44 @@ def test_capital_contract_api_validates_persists_reuses_and_never_promotes(monke
     with SessionLocal() as session:
         strategy = session.get(StrategyVersion, strategy_id)
         assert strategy.status == "CONTRACT_VALID" and strategy.validation_evidence_id is None
+
+
+def test_fixed_lot_capital_simulation_api_creates_lists_and_pages_equity(monkeypatch):
+    with SessionLocal() as session:
+        item = FixedLotCapitalSimulation(
+            capital_contract_id="api-contract", source_full_validation_id="api-full",
+            strategy_version_id="api-strategy", dataset_id="api-dataset",
+            fingerprint="api-fixed-lot-simulation-fingerprint",
+            protocol_version="FIXED_LOT_REALIZED_EQUITY_V1", status="COMPLETED",
+            result={"metrics": {"completed_trades": 1, "starting_capital": 10000.0, "ending_balance": 10001.0}, "boundaries": {"margin_constraints_applied": False}},
+            equity_path=[],
+        )
+        session.add(item); session.flush()
+        session.add_all([
+            FixedLotEquityPoint(simulation_id=item.id, sequence=0, payload={"sequence": 0, "event": "STARTING_CAPITAL", "balance": 10000.0}),
+            FixedLotEquityPoint(simulation_id=item.id, sequence=1, payload={"sequence": 1, "event": "TRADE_CLOSED", "balance": 10001.0}),
+        ])
+        session.commit(); session.refresh(item); item_id = item.id
+    monkeypatch.setattr(main_module, "run_fixed_lot_capital_simulation", lambda session, contract_id, full_id: (session.get(FixedLotCapitalSimulation, item_id), True))
+    with TestClient(app) as client:
+        created = client.post("/api/v1/capital-contracts/api-contract/fixed-lot-simulations", json={"source_full_validation_id": "api-full"})
+        assert created.status_code == 200 and created.json()["reused"] is True
+        assert created.json()["equity_path_points"] == 2
+        listed = client.get("/api/v1/capital-contracts/api-contract/fixed-lot-simulations")
+        assert listed.status_code == 200 and listed.json()["simulations"][0]["id"] == item_id
+        detail = client.get(f"/api/v1/fixed-lot-capital-simulations/{item_id}")
+        assert detail.status_code == 200 and detail.json()["result"]["boundaries"]["margin_constraints_applied"] is False
+        page = client.get(f"/api/v1/fixed-lot-capital-simulations/{item_id}/equity-path", params={"offset": 1, "limit": 1})
+        assert page.status_code == 200 and page.json()["total"] == 2
+        assert page.json()["equity_path"] == [{"sequence": 1, "event": "TRADE_CLOSED", "balance": 10001.0}]
+        assert client.get("/api/v1/fixed-lot-capital-simulations/missing").status_code == 404
+
+    def blocked(*args):
+        raise ValueError("Capital broker contract is not ready")
+    monkeypatch.setattr(main_module, "run_fixed_lot_capital_simulation", blocked)
+    with TestClient(app) as client:
+        response = client.post("/api/v1/capital-contracts/api-contract/fixed-lot-simulations", json={"source_full_validation_id": "api-full"})
+        assert response.status_code == 422 and "not ready" in response.json()["detail"]
 
 
 def test_hypothesis_api_persists_assessment_and_version():

@@ -233,6 +233,23 @@ def _full_regime_breakdown(asset: Any, config: dict[str, Any], *, chunk_size: in
 
 def _strategy_config(strategy: StrategyVersion, original: BacktestRun) -> dict[str, Any]:
     """Prove the deployed v1 rule inputs, not a reconfigured approximation."""
+    if strategy.strategy_contract:
+        from .strategy_adapters import compile_legacy_bullish_reversal
+        config = compile_legacy_bullish_reversal(strategy.strategy_contract)
+        if original.strategy_version_id != strategy.id:
+            raise ValueError("BacktestRun is not linked to this StrategyVersion")
+        if original.configuration != config:
+            raise ValueError("Linked BacktestRun configuration differs from the Strategy Contract adapter output")
+        lineage = (original.result or {}).get("strategy_lineage") or {}
+        expected = {
+            "strategy_version_id": strategy.id,
+            "strategy_contract_fingerprint": strategy.configuration.get("strategy_contract_fingerprint"),
+            "strategy_checksum": strategy.checksum,
+            "evaluator_version": STRATEGY_EVALUATOR_VERSION,
+        }
+        if any(lineage.get(key) != value for key, value in expected.items()):
+            raise ValueError("Linked BacktestRun does not carry the exact Strategy Contract lineage")
+        return config
     strategy_config = strategy.configuration
     original_config = original.configuration
     expected = {
@@ -306,7 +323,9 @@ def _full_result(dataset: Dataset, asset: Any, config: dict[str, Any], *, chunk_
 
 
 def run_supplemental_full_validation(session: Session, strategy: StrategyVersion, *, chunk_size: int = 10_000) -> tuple[SupplementalHistoricalValidation, bool]:
-    original = session.get(BacktestRun, strategy.backtest_run_id)
+    original = session.get(BacktestRun, strategy.backtest_run_id) if strategy.backtest_run_id else session.scalar(
+        select(BacktestRun).where(BacktestRun.strategy_version_id == strategy.id).order_by(BacktestRun.created_at.asc())
+    )
     if not original:
         raise ValueError("Original approval evidence is unavailable")
     config = _strategy_config(strategy, original)
