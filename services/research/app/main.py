@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -37,6 +37,7 @@ from .constrained_capital_simulations import get_materialized_verification, mate
 from .variant_experiment_contracts import PROTOCOL_VERSION as VARIANT_CONTRACT_PROTOCOL_VERSION, create as create_variant_experiment_contract, serialize as serialize_variant_experiment_contract, validation_report as variant_experiment_validation_report
 from .variant_train_runs import TrainRunConflict, run as run_variant_train_evaluation, serialize as serialize_variant_train_run
 from .variant_holdout_runs import HoldoutRunConflict, get_selection as get_variant_selection, run as run_variant_holdout_evaluation, serialize as serialize_variant_holdout_run, serialize_selection as serialize_variant_selection
+from .variant_revision_lifecycle import RevisionRunConflict, confirm_and_run as confirm_variant_revision, serialize as serialize_variant_revision_confirmation
 
 
 app = FastAPI(title="ARKANA Research Service", version="0.1.0")
@@ -515,6 +516,33 @@ def get_variant_holdout_selection(run_id: str, session: Session = Depends(get_se
     if not lock:
         raise HTTPException(404, "variant selection lock not found")
     return serialize_variant_selection(lock)
+
+
+@app.post("/api/v1/variant-selection-locks/{selection_lock_id}/confirm-final-oos")
+def confirm_variant_selection_final_oos(selection_lock_id: str, payload: dict, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = confirm_variant_revision(session, selection_lock_id, str(payload.get("acknowledgement", "")))
+        return serialize_variant_revision_confirmation(item, reused=reused)
+    except RevisionRunConflict as error:
+        raise HTTPException(409, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/variant-selection-locks/{selection_lock_id}/revision-confirmation")
+def get_variant_revision_confirmation_for_lock(selection_lock_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.scalar(select(VariantRevisionConfirmation).where(VariantRevisionConfirmation.selection_lock_id == selection_lock_id))
+    if not item:
+        raise HTTPException(404, "variant revision confirmation not found")
+    return serialize_variant_revision_confirmation(item)
+
+
+@app.get("/api/v1/variant-revision-confirmations/{confirmation_id}")
+def get_variant_revision_confirmation(confirmation_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(VariantRevisionConfirmation, confirmation_id)
+    if not item:
+        raise HTTPException(404, "variant revision confirmation not found")
+    return serialize_variant_revision_confirmation(item)
 
 
 @app.post("/api/v1/capital-contracts/{capital_contract_id}/fixed-lot-simulations")

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.database import Base, SessionLocal, engine
 from app.main import app
-from app.models import BrokerMetadataSnapshot, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, StrategyVersion, VariantHoldoutRun, VariantSelectionLock, VariantTrainRun
+from app.models import BrokerMetadataSnapshot, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, StrategyVersion, VariantHoldoutRun, VariantRevisionConfirmation, VariantSelectionLock, VariantTrainRun
 import app.capital_contracts as capital_contracts
 import app.main as main_module
 from app.strategy_contracts import fingerprint as strategy_contract_fingerprint
@@ -14,6 +14,7 @@ from app.strategy_adapters import legacy_bullish_reversal_contract
 from app.variant_experiment_contracts import COST_SCENARIOS, PARTITION_POLICY, SELECTION_POLICY
 from app.variant_train_runs import TrainRunConflict
 from app.variant_holdout_runs import HoldoutRunConflict
+from app.variant_revision_lifecycle import RevisionRunConflict
 
 
 FIXTURE = Path(__file__).parents[3] / "data" / "fixtures" / "xauusd_m1_sample.csv"
@@ -276,6 +277,32 @@ def test_variant_holdout_api_creates_lists_reads_selection_and_reports_conflict(
     monkeypatch.setattr(main_module, "run_variant_holdout_evaluation", lambda *_args: (_ for _ in ()).throw(HoldoutRunConflict("already running")))
     with TestClient(app) as client:
         conflict = client.post("/api/v1/variant-train-runs/api-train/holdout-runs")
+        assert conflict.status_code == 409 and conflict.json()["detail"] == "already running"
+
+
+def test_variant_revision_confirmation_api_confirms_reads_and_reports_conflict(monkeypatch):
+    with SessionLocal() as session:
+        item = VariantRevisionConfirmation(
+            selection_lock_id="api-selection", experiment_contract_id="api-contract", baseline_strategy_version_id="api-baseline",
+            revision_strategy_version_id="api-revision", selected_variant_fingerprint="api-selected-fingerprint",
+            oos_validation_id="api-oos", fingerprint="api-revision-confirmation-fingerprint",
+            protocol_version="VARIANT_SELECTED_REVISION_FINAL_OOS_V1", status="OOS_REVIEWED",
+            result={"gate_decision": "FAIL", "split_access": {"final_oos": {"accessed": True, "only_after_owner_confirmation": True}}},
+        )
+        session.add(item); session.commit(); session.refresh(item); item_id = item.id
+    monkeypatch.setattr(main_module, "confirm_variant_revision", lambda session, _lock_id, _ack: (session.get(VariantRevisionConfirmation, item_id), True))
+    with TestClient(app) as client:
+        created = client.post("/api/v1/variant-selection-locks/api-selection/confirm-final-oos", json={"acknowledgement": "CONFIRM_SELECTED_VARIANT_FINAL_OOS"})
+        assert created.status_code == 200 and created.json()["reused"] is True
+        assert created.json()["result"]["gate_decision"] == "FAIL"
+        by_lock = client.get("/api/v1/variant-selection-locks/api-selection/revision-confirmation")
+        assert by_lock.status_code == 200 and by_lock.json()["id"] == item_id
+        detail = client.get(f"/api/v1/variant-revision-confirmations/{item_id}")
+        assert detail.status_code == 200 and detail.json()["revision_strategy_version_id"] == "api-revision"
+        assert client.get("/api/v1/variant-revision-confirmations/missing").status_code == 404
+    monkeypatch.setattr(main_module, "confirm_variant_revision", lambda *_args: (_ for _ in ()).throw(RevisionRunConflict("already running")))
+    with TestClient(app) as client:
+        conflict = client.post("/api/v1/variant-selection-locks/api-selection/confirm-final-oos", json={"acknowledgement": "CONFIRM_SELECTED_VARIANT_FINAL_OOS"})
         assert conflict.status_code == 409 and conflict.json()["detail"] == "already running"
 
 

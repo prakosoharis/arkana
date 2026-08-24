@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from .backtesting import STRATEGY_EVALUATOR_VERSION, simulate_kernel
 from .market_data import iter_bars
-from .models import Dataset, DatasetBarAsset, OosValidation, StrategyVersion
+from .models import Dataset, DatasetBarAsset, OosValidation, StrategyVersion, VariantExperimentContract, VariantRevisionConfirmation
 from .strategy_adapters import compile_legacy_bullish_reversal
 
 
@@ -384,7 +384,15 @@ def apply_validation_lineage(strategy: StrategyVersion, evidence: OosValidation,
     return True
 
 
-def run(session: Session, strategy_version_id: str, *, chunk_size: int = 10_000) -> tuple[OosValidation, bool]:
+def run(
+    session: Session,
+    strategy_version_id: str,
+    *,
+    chunk_size: int = 10_000,
+    dataset_id: str | None = None,
+    apply_lineage: bool = True,
+    variant_confirmation_id: str | None = None,
+) -> tuple[OosValidation, bool]:
     if chunk_size < 1:
         raise ValueError("chunk_size must be positive")
     strategy = session.get(StrategyVersion, strategy_version_id)
@@ -392,7 +400,18 @@ def run(session: Session, strategy_version_id: str, *, chunk_size: int = 10_000)
         raise ValueError("contract StrategyVersion is required")
     if strategy.status not in {"CONTRACT_VALID", "VALIDATED"}:
         raise ValueError("StrategyVersion must be CONTRACT_VALID or historically VALIDATED")
-    dataset = session.scalar(select(Dataset).where(Dataset.symbol == "XAUUSD").order_by(Dataset.imported_at.desc()))
+    variant_lineage = strategy.configuration.get("variant_lineage") if isinstance(strategy.configuration, dict) else None
+    if variant_lineage:
+        confirmation = session.scalar(select(VariantRevisionConfirmation).where(VariantRevisionConfirmation.revision_strategy_version_id == strategy.id))
+        experiment = session.get(VariantExperimentContract, variant_lineage.get("experiment_contract_id"))
+        if not confirmation or not experiment or confirmation.selection_lock_id != variant_lineage.get("selection_lock_id"):
+            raise ValueError("Selected variant final-OOS requires its persisted Owner confirmation")
+        if variant_confirmation_id != confirmation.id:
+            raise ValueError("Selected variant final-OOS is executable only through its exact confirmation lifecycle")
+        if dataset_id and dataset_id != experiment.dataset_id:
+            raise ValueError("Selected variant final-OOS dataset must match its exact experiment")
+        dataset_id = experiment.dataset_id
+    dataset = session.get(Dataset, dataset_id) if dataset_id else session.scalar(select(Dataset).where(Dataset.symbol == "XAUUSD").order_by(Dataset.imported_at.desc()))
     asset = next((item for item in dataset.bars if item.timeframe == "M1"), None) if dataset else None
     if not dataset or not asset:
         raise ValueError("Registered M1 dataset is unavailable")
@@ -435,7 +454,8 @@ def run(session: Session, strategy_version_id: str, *, chunk_size: int = 10_000)
     item = OosValidation(strategy_version_id=strategy.id, dataset_id=dataset.id, fingerprint=fingerprint, protocol=deepcopy(PROTOCOL), result=result)
     session.add(item)
     session.flush()
-    apply_validation_lineage(strategy, item, gate["decision"])
+    if apply_lineage:
+        apply_validation_lineage(strategy, item, gate["decision"])
     session.commit()
     session.refresh(item)
     return item, False

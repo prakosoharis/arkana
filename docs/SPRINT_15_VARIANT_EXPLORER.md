@@ -2,13 +2,13 @@
 
 ## Proposal status
 
-**ACCEPTED DEVELOPMENT CONTRACT. ARK-S15-01 and ARK-S15-02 are accepted;
-ARK-S15-03 is complete and awaiting Owner acceptance.**
+**ACCEPTED DEVELOPMENT CONTRACT. ARK-S15-01 through ARK-S15-03 are accepted;
+ARK-S15-04 is complete and awaiting Owner acceptance.**
 
 The Owner accepted this Sprint 15 development contract on 2026-08-25. ARK-S15-01
 was subsequently accepted and pushed. ARK-S15-02 was accepted and pushed at
-`1fdc28c` before ARK-S15-03 began. The current authorization does not extend to
-ARK-S15-04 or to a new strategy lifecycle claim.
+`1fdc28c`; ARK-S15-03 was accepted and pushed at `32ed834` before ARK-S15-04
+began. The current authorization does not extend to ARK-S15-05.
 
 ## Milestone objective
 
@@ -352,7 +352,7 @@ recovery, and exact idempotent reuse. It creates no StrategyVersion or
 
 ### ARK-S15-03 verification report — 2026-08-25
 
-Implementation status: **COMPLETE, awaiting Owner acceptance**.
+Implementation status: **ACCEPTED and pushed at commit `32ed834`**.
 
 - S15-02 was accepted, committed, and pushed at `1fdc28c` before this card;
 - additive migration 025 is applied and recorded in live PostgreSQL, with one
@@ -413,6 +413,84 @@ revision and send only that revision through the existing protocol-V3 gate.
   eligible variant;
 - full-history Owner OAT reports the actual result without promising a
   `VALIDATED` outcome; all regressions and independent lifecycle review pass.
+
+### Implemented S15-04 revision and final-gate contract
+
+`VARIANT_SELECTED_REVISION_FINAL_OOS_V1` requires the exact acknowledgment
+`CONFIRM_SELECTED_VARIANT_FINAL_OOS` and a valid `VARIANT_SELECTED` lock. It
+revalidates the complete chain from baseline, experiment, train and holdout
+evidence to the selected eligible fingerprint, then regenerates the frozen
+matrix before creating one immutable StrategyVersion revision. The baseline is
+never overwritten.
+
+The persisted confirmation artifact exists before protocol-V3 may access the
+selected revision. Variant-derived StrategyVersions are additionally blocked
+inside the general OOS executor unless their exact confirmation and experiment
+dataset exist. The executor is extended compatibly with an explicit dataset
+binding and a deferred-lineage mode: evidence is first materialized without
+promotion, exact holdout parity is checked against selection evidence, and only
+a protocol-V3 `PASS` may apply historical-only `VALIDATED` lineage. `FAIL` and
+`INSUFFICIENT_EVIDENCE` leave the revision `CONTRACT_VALID`.
+
+Confirmation has one deterministic fingerprint, a 30-minute single-winner
+lease, exact idempotent reuse, and failed/stale recovery. A parity or lineage
+failure remains an inspectable failed-closed artifact and cannot promote the
+revision. No result authorizes DEMO/LIVE, capital, Router eligibility, current
+decisions, or trading.
+
+### S15-04 API contract
+
+- `POST /api/v1/variant-selection-locks/{id}/confirm-final-oos` requires the
+  exact Owner acknowledgment, creates/reuses the revision, and runs the exact
+  protocol-V3 gate only when selection is valid.
+- `GET /api/v1/variant-selection-locks/{id}/revision-confirmation` reads the
+  artifact for one lock without execution.
+- `GET /api/v1/variant-revision-confirmations/{id}` reads exact confirmation,
+  revision, OOS, decision, and lifecycle lineage.
+
+### Owner Acceptance Test — ARK-S15-04
+
+1. POST accepted runtime lock `93e905a4-251f-4c8c-8377-ed1ea12d87e3`
+   using acknowledgment `CONFIRM_SELECTED_VARIANT_FINAL_OOS`.
+2. Verify HTTP 422 explicitly states that `NO_ELIGIBLE_VARIANT` cannot create a
+   revision.
+3. Verify there are still zero revision confirmations, four StrategyVersions,
+   and one existing OOS evidence row; no final-OOS execution was started.
+4. Verify baseline `cd10121c-dffc-4b0e-9558-2abca2433298` remains
+   `CONTRACT_VALID` with null validation evidence/timestamp.
+5. Review deterministic automated fixtures for selected PASS, FAIL, and
+   `INSUFFICIENT_EVIDENCE`; only PASS may set the created revision to
+   historical-only `VALIDATED`.
+6. Verify duplicate confirmation reuses one artifact/revision, while tampered
+   lineage, missing acknowledgment, pre-confirmation OOS, and parity mismatch
+   fail closed.
+
+### ARK-S15-04 verification report — 2026-08-25
+
+Implementation status: **COMPLETE, awaiting Owner acceptance**.
+
+- S15-03 was accepted, committed, and pushed at `32ed834` before this card;
+- additive migration 026 is applied and recorded in live PostgreSQL;
+- focused lifecycle/OOS/holdout/train/API/migration regression: 64 passed on
+  Python 3.13;
+- complete research-service regression: 158 passed on Python 3.13;
+- deterministic fixtures prove PASS, FAIL, `INSUFFICIENT_EVIDENCE`,
+  `NO_ELIGIBLE_VARIANT`, exact reuse, fresh conflict, stale recovery, tampered
+  selection rejection, holdout-parity fail-closed behavior, and exact dataset
+  binding;
+- final runtime POST of the accepted lock returned HTTP 422 in 0.014 seconds with
+  `A VARIANT_SELECTED lock is required; NO_ELIGIBLE_VARIANT cannot create a
+  revision`;
+- runtime row counts remained zero revision confirmations, four
+  StrategyVersions, and one OOS validation. The baseline remains
+  `CONTRACT_VALID` with null validation evidence/timestamp, so final-OOS was
+  not opened and no lifecycle claim was fabricated;
+- web regression passed lint, typecheck, 18 tests, and production build;
+  S15-04 adds no UI or BFF route;
+- final review found no latest-dataset drift, pre-confirmation final-OOS bypass,
+  baseline overwrite, duplicate revision, selection/parity bypass, promotion
+  on non-PASS, or DEMO/LIVE/capital/Router side effect. Observed warnings remain
+  the documented pre-existing framework deprecations.
 
 ## ARK-S15-05 — Owner UI and acceptance verifier
 

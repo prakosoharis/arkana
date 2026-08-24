@@ -25,6 +25,7 @@ MIGRATION_022 = "022_constrained_capital_verification"
 MIGRATION_023 = "023_variant_experiment_contract_foundation"
 MIGRATION_024 = "024_variant_train_evaluation"
 MIGRATION_025 = "025_variant_holdout_selection"
+MIGRATION_026 = "026_variant_revision_final_oos"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -375,6 +376,33 @@ def _migration_025(connection) -> None:
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_variant_selection_locks_experiment_contract_id ON variant_selection_locks(experiment_contract_id)"))
 
 
+def _migration_026(connection) -> None:
+    connection.execute(text("""
+        CREATE TABLE IF NOT EXISTS variant_revision_confirmations (
+            id VARCHAR(36) PRIMARY KEY,
+            selection_lock_id VARCHAR(36) NOT NULL UNIQUE,
+            experiment_contract_id VARCHAR(36) NOT NULL,
+            baseline_strategy_version_id VARCHAR(36) NOT NULL,
+            revision_strategy_version_id VARCHAR(36) NOT NULL UNIQUE,
+            selected_variant_fingerprint VARCHAR(64) NOT NULL,
+            oos_validation_id VARCHAR(36),
+            fingerprint VARCHAR(64) NOT NULL UNIQUE,
+            protocol_version VARCHAR(64) NOT NULL,
+            status VARCHAR(48) NOT NULL,
+            result JSON NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP NOT NULL,
+            FOREIGN KEY(selection_lock_id) REFERENCES variant_selection_locks(id),
+            FOREIGN KEY(experiment_contract_id) REFERENCES variant_experiment_contracts(id),
+            FOREIGN KEY(baseline_strategy_version_id) REFERENCES strategy_versions(id),
+            FOREIGN KEY(revision_strategy_version_id) REFERENCES strategy_versions(id),
+            FOREIGN KEY(oos_validation_id) REFERENCES oos_validations(id)
+        )
+    """))
+    for column in ("experiment_contract_id", "baseline_strategy_version_id", "selected_variant_fingerprint", "oos_validation_id"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_variant_revision_confirmations_{column} ON variant_revision_confirmations({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -389,6 +417,7 @@ MIGRATIONS = (
     (MIGRATION_023, _migration_023),
     (MIGRATION_024, _migration_024),
     (MIGRATION_025, _migration_025),
+    (MIGRATION_026, _migration_026),
 )
 
 

@@ -227,6 +227,29 @@ class VariantSelectionLock(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class VariantRevisionConfirmation(Base):
+    """Owner-confirmed selected revision and its exact protocol-V3 outcome."""
+    __tablename__ = "variant_revision_confirmations"
+    __table_args__ = (
+        UniqueConstraint("selection_lock_id", name="uq_variant_revision_confirmation_selection_lock"),
+        UniqueConstraint("revision_strategy_version_id", name="uq_variant_revision_confirmation_revision"),
+        UniqueConstraint("fingerprint", name="uq_variant_revision_confirmation_fingerprint"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    selection_lock_id: Mapped[str] = mapped_column(ForeignKey("variant_selection_locks.id"), nullable=False, index=True)
+    experiment_contract_id: Mapped[str] = mapped_column(ForeignKey("variant_experiment_contracts.id"), nullable=False, index=True)
+    baseline_strategy_version_id: Mapped[str] = mapped_column(ForeignKey("strategy_versions.id"), nullable=False, index=True)
+    revision_strategy_version_id: Mapped[str] = mapped_column(ForeignKey("strategy_versions.id"), nullable=False, index=True)
+    selected_variant_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    oos_validation_id: Mapped[str | None] = mapped_column(ForeignKey("oos_validations.id"), nullable=True, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(48), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 class FixedLotCapitalSimulation(Base):
     """Immutable realized-equity evidence produced by the sole backtest kernel."""
     __tablename__ = "fixed_lot_capital_simulations"

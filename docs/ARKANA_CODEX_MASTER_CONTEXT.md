@@ -183,13 +183,13 @@ Sprint 15's five-card contract is accepted and recorded in
 4. **ARK-S15-04:** selected revision, final-OOS gate, and lifecycle boundary;
 5. **ARK-S15-05:** Owner UI, full verification, runtime OAT, and acceptance.
 
-ARK-S15-01 is accepted and pushed at `736175e`; ARK-S15-02 is accepted and
-pushed at `1fdc28c`. ARK-S15-03 is implemented and awaiting Owner acceptance.
-Its deterministic nine-variant matrix completed holdout-only nominal/adverse
-execution through the canonical evaluator with exact baseline parity. The
-immutable lock records `NO_ELIGIBLE_VARIANT`, zero eligible challengers, and no
-selected fingerprint; final-OOS remains untouched. ARK-S15-04 must not begin
-before explicit Owner acceptance.
+ARK-S15-01 is accepted and pushed at `736175e`; ARK-S15-02 at `1fdc28c`; and
+ARK-S15-03 at `32ed834`. ARK-S15-04 is implemented and awaiting Owner
+acceptance. Owner-confirmed selected locks can create one immutable revision
+and invoke exact-dataset protocol-V3 evidence only after persisted confirmation
+and before any PASS promotion. The real lock remains `NO_ELIGIBLE_VARIANT`, so
+runtime OAT correctly created no revision or final-OOS evidence. ARK-S15-05
+must not begin before explicit Owner acceptance.
 
 ## QA protocol
 
