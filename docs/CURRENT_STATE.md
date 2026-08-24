@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-25 — ARK-S16-04 Factory evidence and acceptance verifier
-**Active milestone:** Sprint 16 — Generic Deterministic Evaluator complete
-**Active card:** No active implementation card — Sprint 16 acceptance push pending
+**Updated:** 2026-08-25 — Sprint 16 complete; Sprint 17 evidence-gate proposal
+**Active milestone:** Sprint 17 — Generic Strategy Evidence Gate
+**Active card:** ARK-S17-01 — authorized; contract acceptance push pending
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -125,12 +125,15 @@ all ten required invariants. OAT still shows zero revision/confirmation and no
 final-OOS access or validation claim. Exploration cannot create DEMO, LIVE,
 capital, Router, or trading-decision authorization.
 
-The next proposed milestone is Sprint 16 — Generic Deterministic Evaluator,
-recorded in `docs/SPRINT_16_GENERIC_EVALUATOR.md`. It is deliberately upstream
-of a Strategy Router: it must first make a small registry of completed-candle
-strategy blocks executable through the existing canonical kernel and prove
-exact legacy parity. No Sprint 16 implementation is authorized until the Owner
-accepts its contract.
+Sprint 16 — Generic Deterministic Evaluator is complete and pushed at
+`9dae9ea`. It provides registry-bound contracts, compatibility compiler parity,
+bounded completed-candle MTF evaluation, Factory evidence, and a materialized
+acceptance verifier. It does not create a Router or `VALIDATED` claim.
+
+The proposed next milestone is Sprint 17 — Generic Strategy Evidence Gate,
+recorded in `docs/SPRINT_17_GENERIC_STRATEGY_EVIDENCE_GATE.md`. It adds
+train/holdout/final-OOS and robustness evidence for generic evaluator contracts
+before any Router, DEMO, or lifecycle-promotion direction can be considered.
 
 The intended next technical direction is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:

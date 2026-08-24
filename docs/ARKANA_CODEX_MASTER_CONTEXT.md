@@ -201,13 +201,21 @@ golden parity is a prerequisite to bounded completed-candle multi-timeframe
 evaluation. It creates neither a Router nor a `VALIDATED`, DEMO, LIVE, capital,
 or current-trade-decision claim. ARK-S16-01 is accepted and pushed at
 `5ebe2c8`; ARK-S16-02 is accepted and pushed at `9c26dd6`; ARK-S16-03 is
-accepted and pushed at `7b4fa21`; ARK-S16-04 is accepted and awaiting its
-required acceptance push. Sprint 16 is complete. The V2 registry provides immutable,
+accepted and pushed at `7b4fa21`; ARK-S16-04 is accepted and pushed at
+`9dae9ea`. Sprint 16 is complete. The V2 registry provides immutable,
 normalized, registry-fingerprinted contract assessments; the legacy compiler
 preserves exact Backtest V1 compatibility; and the bounded completed-candle
 evaluator now supports M1/M5/M15/H1 context with closed-bar alignment. This is
 still historical research only: it creates no Router, `VALIDATED`, DEMO, LIVE,
 capital, or current-trade decision claim.
+
+## Proposed milestone — Sprint 17 generic strategy evidence gate
+
+[`SPRINT_17_GENERIC_STRATEGY_EVIDENCE_GATE.md`](SPRINT_17_GENERIC_STRATEGY_EVIDENCE_GATE.md)
+defines four proposed cards for generic train/holdout/final-OOS replay,
+robustness evidence, an Owner-gated evidence decision, and Factory verifier/UI.
+It is a prerequisite for considering any Router or DEMO direction. The Owner
+accepted the ARK-S17 contract; ARK-S17-01 begins after its contract push.
 
 ## QA protocol
 
