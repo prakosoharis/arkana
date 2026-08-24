@@ -222,8 +222,18 @@ accepted. ARK-S17-03 is accepted and pushed at `ae98995`. ARK-S17-04 Factory
 evidence UI, materialized acceptance verifier, regression, migration recovery,
 Docker OAT, and browser OAT are complete and awaiting Owner acceptance. Its
 real verifier passed every integrity check while preserving the honest `FAIL`
-evidence outcome and `CONTRACT_VALID` lifecycle state. Sprint 17 is technically
-4/4 complete; no later milestone has started.
+evidence outcome and `CONTRACT_VALID` lifecycle state. Sprint 17 is accepted
+and complete at `deca4ee`.
+
+## Active milestone — Sprint 18 generic validation lifecycle
+
+[`SPRINT_18_GENERIC_VALIDATION_LIFECYCLE.md`](SPRINT_18_GENERIC_VALIDATION_LIFECYCLE.md)
+defines four cards for materialized eligibility, separate Owner-authorized
+historical promotion, retirement governance, and Strategy Library lifecycle
+verification/UI. The contract is accepted and only ARK-S18-01 is authorized.
+The current real Sprint 17 decision is `FAIL`; it must remain `INELIGIBLE` and
+`CONTRACT_VALID`. Sprint 18 does not authorize Router, DEMO/LIVE, MT5, capital,
+orders, or trading decisions.
 
 ## QA protocol
 

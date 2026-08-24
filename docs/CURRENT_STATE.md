@@ -1,8 +1,8 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-25 — Sprint 16 complete; Sprint 17 evidence-gate proposal
-**Active milestone:** Sprint 17 — Generic Strategy Evidence Gate
+**Updated:** 2026-08-25 — Sprint 17 complete; Sprint 18 lifecycle contract accepted
+**Active milestone:** Sprint 18 — Generic Strategy Validation Lifecycle
 **Active card:** ARK-S17-01 — authorized; contract acceptance push pending
 
 This is the only canonical description of ARKANA's current implementation
@@ -142,8 +142,13 @@ Owner acknowledgement was fabricated. ARK-S17-04 source, tests, additive
 migration, Docker OAT, and browser OAT are complete and awaiting Owner
 acceptance. The materialized verifier passed all nine chain-integrity checks
 while the evidence outcome remained `FAIL`; the StrategyVersion remains
-`CONTRACT_VALID`. Sprint 17 is technically 4/4 complete and no later milestone
-has started.
+`CONTRACT_VALID`. Sprint 17 is accepted and complete at `deca4ee`.
+
+Sprint 18 — Generic Strategy Validation Lifecycle is authorized and recorded in
+`docs/SPRINT_18_GENERIC_VALIDATION_LIFECYCLE.md`. ARK-S18-01 is authorized but
+has not yet produced an eligibility artifact. It must classify the real Sprint
+17 `FAIL` chain as `INELIGIBLE` without changing `CONTRACT_VALID`; no Router,
+DEMO/LIVE, capital, MT5, order, or trade scope is authorized.
 
 The intended next technical direction is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:
