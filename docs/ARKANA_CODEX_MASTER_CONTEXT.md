@@ -218,7 +218,9 @@ It is a prerequisite for considering any Router or DEMO direction. The Owner
 accepted the ARK-S17 contract and its contract commit was pushed at `eee8aec`.
 ARK-S17-01 implementation, regression, and full-history OAT are accepted.
 ARK-S17-02 implementation, regression, migration, and full-history OAT are
-accepted. ARK-S17-03 is authorized after the ARK-S17-02 acceptance push.
+accepted. ARK-S17-03 implementation, regression, migration, and runtime
+decision OAT are complete and awaiting Owner acceptance; ARK-S17-04 has not
+started.
 
 ## QA protocol
 

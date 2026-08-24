@@ -638,6 +638,17 @@ def test_s16_capability_registry_assessment_and_confirmation_api_are_fail_closed
         assert stability_body["result"]["selection"]["optimization_performed"] is False
         assert client.post(f"/api/v1/strategy-versions/{generic_version.json()['id']}/generic-robustness", json={"baseline_oos_validation_id": evidence["id"]}).json()["reused"] is True
         assert client.get(f"/api/v1/generic-robustness/{stability_body['id']}").json()["fingerprint"] == stability_body["fingerprint"]
+        decision = client.post(f"/api/v1/strategy-versions/{generic_version.json()['id']}/generic-evidence-decisions", json={"robustness_evidence_id": stability_body["id"]})
+        assert decision.status_code == 200, decision.text
+        decision_body = decision.json()
+        assert decision_body["decision"] == "INSUFFICIENT_EVIDENCE"
+        assert decision_body["result"]["owner_gate"]["acknowledgement_creates_validation"] is False
+        assert client.post(f"/api/v1/strategy-versions/{generic_version.json()['id']}/generic-evidence-decisions", json={"robustness_evidence_id": stability_body["id"]}).json()["reused"] is True
+        assert client.post(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/owner-confirmations", json={"acknowledgement": "PROMOTE"}).status_code == 422
+        confirmation = client.post(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/owner-confirmations", json={"acknowledgement": "ACKNOWLEDGE_GENERIC_EVIDENCE_DECISION_V1"})
+        assert confirmation.status_code == 200 and confirmation.json()["result"]["promotion"]["authorized"] is False
+        assert client.post(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/owner-confirmations", json={"acknowledgement": "ACKNOWLEDGE_GENERIC_EVIDENCE_DECISION_V1"}).json()["reused"] is True
+        assert client.get(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/owner-confirmation").json()["id"] == confirmation.json()["id"]
         current = next(item for item in client.get("/api/v1/strategy-versions").json()["strategy_versions"] if item["id"] == generic_version.json()["id"])
         assert current["status"] == "CONTRACT_VALID" and current["validation_evidence_id"] is None
 

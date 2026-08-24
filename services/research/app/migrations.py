@@ -30,6 +30,7 @@ MIGRATION_027 = "027_variant_experiment_verification"
 MIGRATION_028 = "028_strategy_contract_capability_assessments"
 MIGRATION_029 = "029_strategy_evaluator_verifications"
 MIGRATION_030 = "030_generic_robustness_evidence"
+MIGRATION_031 = "031_generic_evidence_owner_gate"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -460,6 +461,23 @@ def _migration_030(connection) -> None:
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_generic_robustness_evidence_baseline_oos_validation_id ON generic_robustness_evidence(baseline_oos_validation_id)"))
 
 
+def _migration_031(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS generic_evidence_decisions (
+        id VARCHAR(36) PRIMARY KEY, strategy_version_id VARCHAR(36) NOT NULL,
+        dataset_id VARCHAR(36) NOT NULL, oos_validation_id VARCHAR(36) NOT NULL,
+        robustness_evidence_id VARCHAR(36) NOT NULL, fingerprint VARCHAR(64) NOT NULL UNIQUE,
+        protocol_version VARCHAR(64) NOT NULL, decision VARCHAR(48) NOT NULL,
+        result JSON NOT NULL, created_at TIMESTAMP NOT NULL)"""))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_generic_evidence_decisions_strategy_version_id ON generic_evidence_decisions(strategy_version_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_generic_evidence_decisions_robustness_evidence_id ON generic_evidence_decisions(robustness_evidence_id)"))
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS generic_evidence_owner_confirmations (
+        id VARCHAR(36) PRIMARY KEY, decision_id VARCHAR(36) NOT NULL UNIQUE,
+        strategy_version_id VARCHAR(36) NOT NULL, fingerprint VARCHAR(64) NOT NULL UNIQUE,
+        protocol_version VARCHAR(64) NOT NULL, acknowledgement VARCHAR(96) NOT NULL,
+        status VARCHAR(48) NOT NULL, result JSON NOT NULL, created_at TIMESTAMP NOT NULL)"""))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_generic_evidence_owner_confirmations_strategy_version_id ON generic_evidence_owner_confirmations(strategy_version_id)"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -479,6 +497,7 @@ MIGRATIONS = (
     (MIGRATION_028, _migration_028),
     (MIGRATION_029, _migration_029),
     (MIGRATION_030, _migration_030),
+    (MIGRATION_031, _migration_031),
 )
 
 

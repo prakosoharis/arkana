@@ -160,6 +160,40 @@ class GenericRobustnessEvidence(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class GenericEvidenceDecision(Base):
+    """Combined generic historical outcome; never a lifecycle transition."""
+    __tablename__ = "generic_evidence_decisions"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_generic_evidence_decision_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    strategy_version_id: Mapped[str] = mapped_column(ForeignKey("strategy_versions.id"), nullable=False, index=True)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id"), nullable=False, index=True)
+    oos_validation_id: Mapped[str] = mapped_column(ForeignKey("oos_validations.id"), nullable=False, index=True)
+    robustness_evidence_id: Mapped[str] = mapped_column(ForeignKey("generic_robustness_evidence.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    decision: Mapped[str] = mapped_column(String(48), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class GenericEvidenceOwnerConfirmation(Base):
+    """Owner acknowledgement only; future promotion remains a separate scope."""
+    __tablename__ = "generic_evidence_owner_confirmations"
+    __table_args__ = (
+        UniqueConstraint("decision_id", name="uq_generic_evidence_owner_confirmation_decision"),
+        UniqueConstraint("fingerprint", name="uq_generic_evidence_owner_confirmation_fingerprint"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    decision_id: Mapped[str] = mapped_column(ForeignKey("generic_evidence_decisions.id"), nullable=False, index=True)
+    strategy_version_id: Mapped[str] = mapped_column(ForeignKey("strategy_versions.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    acknowledgement: Mapped[str] = mapped_column(String(96), nullable=False)
+    status: Mapped[str] = mapped_column(String(48), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"

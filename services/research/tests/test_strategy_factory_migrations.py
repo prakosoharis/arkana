@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
-from app.migrations import MIGRATION_013, MIGRATION_014, MIGRATION_015, MIGRATION_016, MIGRATION_017, MIGRATION_021, MIGRATION_022, MIGRATION_023, MIGRATION_024, MIGRATION_025, MIGRATION_026, MIGRATION_027, MIGRATION_028, MIGRATION_029, MIGRATION_030, run_migrations
+from app.migrations import MIGRATION_013, MIGRATION_014, MIGRATION_015, MIGRATION_016, MIGRATION_017, MIGRATION_021, MIGRATION_022, MIGRATION_023, MIGRATION_024, MIGRATION_025, MIGRATION_026, MIGRATION_027, MIGRATION_028, MIGRATION_029, MIGRATION_030, MIGRATION_031, run_migrations
 from app.models import BacktestRun, StrategyCandidate, StrategyVersion
 
 
@@ -73,6 +73,8 @@ def test_strategy_factory_migration_preserves_legacy_and_supports_pre_backtest_l
     assert "strategy_contract_assessments" in metadata.get_table_names()
     assert "strategy_evaluator_verifications" in metadata.get_table_names()
     assert "generic_robustness_evidence" in metadata.get_table_names()
+    assert "generic_evidence_decisions" in metadata.get_table_names()
+    assert "generic_evidence_owner_confirmations" in metadata.get_table_names()
     assert {"strategy_candidate_id", "strategy_contract"}.issubset({column["name"] for column in metadata.get_columns("strategy_versions")})
     assert {"validation_evidence_id", "validated_at"}.issubset({column["name"] for column in metadata.get_columns("strategy_versions")})
     assert {"strategy_version_id"}.issubset({column["name"] for column in metadata.get_columns("backtest_runs")})
@@ -114,3 +116,4 @@ def test_strategy_factory_migration_preserves_legacy_and_supports_pre_backtest_l
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_028}).scalar_one() == 1
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_029}).scalar_one() == 1
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_030}).scalar_one() == 1
+        assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_031}).scalar_one() == 1

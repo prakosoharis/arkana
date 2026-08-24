@@ -10,13 +10,14 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericRobustnessEvidence, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericRobustnessEvidence, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
 from .backtesting import run_backtest, run_supplemental_full_validation
 from .oos_validation import run as run_oos_validation
 from .generic_robustness import run as run_generic_robustness, serialize as serialize_generic_robustness
+from .generic_evidence_decisions import confirm as confirm_generic_evidence, materialize as materialize_generic_evidence_decision, serialize_confirmation as serialize_generic_evidence_confirmation, serialize_decision as serialize_generic_evidence_decision
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
@@ -398,6 +399,46 @@ def get_generic_robustness(evidence_id: str, session: Session = Depends(get_sess
     if not item:
         raise HTTPException(404, "generic robustness evidence not found")
     return serialize_generic_robustness(item)
+
+
+@app.post("/api/v1/strategy-versions/{strategy_version_id}/generic-evidence-decisions")
+def create_generic_evidence_decision(strategy_version_id: str, payload: dict | None = None, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = materialize_generic_evidence_decision(session, strategy_version_id, robustness_evidence_id=(payload or {}).get("robustness_evidence_id"))
+        return serialize_generic_evidence_decision(item, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/strategy-versions/{strategy_version_id}/generic-evidence-decisions")
+def list_generic_evidence_decisions(strategy_version_id: str, session: Session = Depends(get_session)) -> dict:
+    items = session.scalars(select(GenericEvidenceDecision).where(GenericEvidenceDecision.strategy_version_id == strategy_version_id).order_by(GenericEvidenceDecision.created_at.desc())).all()
+    return {"decisions": [serialize_generic_evidence_decision(item) for item in items]}
+
+
+@app.get("/api/v1/generic-evidence-decisions/{decision_id}")
+def get_generic_evidence_decision(decision_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(GenericEvidenceDecision, decision_id)
+    if not item:
+        raise HTTPException(404, "generic evidence decision not found")
+    return serialize_generic_evidence_decision(item)
+
+
+@app.post("/api/v1/generic-evidence-decisions/{decision_id}/owner-confirmations")
+def create_generic_evidence_confirmation(decision_id: str, payload: dict, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = confirm_generic_evidence(session, decision_id, str(payload.get("acknowledgement", "")))
+        return serialize_generic_evidence_confirmation(item, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/generic-evidence-decisions/{decision_id}/owner-confirmation")
+def get_generic_evidence_confirmation(decision_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.scalar(select(GenericEvidenceOwnerConfirmation).where(GenericEvidenceOwnerConfirmation.decision_id == decision_id))
+    if not item:
+        raise HTTPException(404, "generic evidence Owner confirmation not found")
+    return serialize_generic_evidence_confirmation(item)
 
 
 @app.post("/api/v1/capital-contracts/validate")

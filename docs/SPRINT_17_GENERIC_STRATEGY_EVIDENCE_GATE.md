@@ -2,7 +2,7 @@
 
 ## Status
 
-**ACTIVE — ARK-S17-02 accepted; ARK-S17-03 is authorized.**
+**ACTIVE — ARK-S17-03 is technically complete and awaiting Owner acceptance. ARK-S17-04 has not started.**
 
 Sprint 16 is complete at `9dae9ea`. It can create immutable generic
 completed-candle StrategyVersions and run them through the sole Backtest V1
@@ -190,6 +190,47 @@ boundary before any lifecycle promotion.
 - Repeated requests reuse exact evidence.
 - Lifecycle safety is independently asserted for PASS, FAIL, and insufficient
   evidence cases.
+
+### Completion report — 2026-08-25
+
+Implemented and verified:
+
+- Added immutable `GENERIC_EVIDENCE_DECISION_V1` combining the exact S17-01
+  generic OOS and S17-02 stability fingerprints. Its deterministic outcome is
+  `INSUFFICIENT_EVIDENCE` if either source is insufficient, `PASS` only if both
+  pass, and otherwise `FAIL`.
+- Decision evidence exposes every OOS/stability threshold, source outcome,
+  economic observation, split-access declaration, StrategyVersion/dataset
+  lineage, and the hard Owner boundary. Exact retries reuse one materialized
+  row without replaying either source.
+- Added separate immutable
+  `GENERIC_EVIDENCE_OWNER_ACKNOWLEDGEMENT_V1` endpoint and table. It requires the
+  exact acknowledgement phrase, binds the decision ID/fingerprint/outcome, and
+  explicitly records `promotion.authorized=false` and `performed=false`.
+  Acknowledgement is not validation and a future separate contract would be
+  required for any promotion direction.
+- Additive migration `031_generic_evidence_owner_gate` creates separate
+  decision and acknowledgement tables. Tampered lineage, unknown outcomes, and
+  incorrect acknowledgement fail closed without a partial confirmation.
+
+Verification evidence:
+
+- Backend regression: **181 passed**. PASS, FAIL, and
+  INSUFFICIENT_EVIDENCE paths independently prove no `VALIDATED`, DEMO/LIVE,
+  capital, Router, deployment, or trade-decision state; API reuse, migration
+  recovery, Python compile, and diff checks pass.
+- Docker/PostgreSQL OAT applied migration 031 exactly once and materialized
+  decision `2ea4139c-0b85-446a-a1f6-5912135497f6`, fingerprint
+  `8d99ad4cb8ba61ec9db8fa99c0dba44c4c046ada4d8c560a0490ed8a314e1e14`,
+  from S17-01 `FAIL` plus S17-02 `FAIL`; the combined outcome is honestly
+  `FAIL` and the exact retry returned `reused=true`.
+- PostgreSQL contains exactly one real decision row and **zero** real Owner
+  acknowledgement rows. No acknowledgement was fabricated during OAT. The
+  StrategyVersion remains `CONTRACT_VALID` with no `validation_evidence_id`.
+
+**Checkpoint status:** implementation and OAT are complete; awaiting explicit
+Owner acceptance. ARK-S17-04 has not started, and this checkpoint has not been
+committed or pushed.
 
 ## ARK-S17-04 — Factory evidence UI and materialized acceptance verifier
 
