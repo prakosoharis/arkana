@@ -4,9 +4,10 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
+import app.oos_validation as oos_validation
 from app.database import SessionLocal
 from app.main import app
-from app.models import Dataset, OosValidation
+from app.models import Dataset, DatasetBarAsset, OosValidation, StrategyVersion
 from app.strategy_adapters import legacy_bullish_reversal_contract
 
 
@@ -64,14 +65,14 @@ def test_strategy_factory_contract_lifecycle_is_auditable_and_cannot_promote_its
         oos = client.post(f"/api/v1/strategy-versions/{version_body['id']}/oos-validations")
         assert oos.status_code == 200, oos.text
         evidence = oos.json(); assert evidence["result"]["status"] == "OOS_REVIEWED"
-        assert evidence["protocol"]["version"] == "OOS_HISTORICAL_REVIEW_V2"
+        assert evidence["protocol"]["version"] == "OOS_HISTORICAL_REVIEW_V3"
         assert evidence["protocol"]["splits"] == {"train": .6, "holdout": .2, "final_oos": .2}
         ranges = evidence["result"]["splits"]
         assert ranges["train"]["timestamp_range"]["end"] < ranges["holdout"]["timestamp_range"]["start"] < ranges["final_oos"]["timestamp_range"]["start"]
         assert sum(item["bars"] for item in ranges.values()) == imported.json()["dataset"]["timeframes"][0]["row_count"]
-        assert evidence["result"]["gate_evaluation"] == "NOT_EVALUATED"
+        assert evidence["result"]["gate_evaluation"]["decision"] == "INSUFFICIENT_EVIDENCE"
         stress = evidence["result"]["cost_stress"]
-        assert stress["status"] == "EVALUATED" and stress["decision"] == "NOT_EVALUATED"
+        assert stress["status"] == "EVALUATED"
         baseline_costs = stress["scenarios"]["baseline"]["cost_assumptions"]
         adverse_costs = stress["scenarios"]["adverse_cost"]["cost_assumptions"]
         assert adverse_costs["spread_price"] == baseline_costs["spread_price"] * 1.5
@@ -98,9 +99,10 @@ def test_strategy_factory_contract_lifecycle_is_auditable_and_cannot_promote_its
         listed_by_fingerprint = {item["fingerprint"]: item for item in listed}
         assert set(listed_by_fingerprint) == {evidence["fingerprint"], "f" * 64}
         assert listed_by_fingerprint["f" * 64]["protocol"]["version"] == "OOS_HISTORICAL_REVIEW_V1"
-        assert listed_by_fingerprint[evidence["fingerprint"]]["protocol"]["version"] == "OOS_HISTORICAL_REVIEW_V2"
+        assert listed_by_fingerprint[evidence["fingerprint"]]["protocol"]["version"] == "OOS_HISTORICAL_REVIEW_V3"
         versions_after_oos = client.get("/api/v1/strategy-versions").json()["strategy_versions"]
         assert next(item for item in versions_after_oos if item["id"] == version_body["id"])["status"] == "CONTRACT_VALID"
+        assert next(item for item in versions_after_oos if item["id"] == version_body["id"])["validation_evidence_id"] is None
 
         revision = client.post(f"/api/v1/strategy-versions/{version_body['id']}/revision")
         assert revision.status_code == 200 and revision.json()["status"] == "DRAFT"
@@ -111,3 +113,57 @@ def test_strategy_factory_contract_lifecycle_is_auditable_and_cannot_promote_its
         # validation gate.  Its status cannot be promoted through this path.
         blocked = client.post(f"/api/v1/strategy-versions/{version_body['id']}/approve")
         assert blocked.status_code == 422
+
+
+def test_passing_gate_persists_exact_validated_lineage_and_serializes_it(monkeypatch):
+    contract = legacy_bullish_reversal_contract(stop_distance=0.37, target_distance=0.41, spread_price=0.03, commission_price=0.01)
+    with TestClient(app) as client:
+        candidate = client.post("/api/v1/strategy-candidates", json={"name": "S13-03 passing lineage", "source": "MANUAL", "provenance": {"purpose": "pass transaction evidence"}}).json()
+        version = client.post("/api/v1/strategy-versions/confirm", json={"strategy_candidate_id": candidate["id"], "strategy_contract": contract}).json()
+
+        session = SessionLocal()
+        try:
+            dataset = Dataset(fingerprint="3" * 64, symbol="XAUUSD", source="S13-03 pass fixture", timezone_status="BROKER_TIME_UNVERIFIED", imported_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=10))
+            session.add(dataset)
+            session.flush()
+            session.add(DatasetBarAsset(dataset_id=dataset.id, timeframe="M1", path="/tmp/s13-03-pass.parquet", row_count=1000, range_start=datetime(2024, 1, 1), range_end=datetime(2025, 12, 31)))
+            session.commit()
+        finally:
+            session.close()
+
+        monkeypatch.setattr(oos_validation, "_calibrate_regime", lambda _asset, _train_end, chunk_size: {"status": "AVAILABLE", "thresholds": {"volatility_low": 0.1, "volatility_high": 0.2, "trend_efficiency": 0.5}})
+
+        def passing_scenario(_asset, bounds, _config, policy, *, chunk_size, regime_thresholds):
+            adverse = policy["spread_multiplier"] > 1
+            splits = {}
+            for name, (start, end) in bounds.items():
+                year = "2024" if name != "final_oos" else "2025"
+                regime = "TRENDING+HIGH" if name != "final_oos" else "RANGING+LOW"
+                splits[name] = {
+                    "index_range": {"start_inclusive": start, "end_exclusive": end},
+                    "bars": end - start,
+                    "metrics": {"trade_count": 100, "net_pnl_price": 1.0 if adverse else 50.0, "profit_factor": 1.5},
+                    "gate_inputs": {"gross_profit_price": 150.0, "gross_loss_price": 100.0},
+                    "breakdown": {"year_net_pnl": {year: 50.0}, "regime_net_pnl": {regime: 50.0}},
+                }
+            return {"multipliers": policy, "cost_assumptions": {"spread_price": 0.03, "commission_price": 0.01, "unit": "PRICE"}, "splits": splits}
+
+        monkeypatch.setattr(oos_validation, "_evaluate_scenario", passing_scenario)
+        response = client.post(f"/api/v1/strategy-versions/{version['id']}/oos-validations")
+        assert response.status_code == 200, response.text
+        evidence = response.json()
+        assert evidence["result"]["gate_evaluation"]["decision"] == "PASS"
+        assert evidence["result"]["status"] == "VALIDATED"
+
+        serialized = next(item for item in client.get("/api/v1/strategy-versions").json()["strategy_versions"] if item["id"] == version["id"])
+        assert serialized["status"] == "VALIDATED"
+        assert serialized["validation_evidence_id"] == evidence["id"]
+        assert serialized["validated_at"] is not None
+
+        session = SessionLocal()
+        try:
+            persisted = session.get(StrategyVersion, version["id"])
+            assert persisted.status == "VALIDATED" and persisted.validation_evidence_id == evidence["id"]
+            assert session.get(OosValidation, evidence["id"]).result["gate_evaluation"]["decision"] == "PASS"
+        finally:
+            session.close()

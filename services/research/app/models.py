@@ -204,6 +204,8 @@ class StrategyVersion(Base):
     configuration: Mapped[dict] = mapped_column(JSON, nullable=False)
     checksum: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     supersedes_strategy_version_id: Mapped[str | None] = mapped_column(ForeignKey("strategy_versions.id"), nullable=True)
+    validation_evidence_id: Mapped[str | None] = mapped_column(ForeignKey("oos_validations.id"), nullable=True, index=True)
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 

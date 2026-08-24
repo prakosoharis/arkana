@@ -158,9 +158,10 @@ DEMO-ready, LIVE-ready, or a trade recommendation.
 3. **ARK-S13-03:** deterministic robustness decision gate.
 4. **ARK-S13-04:** Owner UI, full verification, and acceptance.
 
-ARK-S13-01 is accepted. The active checkpoint is **ARK-S13-02**; it expands
-the immutable review evidence with frozen nominal and adverse-cost scenarios
-without evaluating the future robustness gate.
+ARK-S13-01/02 are accepted. The active checkpoint is **ARK-S13-03**; it adds
+the deterministic historical robustness decision and exact evidence lineage.
+Only a complete PASS may claim `VALIDATED`, which remains distinct from DEMO
+or LIVE readiness.
 
 Do not begin a later card automatically. Complete the accepted card, perform
 self-verification and an independent diff review, update evidence-backed

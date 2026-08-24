@@ -150,3 +150,92 @@ The same pre-existing FastAPI, naive-UTC, SQLite, and Vite/ESLint deprecation
 warnings remain non-failing. Full-history runtime is not claimed because the
 workspace runtime metadata still contains no registered dataset; the API OAT
 uses an isolated registered fixture.
+
+## ARK-S13-03 implemented contract
+
+Protocol V3 evaluates a frozen historical robustness gate. It returns exactly
+one of:
+
+- `PASS`: every criterion passes and the StrategyVersion becomes historical
+  `VALIDATED`, linked to the exact immutable OOS evidence;
+- `FAIL`: sample size is sufficient, but at least one performance or
+  concentration criterion fails;
+- `INSUFFICIENT_EVIDENCE`: holdout/final-OOS has fewer than 100 trades or the
+  train-only regime calibration cannot be built.
+
+The deterministic criteria are:
+
+1. at least 100 baseline trades in holdout and at least 100 in final OOS;
+2. nominal net PnL after costs is strictly positive in both partitions;
+3. nominal Profit Factor is strictly greater than 1.10 in both partitions;
+4. adverse final-OOS net PnL at 1.5× spread and 2× commission is nonnegative;
+5. no single calendar year contributes more than 50% of positive OOS bucket
+   PnL across holdout plus final OOS;
+6. no single combined market regime contributes more than 50% under the same
+   denominator.
+
+Regime thresholds use M1 range and 20-bar close efficiency. They are calibrated
+from train bars only. Calibration uses every observation up to 100,000; larger
+histories use a recorded deterministic fixed stride capped at 100,000 samples.
+Each evaluation split still starts with fresh kernel and regime state. Entry
+regime classification uses only the last completed candle before entry open;
+the entry candle's future high/low/close cannot affect its own label.
+
+Migration 016 adds nullable `validation_evidence_id` and `validated_at` fields.
+Legacy rows remain unchanged. PASS writes status and evidence lineage in the
+same database transaction as the immutable evidence. FAIL and insufficient
+evidence never promote. `VALIDATED` means historical criteria passed only; it
+does not authorize DEMO, LIVE, routing, or a trade recommendation.
+
+### Owner Acceptance Test — ARK-S13-03
+
+```bash
+PYTHON_BIN=/path/to/python3.13-environment/bin/python
+DATABASE_URL=sqlite:////tmp/arkana-s13-03-oat.db \
+DATA_ROOT=/tmp/arkana-s13-03-oat-data \
+PYTHONPATH=services/research \
+"$PYTHON_BIN" -m pytest \
+  services/research/tests/test_oos_validation.py \
+  services/research/tests/test_strategy_factory_acceptance.py \
+  services/research/tests/test_strategy_factory_migrations.py -q
+```
+
+Verify the API fixture returns `INSUFFICIENT_EVIDENCE`, identifies the failed
+sample-size requirement, and leaves StrategyVersion `CONTRACT_VALID` with no
+validation evidence link. The pure gate regressions separately prove PASS,
+FAIL, exact boundary behavior, and concentration failure. A dedicated PASS API
+regression proves evidence flush, StrategyVersion status/FK, commit, database
+reload, and serialized lineage end to end.
+
+Full registered-history OAT must use the Owner dataset and report the actual
+decision; it must not assume the legacy prototype passes. ARK-S13-04 adds the
+Owner-facing UI and final Sprint 13 acceptance surface.
+
+### Verification report — 2026-08-24
+
+Implementation status: **COMPLETE, awaiting Owner acceptance**.
+
+- focused OAT: 22 passed;
+- complete research-service regression: 100 passed;
+- web regression: lint passed, typecheck passed, 13 tests passed, and the
+  production build completed successfully;
+- boundary evidence: 100 trades passes sufficiency, PF exactly 1.10 fails,
+  true PF 1.1000004 passes without display-rounding error, nominal PnL zero
+  fails, adverse final PnL zero passes, concentration 50% passes, and a value
+  above 50% fails;
+- leakage evidence: split kernel/regime state is fresh, regime calibration is
+  train-only and bounded, and entry classification cannot use its own future
+  candle OHLC;
+- lineage evidence: PASS persists evidence, `VALIDATED`, timestamp, and exact
+  FK atomically and survives database reload/API serialization; FAIL and
+  insufficient evidence do not promote;
+- migration evidence: migration 016 is idempotent in the migration runner and
+  preserves legacy rows with nullable lineage fields;
+- independent review: PASS on all eight criteria, with no high/medium defect.
+
+The workspace runtime metadata contains no registered dataset, so no real
+full-history decision is claimed. The known low-priority residual is a race
+between truly concurrent identical POST requests: the winning transaction
+remains consistent, but the losing request may receive a uniqueness error.
+Sequential evidence reuse is covered. Existing framework datetime/SQLite and
+frontend tooling deprecation warnings remain non-failing.

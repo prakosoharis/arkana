@@ -15,6 +15,7 @@ from sqlalchemy import Engine, inspect, text
 MIGRATION_013 = "013_strategy_factory_foundation"
 MIGRATION_014 = "014_strategy_contract_v1"
 MIGRATION_015 = "015_oos_validation_evidence"
+MIGRATION_016 = "016_strategy_validation_lineage"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -124,10 +125,21 @@ def _migration_015(connection) -> None:
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_oos_validations_strategy_version_id ON oos_validations(strategy_version_id)"))
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_oos_validations_dataset_id ON oos_validations(dataset_id)"))
 
+
+def _migration_016(connection) -> None:
+    columns = _columns(connection, "strategy_versions")
+    if "validation_evidence_id" not in columns:
+        connection.execute(text("ALTER TABLE strategy_versions ADD COLUMN validation_evidence_id VARCHAR(36) REFERENCES oos_validations(id)"))
+    if "validated_at" not in columns:
+        connection.execute(text("ALTER TABLE strategy_versions ADD COLUMN validated_at TIMESTAMP"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_strategy_versions_validation_evidence_id ON strategy_versions(validation_evidence_id)"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
     (MIGRATION_015, _migration_015),
+    (MIGRATION_016, _migration_016),
 )
 
 
