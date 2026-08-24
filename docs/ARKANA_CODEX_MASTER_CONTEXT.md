@@ -140,7 +140,7 @@ StrategyVersion to the BacktestRun subsequently created from it.
 | SF-11 | Journal, controlled learning, and LIVE-readiness governance |
 | SF-12 | Dynamic Discovery enhancement after validation is trustworthy |
 
-## Active milestone — Sprint 14 broker-realistic capital simulation
+## Completed milestone — Sprint 14 broker-realistic capital simulation
 
 Sprint 12 and Sprint 13 are accepted and complete. The compatibility strategy
 failed the frozen protocol-V3 robustness gate and remains useful only as
@@ -155,8 +155,8 @@ without creating a second backtest kernel or changing that strategy status.
 4. **ARK-S14-04:** margin, unable-to-trade, and broker constraints.
 5. **ARK-S14-05:** Owner UI, full-history verification, and acceptance.
 
-ARK-S14-01 through ARK-S14-04 are accepted and pushed. The active checkpoint is
-**ARK-S14-05**, implemented and awaiting Owner acceptance.
+ARK-S14-01 through ARK-S14-05 are accepted and pushed. The final implementation
+commit is `14cdbf7`; no later checkpoint has been authorized or started.
 `BROKER_CONSTRAINED_CAPITAL_V1` reuses the sole canonical kernel, binds an exact
 MT5 `OrderCalcMargin` parity report to the selected broker snapshot, applies the
 frozen volume and maximum-margin rules, and records an explicit rejection while

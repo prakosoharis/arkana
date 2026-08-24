@@ -2,8 +2,8 @@
 
 **Status:** Canonical repository current-state document
 **Updated:** 2026-08-25 — ARK-S14-05 Owner UI and full-history verification
-**Active milestone:** Sprint 14 — Broker-Realistic Historical Capital Simulation
-**Active card:** ARK-S14-05 — complete, awaiting Owner acceptance
+**Last completed milestone:** Sprint 14 — Broker-Realistic Historical Capital Simulation
+**Active card:** None — awaiting Owner authorization for the next milestone
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -108,13 +108,11 @@ runtime behavior.
 
 ## Continuation point
 
-Sprint 12 and all four Sprint 13 checkpoints are accepted and complete. The
-active milestone is **Sprint 14 — Broker-Realistic Historical Capital
-Simulation**. ARK-S14-01 through ARK-S14-04 are accepted and pushed; S14-04 is
-commit `0b2b041`. The final card, **ARK-S14-05**, is implemented and awaiting
-Owner acceptance. The Owner UI and read-only verifier expose both full-history
-sizing modes; each has 704,707-point runtime evidence with every acceptance
-check passing. Concrete evidence is recorded in
+Sprint 12, all four Sprint 13 checkpoints, and all five Sprint 14 checkpoints
+are accepted and complete. ARK-S14-05 was accepted and pushed in commit
+`14cdbf7`. The Owner UI and read-only verifier expose both full-history sizing
+modes; each has 704,707-point runtime evidence with every acceptance check
+passing. Concrete evidence is recorded in
 `docs/SPRINT_14_CAPITAL_SIMULATION.md`.
 
 The intended next technical direction is recorded in

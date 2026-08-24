@@ -257,7 +257,7 @@ about unable-to-trade continuation and broker/margin constraints.
 
 ## ARK-S14-03 verification report — 2026-08-24
 
-Implementation status: **COMPLETE, awaiting Owner acceptance**.
+Implementation status: **ACCEPTED and pushed at commit `b9c8daa`**.
 
 - focused capital/adapter/API/migration OAT: 43 passed;
 - complete research-service regression: 123 passed;
@@ -346,7 +346,7 @@ changes in margin, leverage, rates, symbol specification, or broker policy.
 
 ## ARK-S14-04 verification report — 2026-08-24
 
-Implementation status: **COMPLETE, awaiting Owner acceptance**.
+Implementation status: **ACCEPTED and pushed at commit `0b2b041`**.
 
 - MT5 scripts compile with zero errors/warnings; startup configs disable live
   trading and wait for a connected quote before exporting evidence;
@@ -427,7 +427,8 @@ trade recommendation.
 
 ## ARK-S14-05 verification report — 2026-08-25
 
-Implementation status: **COMPLETE, awaiting Owner acceptance**.
+Implementation status: **ACCEPTED AND COMPLETE**. Owner acceptance was recorded
+on 2026-08-25 and the implementation was pushed in commit `14cdbf7`.
 
 - S14-04 was accepted, committed, and pushed at `0b2b041` before this card;
 - additive migration 022 persists immutable, idempotent full-replay verifier
