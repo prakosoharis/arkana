@@ -1,7 +1,7 @@
 """Immutable chronological evidence for the Sprint 13 OOS protocol.
 
 This module orchestrates the sole canonical Backtest V1 kernel. It does not
-decide VALIDATED status; ARK-S13-01 records frozen evidence only.
+decide VALIDATED status; Sprint 13 records frozen review evidence only.
 """
 from __future__ import annotations
 
@@ -19,12 +19,17 @@ from .models import Dataset, DatasetBarAsset, OosValidation, StrategyVersion
 from .strategy_adapters import compile_legacy_bullish_reversal
 
 
-PROTOCOL_VERSION = "OOS_HISTORICAL_REVIEW_V1"
+PROTOCOL_VERSION = "OOS_HISTORICAL_REVIEW_V2"
+COST_SCENARIOS: dict[str, dict[str, float]] = {
+    "baseline": {"spread_multiplier": 1.0, "commission_multiplier": 1.0},
+    "adverse_cost": {"spread_multiplier": 1.5, "commission_multiplier": 2.0},
+}
 PROTOCOL: dict[str, Any] = {
     "version": PROTOCOL_VERSION,
     "partitioning": "CHRONOLOGICAL_COMPLETED_M1_BARS",
     "splits": {"train": 0.60, "holdout": 0.20, "final_oos": 0.20},
     "boundary_semantics": "ISOLATED_KERNEL_STATE_PER_SPLIT",
+    "cost_scenarios": COST_SCENARIOS,
     "approved_future_gate_policy": {
         "minimum_trades_per_holdout_and_final_oos": 100,
         "minimum_profit_factor": 1.10,
@@ -33,7 +38,7 @@ PROTOCOL: dict[str, Any] = {
         "commission_stress_multiplier": 2.00,
         "maximum_single_year_or_regime_pnl_concentration": 0.50,
     },
-    "gate_evaluation": "NOT_IMPLEMENTED_IN_ARK_S13_01",
+    "gate_evaluation": "NOT_IMPLEMENTED_IN_ARK_S13_02",
 }
 
 
@@ -125,6 +130,19 @@ def evidence_fingerprint(dataset: Dataset, asset: DatasetBarAsset, strategy: Str
     return sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def scenario_config(config: dict[str, Any], policy: dict[str, float]) -> dict[str, Any]:
+    """Apply a frozen cost policy without mutating the contract configuration."""
+    spread_multiplier = float(policy["spread_multiplier"])
+    commission_multiplier = float(policy["commission_multiplier"])
+    if spread_multiplier < 0 or commission_multiplier < 0:
+        raise ValueError("cost multipliers must be non-negative")
+    return {
+        **config,
+        "spread_price": round(float(config["spread_price"]) * spread_multiplier, 12),
+        "commission_price": round(float(config["commission_price"]) * commission_multiplier, 12),
+    }
+
+
 def _evaluate(asset: DatasetBarAsset, start: int, end: int, config: dict[str, Any], *, chunk_size: int) -> dict[str, Any]:
     accumulator = _OosMetricAccumulator()
     observed: dict[str, Any] = {"count": 0, "start": None, "end": None}
@@ -145,6 +163,29 @@ def _evaluate(asset: DatasetBarAsset, start: int, end: int, config: dict[str, An
     }
 
 
+def _evaluate_scenario(
+    asset: DatasetBarAsset,
+    bounds: dict[str, tuple[int, int]],
+    base_config: dict[str, Any],
+    policy: dict[str, float],
+    *,
+    chunk_size: int,
+) -> dict[str, Any]:
+    config = scenario_config(base_config, policy)
+    return {
+        "multipliers": deepcopy(policy),
+        "cost_assumptions": {
+            "spread_price": config["spread_price"],
+            "commission_price": config["commission_price"],
+            "unit": "PRICE",
+        },
+        "splits": {
+            name: _evaluate(asset, start, end, config, chunk_size=chunk_size)
+            for name, (start, end) in bounds.items()
+        },
+    }
+
+
 def run(session: Session, strategy_version_id: str, *, chunk_size: int = 10_000) -> tuple[OosValidation, bool]:
     if chunk_size < 1:
         raise ValueError("chunk_size must be positive")
@@ -162,15 +203,24 @@ def run(session: Session, strategy_version_id: str, *, chunk_size: int = 10_000)
         return existing, True
 
     bounds = split_bounds(asset.row_count)
-    splits = {name: _evaluate(asset, start, end, config, chunk_size=chunk_size) for name, (start, end) in bounds.items()}
+    scenarios = {
+        name: _evaluate_scenario(asset, bounds, config, policy, chunk_size=chunk_size)
+        for name, policy in PROTOCOL["cost_scenarios"].items()
+    }
+    splits = deepcopy(scenarios["baseline"]["splits"])
     result = {
         "status": "OOS_REVIEWED",
         "dataset_fingerprint": dataset.fingerprint,
         "strategy_version_id": strategy.id,
         "strategy_checksum": strategy.checksum,
         "splits": splits,
+        "cost_stress": {
+            "status": "EVALUATED",
+            "scenarios": scenarios,
+            "decision": "NOT_EVALUATED",
+        },
         "gate_evaluation": "NOT_EVALUATED",
-        "warning": "Historical review evidence only. OOS_REVIEWED is not VALIDATED, DEMO-ready, LIVE-ready, or a trade recommendation.",
+        "warning": "Historical review and cost-stress evidence only. OOS_REVIEWED is not VALIDATED, DEMO-ready, LIVE-ready, or a trade recommendation.",
     }
     item = OosValidation(strategy_version_id=strategy.id, dataset_id=dataset.id, fingerprint=fingerprint, protocol=deepcopy(PROTOCOL), result=result)
     session.add(item)

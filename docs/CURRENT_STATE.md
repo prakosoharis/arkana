@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-24 — ARK-S13-01 immutable OOS evidence foundation
+**Updated:** 2026-08-24 — ARK-S13-02 frozen cost-stress evidence
 **Active milestone:** Sprint 13 — OOS and Robustness Acceptance
-**Active card:** ARK-S13-01 — protocol and evidence foundation
+**Active card:** ARK-S13-02 — cost-stress evaluator expansion
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -43,7 +43,7 @@ Target:  StrategyCandidate → deterministic StrategyVersion → canonical Backt
 | Generic strategy evaluation | NARROW COMPATIBILITY ADAPTER | A deterministic Strategy Contract V1 adapter compiles only the legacy `BULLISH_REVERSAL_M1` shape into the canonical kernel. Every contract run records the version, contract/checksum, adapter version, costs, and execution semantics in its evidence fingerprint. Broader strategy capability is still missing. |
 | Strategy Library | LEGACY PROTOTYPE, preserved | Legacy `StrategyVersion` records remain post-backtest wrappers with their original `backtest_run_id` and manual `CANDIDATE → APPROVED` flow. The separate Strategy Factory UI exposes the narrow target compatibility lifecycle without relabeling or changing historical records. |
 | Strategy Factory | PARTIAL — executable compatibility vertical slice | Candidate/version API lifecycle, contract validation, immutable confirmation/revision, canonical Backtest V1 execution, exact golden parity, auditable StrategyVersion → BacktestRun lineage, and a guarded Strategy Factory UI now exist for the legacy compatibility contract. Broader generic capability remains missing. |
-| OOS/robustness acceptance | PARTIAL — immutable evidence foundation | A fingerprinted, bounded-memory 60/20/20 chronological review now records isolated train/holdout/final-OOS metrics without cross-boundary kernel state. It deliberately reports `NOT_EVALUATED`; cost stress, robustness decisions, and any `VALIDATED` gate remain unimplemented. |
+| OOS/robustness acceptance | PARTIAL — immutable protocol and cost-stress evidence | A fingerprinted, bounded-memory 60/20/20 chronological review records isolated train/holdout/final-OOS metrics under nominal costs and the approved adverse scenario (1.5× spread, 2× commission) through the sole canonical kernel. It deliberately reports `NOT_EVALUATED`; robustness decisions, concentration checks, and any `VALIDATED` gate remain unimplemented. |
 | DEMO deployment and telemetry | IMPLEMENTED legacy foundation; MT5 OAT pending | DEMO-only versioned config, acknowledgement, rollback, journal ingestion, and forward-evidence scaffolding exist. The EA supports the legacy rule only and fixed `0.01` volume. |
 | Capital Simulation and Variant Explorer | MISSING | No equity-path/risk/margin simulation and no bounded variant-comparison product capability exist. |
 | Strategy Router / Current or Live Decision | MISSING | No deterministic eligibility/router or current LONG/SHORT/NO-TRADE decision product exists. Existing UI/telemetry must not be interpreted as this capability. |
@@ -106,10 +106,11 @@ behavior.
 
 ## Continuation point
 
-Sprint 12 is accepted and complete. The active milestone is **Sprint 13 — OOS
-and Robustness Acceptance**. The current card is **ARK-S13-01**: an immutable
-60/20/20 protocol and evidence foundation. Its contract and Owner OAT are
-recorded in `docs/SPRINT_13_OOS_ROBUSTNESS.md`.
+Sprint 12 and ARK-S13-01 are accepted and complete. The active milestone is
+**Sprint 13 — OOS and Robustness Acceptance**. The current card is
+**ARK-S13-02**: frozen nominal/adverse cost evidence across the 60/20/20
+partitions. Its contract and Owner OAT are recorded in
+`docs/SPRINT_13_OOS_ROBUSTNESS.md`.
 
 The intended next technical direction is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:

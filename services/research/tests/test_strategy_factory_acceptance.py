@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Dataset
+from app.models import Dataset, OosValidation
 from app.strategy_adapters import legacy_bullish_reversal_contract
 
 
@@ -64,15 +64,41 @@ def test_strategy_factory_contract_lifecycle_is_auditable_and_cannot_promote_its
         oos = client.post(f"/api/v1/strategy-versions/{version_body['id']}/oos-validations")
         assert oos.status_code == 200, oos.text
         evidence = oos.json(); assert evidence["result"]["status"] == "OOS_REVIEWED"
+        assert evidence["protocol"]["version"] == "OOS_HISTORICAL_REVIEW_V2"
         assert evidence["protocol"]["splits"] == {"train": .6, "holdout": .2, "final_oos": .2}
         ranges = evidence["result"]["splits"]
         assert ranges["train"]["timestamp_range"]["end"] < ranges["holdout"]["timestamp_range"]["start"] < ranges["final_oos"]["timestamp_range"]["start"]
         assert sum(item["bars"] for item in ranges.values()) == imported.json()["dataset"]["timeframes"][0]["row_count"]
         assert evidence["result"]["gate_evaluation"] == "NOT_EVALUATED"
+        stress = evidence["result"]["cost_stress"]
+        assert stress["status"] == "EVALUATED" and stress["decision"] == "NOT_EVALUATED"
+        baseline_costs = stress["scenarios"]["baseline"]["cost_assumptions"]
+        adverse_costs = stress["scenarios"]["adverse_cost"]["cost_assumptions"]
+        assert adverse_costs["spread_price"] == baseline_costs["spread_price"] * 1.5
+        assert adverse_costs["commission_price"] == baseline_costs["commission_price"] * 2
+        for split_name in ("train", "holdout", "final_oos"):
+            assert stress["scenarios"]["baseline"]["splits"][split_name]["index_range"] == stress["scenarios"]["adverse_cost"]["splits"][split_name]["index_range"]
+            assert stress["scenarios"]["baseline"]["splits"][split_name]["bars"] == stress["scenarios"]["adverse_cost"]["splits"][split_name]["bars"]
         assert "not VALIDATED" in evidence["result"]["warning"]
         assert client.post(f"/api/v1/strategy-versions/{version_body['id']}/oos-validations").json()["reused"] is True
+        session = SessionLocal()
+        try:
+            legacy_evidence = OosValidation(
+                strategy_version_id=version_body["id"],
+                dataset_id=evidence["dataset_id"],
+                fingerprint="f" * 64,
+                protocol={"version": "OOS_HISTORICAL_REVIEW_V1"},
+                result={"status": "OOS_REVIEWED", "gate_evaluation": "NOT_EVALUATED"},
+            )
+            session.add(legacy_evidence)
+            session.commit()
+        finally:
+            session.close()
         listed = client.get(f"/api/v1/strategy-versions/{version_body['id']}/oos-validations").json()["validations"]
-        assert len(listed) == 1 and listed[0]["fingerprint"] == evidence["fingerprint"]
+        listed_by_fingerprint = {item["fingerprint"]: item for item in listed}
+        assert set(listed_by_fingerprint) == {evidence["fingerprint"], "f" * 64}
+        assert listed_by_fingerprint["f" * 64]["protocol"]["version"] == "OOS_HISTORICAL_REVIEW_V1"
+        assert listed_by_fingerprint[evidence["fingerprint"]]["protocol"]["version"] == "OOS_HISTORICAL_REVIEW_V2"
         versions_after_oos = client.get("/api/v1/strategy-versions").json()["strategy_versions"]
         assert next(item for item in versions_after_oos if item["id"] == version_body["id"])["status"] == "CONTRACT_VALID"
 

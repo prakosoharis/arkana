@@ -77,3 +77,76 @@ Runtime against the Owner's full history was not claimed: the workspace runtime
 metadata currently contains zero registered datasets, so the executable OAT
 uses the isolated registered fixture. The evaluator scans each split in bounded
 chunks and does not retain bars or a trade ledger in memory.
+
+## ARK-S13-02 implemented contract
+
+- protocol V2 freezes two scenarios: nominal costs and adverse costs at 1.5×
+  contract spread plus 2× contract commission;
+- both scenarios execute every train/holdout/final-OOS partition through the
+  same Strategy Contract adapter and canonical Backtest V1 kernel;
+- scenario evidence records exact multipliers, effective price-unit costs,
+  split boundaries, timestamps, bar counts, and metrics;
+- the nominal result remains available at `result.splits` for V1 response
+  compatibility, while the complete comparison is stored under
+  `result.cost_stress.scenarios`;
+- protocol V2 participates in the evidence fingerprint, so V1 evidence is
+  preserved and never overwritten or silently reinterpreted;
+- cost stress receives `status: EVALUATED`, but its decision and the overall
+  gate remain `NOT_EVALUATED`. No StrategyVersion status is mutated.
+
+### Owner Acceptance Test — ARK-S13-02
+
+Run the focused OAT in an isolated Python 3.13 environment:
+
+```bash
+PYTHON_BIN=/path/to/python3.13-environment/bin/python
+DATABASE_URL=sqlite:////tmp/arkana-s13-02-oat.db \
+DATA_ROOT=/tmp/arkana-s13-02-oat-data \
+PYTHONPATH=services/research \
+"$PYTHON_BIN" -m pytest \
+  services/research/tests/test_oos_validation.py \
+  services/research/tests/test_strategy_factory_acceptance.py \
+  services/research/tests/test_strategy_factory_migrations.py -q
+```
+
+Then verify the API response:
+
+1. `protocol.version` is `OOS_HISTORICAL_REVIEW_V2`;
+2. `protocol.cost_scenarios.adverse_cost` is exactly 1.5× spread and 2×
+   commission;
+3. nominal and adverse scenarios contain the same three index ranges and bar
+   counts;
+4. effective costs and per-split metrics are present for both scenarios;
+5. `result.cost_stress.status` is `EVALUATED`, while
+   `result.cost_stress.decision` and `result.gate_evaluation` are both
+   `NOT_EVALUATED`;
+6. repeating the request reuses the exact protocol-V2 evidence;
+7. the source StrategyVersion remains `CONTRACT_VALID`, never `VALIDATED`.
+
+Accept only cost-stress evidence in this checkpoint. Threshold decisions,
+year/regime concentration, and status transition belong to ARK-S13-03.
+
+### Verification report — 2026-08-24
+
+Implementation status: **COMPLETE, awaiting Owner acceptance**.
+
+- focused OAT: 11 passed;
+- complete research-service regression: 89 passed;
+- web regression: lint passed, typecheck passed, 13 tests passed, and the
+  production build completed successfully;
+- canonical integration evidence: with one deterministic winning trade,
+  doubling commission changes net PnL from 0.19 to 0.18 price units through
+  Backtest V1;
+- lineage evidence: changing V1 to protocol V2 changes the evidence
+  fingerprint, V1 and V2 rows coexist through the GET API, and an identical V2
+  request is reused;
+- safety evidence: cost stress is evaluated, but its decision and the overall
+  robustness gate remain `NOT_EVALUATED`; StrategyVersion stays
+  `CONTRACT_VALID`;
+- independent review: PASS on all six criteria, with no blocker or
+  high/medium-priority defect.
+
+The same pre-existing FastAPI, naive-UTC, SQLite, and Vite/ESLint deprecation
+warnings remain non-failing. Full-history runtime is not claimed because the
+workspace runtime metadata still contains no registered dataset; the API OAT
+uses an isolated registered fixture.

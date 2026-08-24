@@ -62,3 +62,58 @@ def test_evidence_fingerprint_changes_with_strategy_version():
     first = SimpleNamespace(id="v1", checksum="a" * 64, configuration={"strategy_contract_fingerprint": "c" * 64})
     second = SimpleNamespace(id="v2", checksum="b" * 64, configuration={"strategy_contract_fingerprint": "e" * 64})
     assert oos.evidence_fingerprint(dataset, asset, first, DEFAULT_CONFIG) != oos.evidence_fingerprint(dataset, asset, second, DEFAULT_CONFIG)
+
+
+def test_evidence_fingerprint_changes_with_frozen_protocol(monkeypatch):
+    dataset = SimpleNamespace(id="dataset", fingerprint="d" * 64)
+    asset = SimpleNamespace(timeframe="M1", row_count=100, range_start=datetime(2026, 1, 1), range_end=datetime(2026, 1, 2))
+    strategy = SimpleNamespace(id="v1", checksum="a" * 64, configuration={"strategy_contract_fingerprint": "c" * 64})
+    current = oos.evidence_fingerprint(dataset, asset, strategy, DEFAULT_CONFIG)
+    monkeypatch.setattr(oos, "PROTOCOL", {**oos.PROTOCOL, "version": "OOS_HISTORICAL_REVIEW_V1", "cost_scenarios": {}})
+    assert oos.evidence_fingerprint(dataset, asset, strategy, DEFAULT_CONFIG) != current
+
+
+def test_adverse_cost_scenario_is_exact_and_does_not_mutate_baseline():
+    baseline = {**DEFAULT_CONFIG, "spread_price": 0.02, "commission_price": 0.03}
+    original = baseline.copy()
+    stressed = oos.scenario_config(baseline, oos.COST_SCENARIOS["adverse_cost"])
+    assert baseline == original
+    assert stressed["spread_price"] == 0.03
+    assert stressed["commission_price"] == 0.06
+
+
+def test_each_cost_scenario_uses_canonical_split_evaluator(monkeypatch):
+    calls: list[tuple[int, int, float, float]] = []
+
+    def fake_evaluate(_asset, start, end, config, *, chunk_size):
+        calls.append((start, end, config["spread_price"], config["commission_price"]))
+        return {"index_range": {"start_inclusive": start, "end_exclusive": end}, "bars": end - start}
+
+    monkeypatch.setattr(oos, "_evaluate", fake_evaluate)
+    bounds = oos.split_bounds(10)
+    baseline = {**DEFAULT_CONFIG, "spread_price": 0.02, "commission_price": 0.03}
+    result = oos._evaluate_scenario(SimpleNamespace(), bounds, baseline, oos.COST_SCENARIOS["adverse_cost"], chunk_size=4)
+    assert len(calls) == 3
+    assert all(spread == 0.03 and commission == 0.06 for _, _, spread, commission in calls)
+    assert result["splits"]["final_oos"]["index_range"] == {"start_inclusive": 8, "end_exclusive": 10}
+
+
+def test_adverse_commission_changes_metrics_through_canonical_kernel(monkeypatch):
+    bars = _bars(4)
+    bars[0].update(open=100.0, close=99.8)
+    bars[1].update(open=99.8, close=100.0)
+    bars[2].update(open=100.0, high=100.5, low=99.9, close=100.3)
+    baseline = {
+        **DEFAULT_CONFIG,
+        "spread_price": 0.02,
+        "commission_price": 0.01,
+        "stop_distance": 0.2,
+        "target_distance": 0.2,
+    }
+    adverse = oos.scenario_config(baseline, oos.COST_SCENARIOS["adverse_cost"])
+    monkeypatch.setattr(oos, "iter_bars", lambda _asset, chunk_size: [bars[:2], bars[2:]])
+    baseline_result = oos._evaluate(SimpleNamespace(), 0, len(bars), baseline, chunk_size=2)
+    adverse_result = oos._evaluate(SimpleNamespace(), 0, len(bars), adverse, chunk_size=2)
+    assert baseline_result["metrics"]["trade_count"] == adverse_result["metrics"]["trade_count"] == 1
+    assert baseline_result["metrics"]["net_pnl_price"] == 0.19
+    assert adverse_result["metrics"]["net_pnl_price"] == 0.18
