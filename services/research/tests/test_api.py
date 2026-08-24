@@ -587,7 +587,7 @@ def test_strategy_factory_candidate_contract_api_lifecycle():
 
 def test_s16_capability_registry_assessment_and_confirmation_api_are_fail_closed():
     contract = legacy_bullish_reversal_contract(stop_distance=.21, target_distance=.34, spread_price=.02)
-    blocked = {**contract, "context_rules": [{"block_id": "SMA_RELATION", "uses_completed_candles": True, "fast_period": 10, "slow_period": 20}]}
+    generic = {**contract, "context_rules": [{"block_id": "SMA_RELATION", "uses_completed_candles": True, "timeframe": "M5", "fast_period": 1, "slow_period": 2, "relation": "ABOVE"}], "setup_rules": [{"block_id": "TWO_BAR_REVERSAL", "uses_completed_candles": True, "timeframe": "M1", "direction": "BULLISH"}], "trigger_rules": [{"block_id": "CANDLE_DIRECTION", "uses_completed_candles": True, "timeframe": "M1", "direction": "BULLISH"}]}
     with TestClient(app) as client:
         registry = client.get("/api/v1/strategy-capabilities")
         assert registry.status_code == 200
@@ -606,11 +606,16 @@ def test_s16_capability_registry_assessment_and_confirmation_api_are_fail_closed
         assert confirmed.status_code == 200 and confirmed.json()["status"] == "CONTRACT_VALID"
         assert confirmed.json()["configuration"]["strategy_capability_assessment"]["id"] == assessment.json()["id"]
         assert client.post(f"/api/v1/strategy-contract-assessments/{assessment.json()['id']}/confirm", json={"strategy_candidate_id": candidate["id"]}).json()["reused"] is True
-        unsupported = client.post("/api/v1/strategy-contract-assessments", json={"strategy_contract": blocked})
-        assert unsupported.json()["status"] == "CAPABILITY_NOT_SUPPORTED"
-        assert client.post(f"/api/v1/strategy-contract-assessments/{unsupported.json()['id']}/compile").status_code == 422
-        rejected = client.post(f"/api/v1/strategy-contract-assessments/{unsupported.json()['id']}/confirm", json={"strategy_candidate_id": candidate["id"]})
-        assert rejected.status_code == 422
+        generic_assessment = client.post("/api/v1/strategy-contract-assessments", json={"strategy_contract": generic})
+        assert generic_assessment.json()["status"] == "CONTRACT_VALID"
+        assert client.post(f"/api/v1/strategy-contract-assessments/{generic_assessment.json()['id']}/compile").status_code == 422
+        generic_candidate = client.post("/api/v1/strategy-candidates", json={"name": "S16 generic API", "source": "MANUAL", "provenance": {"purpose": "completed candle evaluator"}}).json()
+        generic_version = client.post(f"/api/v1/strategy-contract-assessments/{generic_assessment.json()['id']}/confirm", json={"strategy_candidate_id": generic_candidate["id"]})
+        assert generic_version.status_code == 200 and generic_version.json()["configuration"]["strategy_capability_assessment"]["id"] == generic_assessment.json()["id"]
+        generic_run = client.post("/api/v1/backtests", json={"strategy_version_id": generic_version.json()["id"]})
+        assert generic_run.status_code == 200, generic_run.text
+        lineage = generic_run.json()["result"]["strategy_lineage"]
+        assert lineage["completed_candle_evaluator"]["evaluator_version"] == "COMPLETED_CANDLE_MULTI_TIMEFRAME_EVALUATOR_V1"
 
 
 def test_demo_deployment_requires_approval_acknowledges_exact_checksum_and_rolls_back(tmp_path, monkeypatch):

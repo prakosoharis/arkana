@@ -23,11 +23,12 @@ from .strategy_contracts import REQUIRED, canonical_json, fingerprint as contrac
 
 REGISTRY_VERSION = "STRATEGY_CAPABILITY_REGISTRY_V2"
 EXECUTABLE = "LEGACY_BULLISH_REVERSAL_M1_V1"
-DECLARATIVE = "GENERIC_COMPLETED_CANDLE_V1_DECLARATIVE_ONLY"
+GENERIC = "GENERIC_COMPLETED_CANDLE_V1"
+DECLARATIVE = "GENERIC_COMPLETED_CANDLE_V1_DECLARATIVE_ONLY"  # Historical S16-01 label.
 
 _BLOCKS = (
     {"id": "ALWAYS", "category": "BOOLEAN", "execution": EXECUTABLE, "completed_candles": True, "parameters": {}},
-    {"id": "CANDLE_DIRECTION", "category": "TRIGGER", "execution": EXECUTABLE, "completed_candles": True, "parameters": {"previous": ["BEARISH"], "current": ["BULLISH"]}},
+    {"id": "CANDLE_DIRECTION", "category": "TRIGGER", "execution": GENERIC, "completed_candles": True, "parameters": {"direction": ["BULLISH", "BEARISH"], "legacy_previous": ["BEARISH"], "legacy_current": ["BULLISH"]}},
     {"id": "SEQUENCE_PREVIOUS_THEN_CURRENT", "category": "TRIGGER", "execution": EXECUTABLE, "completed_candles": True, "parameters": {}},
     {"id": "NEXT_BAR_OPEN", "category": "ENTRY", "execution": EXECUTABLE, "completed_candles": True, "parameters": {"uses_future_ohlc": [False]}},
     {"id": "FIXED_PRICE_DISTANCE_SL", "category": "STOP_LOSS", "execution": EXECUTABLE, "completed_candles": True, "parameters": {"unit": ["PRICE"], "distance": "POSITIVE_FINITE"}},
@@ -36,25 +37,38 @@ _BLOCKS = (
     {"id": "MAX_OPEN_POSITIONS", "category": "NO_TRADE", "execution": EXECUTABLE, "completed_candles": True, "parameters": {"maximum": [1]}},
     {"id": "FIXED_LOT_DEMO", "category": "RISK", "execution": EXECUTABLE, "completed_candles": True, "parameters": {"volume": [0.01]}},
     {"id": "STOP_FIRST", "category": "AMBIGUITY", "execution": EXECUTABLE, "completed_candles": True, "parameters": {}},
-    {"id": "ALL_OF", "category": "BOOLEAN", "execution": DECLARATIVE, "completed_candles": True, "parameters": {}},
-    {"id": "ANY_OF", "category": "BOOLEAN", "execution": DECLARATIVE, "completed_candles": True, "parameters": {}},
-    {"id": "NOT", "category": "BOOLEAN", "execution": DECLARATIVE, "completed_candles": True, "parameters": {}},
-    {"id": "SMA_RELATION", "category": "CONTEXT", "execution": DECLARATIVE, "completed_candles": True, "parameters": {"fast_period": "POSITIVE_INTEGER", "slow_period": "POSITIVE_INTEGER"}},
-    {"id": "TWO_BAR_REVERSAL", "category": "SETUP", "execution": DECLARATIVE, "completed_candles": True, "parameters": {}},
+    {"id": "ALL_OF", "category": "BOOLEAN", "execution": GENERIC, "completed_candles": True, "parameters": {"children": "NON_EMPTY_RULE_LIST"}},
+    {"id": "ANY_OF", "category": "BOOLEAN", "execution": GENERIC, "completed_candles": True, "parameters": {"children": "NON_EMPTY_RULE_LIST"}},
+    {"id": "NOT", "category": "BOOLEAN", "execution": GENERIC, "completed_candles": True, "parameters": {"child": "RULE_OBJECT"}},
+    {"id": "SMA_RELATION", "category": "CONTEXT", "execution": GENERIC, "completed_candles": True, "parameters": {"fast_period": "POSITIVE_INTEGER", "slow_period": "POSITIVE_INTEGER", "relation": ["ABOVE", "BELOW"]}},
+    {"id": "TWO_BAR_REVERSAL", "category": "SETUP", "execution": GENERIC, "completed_candles": True, "parameters": {"direction": ["BULLISH", "BEARISH"]}},
 )
 BLOCKS = {item["id"]: item for item in _BLOCKS}
 _TOP_LEVEL = set(REQUIRED) | {"schema_version"}
 _REQUIRED_PARAMETERS = {
-    "CANDLE_DIRECTION": {"previous", "current"}, "NEXT_BAR_OPEN": {"uses_future_ohlc"},
+    "NEXT_BAR_OPEN": {"uses_future_ohlc"},
     "FIXED_PRICE_DISTANCE_SL": {"unit", "distance"}, "FIXED_PRICE_DISTANCE_TP": {"unit", "distance"},
     "FIXED_SPREAD_GUARD": {"unit", "maximum"}, "MAX_OPEN_POSITIONS": {"maximum"}, "FIXED_LOT_DEMO": {"volume"},
-    "SMA_RELATION": {"fast_period", "slow_period"},
+    "SMA_RELATION": {"fast_period", "slow_period", "relation"},
 }
+
+
+def _rule_nodes(value: Any):
+    if isinstance(value, list):
+        for item in value:
+            yield from _rule_nodes(item)
+    elif isinstance(value, dict):
+        if isinstance(value.get("block_id"), str):
+            yield value
+        if isinstance(value.get("children"), list):
+            yield from _rule_nodes(value["children"])
+        if isinstance(value.get("child"), dict):
+            yield from _rule_nodes(value["child"])
 
 
 def registry() -> dict[str, Any]:
     blocks = [deepcopy(BLOCKS[key]) for key in sorted(BLOCKS)]
-    value = {"version": REGISTRY_VERSION, "execution_envelopes": {"executable": EXECUTABLE, "declared_not_executable": DECLARATIVE}, "blocks": blocks}
+    value = {"version": REGISTRY_VERSION, "execution_envelopes": {"executable": EXECUTABLE, "generic_completed_candle": GENERIC, "declared_not_executable": DECLARATIVE}, "blocks": blocks}
     return {**value, "fingerprint": sha256(canonical_json(value).encode()).hexdigest()}
 
 
@@ -87,23 +101,24 @@ def normalize(contract: object) -> tuple[dict[str, Any], list[str], list[str]]:
         if key not in normalized:
             continue
         value = normalized[key]
-        values = value if isinstance(value, list) else [value]
-        for block in values:
-            if not isinstance(block, dict) or not isinstance(block.get("block_id"), str):
-                continue
+        for block in _rule_nodes(value):
             block_id = block["block_id"]
             spec = BLOCKS.get(block_id)
             if not spec:
                 issues.append(f"CAPABILITY_NOT_SUPPORTED: unknown typed block {block_id}.")
                 continue
-            if spec["execution"] == DECLARATIVE:
+            if block_id != "CANDLE_DIRECTION" and spec["execution"] in {GENERIC, DECLARATIVE}:
                 declared.append(block_id)
             if block.get("uses_completed_candles") is not True:
                 issues.append(f"{block_id} must explicitly use completed candles only.")
+            if block.get("timeframe", "M1") not in {"M1", "M5", "M15", "H1"}:
+                issues.append(f"CAPABILITY_NOT_SUPPORTED: {block_id}.timeframe is outside the completed-candle V1 envelope.")
             for parameter in _REQUIRED_PARAMETERS.get(block_id, set()):
                 if parameter not in block:
                     issues.append(f"{block_id}.{parameter} is required.")
             for parameter, allowed in spec["parameters"].items():
+                if parameter in {"children", "child"}:
+                    continue
                 if parameter not in block:
                     continue
                 actual = block[parameter]
@@ -115,6 +130,19 @@ def normalize(contract: object) -> tuple[dict[str, Any], list[str], list[str]]:
                     issues.append(f"{block_id}.{parameter} must be a positive integer.")
                 elif isinstance(allowed, list) and actual not in allowed:
                     issues.append(f"{block_id}.{parameter} is outside the supported V1 envelope.")
+            if block_id == "CANDLE_DIRECTION" and not (
+                block.get("direction") in {"BULLISH", "BEARISH"}
+                or (block.get("previous") == "BEARISH" and block.get("current") == "BULLISH")
+            ):
+                issues.append("CANDLE_DIRECTION requires direction or the exact legacy previous/current shape.")
+            if block_id == "TWO_BAR_REVERSAL" and block.get("direction") not in {"BULLISH", "BEARISH"}:
+                issues.append("TWO_BAR_REVERSAL.direction is outside the supported V1 envelope.")
+            if block_id == "SMA_RELATION" and isinstance(block.get("fast_period"), int) and isinstance(block.get("slow_period"), int) and block["fast_period"] >= block["slow_period"]:
+                issues.append("SMA_RELATION.fast_period must be smaller than slow_period.")
+            if block_id in {"ALL_OF", "ANY_OF"} and not isinstance(block.get("children"), list) or block_id in {"ALL_OF", "ANY_OF"} and not block.get("children"):
+                issues.append(f"{block_id}.children must be a non-empty rule list.")
+            if block_id == "NOT" and not isinstance(block.get("child"), dict):
+                issues.append("NOT.child must be a rule object.")
     return normalized, issues, sorted(set(declared))
 
 
@@ -148,14 +176,21 @@ def assess(contract: object) -> dict[str, Any]:
     normalized, typed_issues, declared = normalize(contract)
     legacy = legacy_validate(normalized)
     issues = list(typed_issues)
-    if declared:
-        issues.append("CAPABILITY_NOT_SUPPORTED: declared generic blocks require ARK-S16-02/03 compiler acceptance.")
-    if not legacy["ready"]:
+    generic = bool(declared) or any(
+        isinstance(rule, dict) and (rule.get("direction") in {"BULLISH", "BEARISH"} or rule.get("timeframe", "M1") != "M1")
+        for key in REQUIRED for rule in _rule_nodes(normalized.get(key))
+    )
+    if not generic and not legacy["ready"]:
         issues.extend(item for item in legacy["issues"] if item not in issues)
-    if not declared:
+    if not generic:
         issues.extend(item for item in _legacy_shape_issues(normalized) if item not in issues)
-    executable = not issues and legacy["ready"]
-    capability = EXECUTABLE if executable else (DECLARATIVE if declared else None)
+    if generic:
+        if normalized.get("instrument") != "XAUUSD" or normalized.get("execution_timeframe") != "M1" or normalized.get("direction_eligibility") != "LONG":
+            issues.append("CAPABILITY_NOT_SUPPORTED: generic V1 is XAUUSD M1 LONG only.")
+        if not isinstance(normalized.get("cost_assumptions"), dict) or not isinstance(normalized["cost_assumptions"].get("commission_price"), (int, float)):
+            issues.append("cost_assumptions.commission_price is required for generic V1.")
+    executable = not issues and (generic or legacy["ready"])
+    capability = (GENERIC if generic else EXECUTABLE) if executable else (GENERIC if generic else None)
     status = "CONTRACT_VALID" if executable else ("CAPABILITY_NOT_SUPPORTED" if any("CAPABILITY_NOT_SUPPORTED" in item for item in issues) else "INVALID_CONTRACT")
     source_fingerprint = contract_fingerprint(normalized) if normalized else None
     fingerprint = sha256(canonical_json({"registry_fingerprint": registry_value["fingerprint"], "normalized_contract": normalized}).encode()).hexdigest()
@@ -218,7 +253,7 @@ def confirm(session: Session, assessment_id: str, strategy_candidate_id: str, st
         if lineage.get("id") == assessment.id:
             return existing, True
         raise ValueError("identical Strategy Contract is already bound to different lineage")
-    item = confirm_strategy_version(session, {"strategy_candidate_id": candidate.id, "strategy_key": strategy_key, "strategy_contract": assessment.normalized_contract})
+    item = confirm_strategy_version(session, {"strategy_candidate_id": candidate.id, "strategy_key": strategy_key, "strategy_contract": assessment.normalized_contract}, validation_report={"ready": True, "fingerprint": assessment.assessment["strategy_contract_fingerprint"]})
     item.configuration = {**item.configuration, "strategy_capability_assessment": {"id": assessment.id, "fingerprint": assessment.fingerprint, "registry_version": assessment.registry_version, "registry_fingerprint": assessment.registry_fingerprint, "evaluator_capability_id": assessment.evaluator_capability_id}}
     session.commit(); session.refresh(item)
     return item, False

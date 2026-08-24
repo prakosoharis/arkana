@@ -200,12 +200,13 @@ registry and compiler feeding the existing Backtest V1 kernel. Exact legacy
 golden parity is a prerequisite to bounded completed-candle multi-timeframe
 evaluation. It creates neither a Router nor a `VALIDATED`, DEMO, LIVE, capital,
 or current-trade-decision claim. ARK-S16-01 is accepted and pushed at
-`5ebe2c8`; ARK-S16-02 is accepted and awaiting its required acceptance push.
-The V2
-registry provides immutable, normalized, registry-fingerprinted contract
-assessments, while `STRATEGY_CONTRACT_COMPILER_V1` produces exact Backtest V1
-input and fingerprinted timing/compiler lineage. Declared generic blocks cannot
-yet execute and fail closed.
+`5ebe2c8`; ARK-S16-02 is accepted and pushed at `9c26dd6`; ARK-S16-03 is
+accepted and awaiting its required acceptance push. The V2 registry provides immutable,
+normalized, registry-fingerprinted contract assessments; the legacy compiler
+preserves exact Backtest V1 compatibility; and the bounded completed-candle
+evaluator now supports M1/M5/M15/H1 context with closed-bar alignment. This is
+still historical research only: it creates no Router, `VALIDATED`, DEMO, LIVE,
+capital, or current-trade decision claim.
 
 ## QA protocol
 

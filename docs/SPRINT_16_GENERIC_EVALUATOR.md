@@ -206,6 +206,47 @@ deterministic M1 execution and full input lineage.
 - No automatic OOS, `VALIDATED`, capital, DEMO/LIVE, Router, or trade-decision
   action follows a backtest result.
 
+### Completion report — 2026-08-25
+
+Implemented and verified:
+
+- `COMPLETED_CANDLE_MULTI_TIMEFRAME_EVALUATOR_V1` evaluates bounded
+  `CANDLE_DIRECTION`, `TWO_BAR_REVERSAL`, `SMA_RELATION`, `ALL_OF`, `ANY_OF`,
+  and `NOT` rules. The V1 execution envelope remains XAUUSD/M1/LONG with the
+  existing fixed-price SL/TP, fixed lot, one-position, cost, and `STOP_FIRST`
+  kernel semantics.
+- A context candle is eligible only when its close is at or before the M1
+  decision close. SMA warm-up returns an explicit false result, never a guessed
+  value. Missing registered timeframe assets fail before a BacktestRun; known
+  but insufficient context produces no eligible signal.
+- The sole Backtest V1 kernel now accepts an evaluator decision callback while
+  retaining all entry, exit, cost, chunk continuity, and ambiguity handling.
+  Each generic trade carries its materialized rule evaluation; Backtest lineage
+  fingerprints evaluator version, assessment/registry, M1/M5 asset lineage,
+  required timeframes, and completed-candle alignment.
+- A generic `CONTRACT_VALID` assessment can be confirmed as an immutable
+  StrategyVersion. The S16-02 legacy compiler endpoint remains intentionally
+  unavailable for generic contracts; generic evaluation enters only through the
+  completed-candle evaluator at Backtest time.
+
+Verification evidence:
+
+- Backend regression: **168 passed** (`pytest tests -q`).
+- Truth-table and chunking tests prove an M5 00:00 candle cannot affect an M1
+  decision before its 00:05 close, then becomes available exactly at that close;
+  whole and chunked ledgers are equal. Missing M5 assets fail closed.
+- Docker API OAT created generic assessment
+  `cc3fd785-d8a5-44b5-b811-49c8aeb5e89f`, confirmed StrategyVersion
+  `37abb545-958d-4d14-a3b5-0b6f2321d8cf`, and ran reusable BacktestRun
+  `58f60b8e-0caf-4915-b31a-6aadea980a54`. Its lineage requires M1/M5 and records
+  `CONTEXT_BAR_CLOSE_MUST_BE_AT_OR_BEFORE_M1_DECISION_CLOSE`; 594 trades are
+  historical simulation evidence only, not profitability or validation.
+- No OOS, `VALIDATED`, capital, DEMO/LIVE, Router, or current trade decision was
+  created by this checkpoint.
+
+**Owner decision:** ARK-S16-03 accepted on 2026-08-25. Its acceptance commit
+must be pushed before any S16-04 work begins.
+
 ## ARK-S16-04 — Owner Strategy Factory workflow and acceptance verifier
 
 ### Objective

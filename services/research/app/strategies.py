@@ -22,10 +22,10 @@ def update_strategy_candidate(session: Session, item: StrategyCandidate, payload
     if not name or source not in SOURCES or not isinstance(provenance,dict): raise ValueError("candidate requires name, supported source, and structured provenance")
     item.name=name; item.source=source; item.provenance=provenance; session.commit(); session.refresh(item); return item
 
-def confirm_strategy_version(session: Session, payload: dict) -> StrategyVersion:
+def confirm_strategy_version(session: Session, payload: dict, *, validation_report: dict | None = None) -> StrategyVersion:
     candidate=session.get(StrategyCandidate,str(payload.get("strategy_candidate_id",""))); contract=payload.get("strategy_contract")
     if not candidate: raise ValueError("strategy candidate not found")
-    report=validate(contract)
+    report=validation_report or validate(contract)
     if not report["ready"]: raise ValueError("Strategy Contract is invalid: "+" ".join(report["issues"]))
     key=_slug(str(payload.get("strategy_key") or candidate.name)); version=(session.scalar(select(func.max(StrategyVersion.version)).where(StrategyVersion.strategy_key==key)) or 0)+1
     item=StrategyVersion(strategy_key=key,version=version,name=candidate.name,profile="SCALPING",status="CONTRACT_VALID",backtest_run_id=None,strategy_candidate_id=candidate.id,strategy_contract=contract,configuration={"strategy_contract_fingerprint":report["fingerprint"]},checksum=fingerprint(contract))
@@ -74,5 +74,9 @@ def approve_candidate(session: Session, item: StrategyVersion) -> StrategyVersio
 
 
 def serialize_strategy(item: StrategyVersion) -> dict:
-    report=validate(item.strategy_contract) if item.strategy_contract else None
+    if item.strategy_contract and item.configuration.get("strategy_capability_assessment"):
+        from .strategy_capabilities import assess
+        report = assess(item.strategy_contract)
+    else:
+        report=validate(item.strategy_contract) if item.strategy_contract else None
     return {"id": item.id, "strategy_key": item.strategy_key, "version": item.version, "name": item.name, "profile": item.profile, "status": item.status, "backtest_run_id": item.backtest_run_id, "strategy_candidate_id":item.strategy_candidate_id,"strategy_contract":item.strategy_contract,"validation":report,"configuration": item.configuration, "checksum": item.checksum, "supersedes_strategy_version_id": item.supersedes_strategy_version_id, "validation_evidence_id": item.validation_evidence_id, "validated_at": item.validated_at.isoformat() + "Z" if item.validated_at else None, "approved_at": item.approved_at.isoformat() + "Z" if item.approved_at else None, "created_at": item.created_at.isoformat() + "Z"}

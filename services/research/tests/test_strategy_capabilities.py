@@ -37,9 +37,9 @@ def test_unknown_lookahead_invalid_parameters_and_declared_blocks_fail_closed():
     assert assess(lookahead)["ready"] is False
     invalid_distance = deepcopy(base); invalid_distance["stop_loss_rule"]["distance"] = float("inf")
     assert assess(invalid_distance)["status"] == "INVALID_CONTRACT"
-    declared = deepcopy(base); declared["context_rules"] = [{"block_id": "SMA_RELATION", "uses_completed_candles": True, "fast_period": 10, "slow_period": 20}]
+    declared = deepcopy(base); declared["context_rules"] = [{"block_id": "SMA_RELATION", "uses_completed_candles": True, "timeframe": "M5", "fast_period": 10, "slow_period": 20, "relation": "ABOVE"}]
     report = assess(declared)
-    assert report["status"] == "CAPABILITY_NOT_SUPPORTED"
+    assert report["status"] == "CONTRACT_VALID" and report["evaluator_capability_id"] == "GENERIC_COMPLETED_CANDLE_V1"
     assert report["declared_not_executable_blocks"] == ["SMA_RELATION"]
 
 
@@ -55,6 +55,7 @@ def test_confirm_binds_immutable_assessment_and_cannot_confirm_unready():
         assert reused is False and same_reused is True and item.id == same.id
         lineage = item.configuration["strategy_capability_assessment"]
         assert lineage["id"] == valid_assessment.id and lineage["registry_version"] == "STRATEGY_CAPABILITY_REGISTRY_V2"
+        assert blocked_assessment.status == "INVALID_CONTRACT"
         try:
             confirm(session, blocked_assessment.id, candidate.id)
         except ValueError as error:

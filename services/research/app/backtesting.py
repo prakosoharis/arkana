@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+from datetime import timedelta
 from typing import Any
 from collections import deque
 from statistics import quantiles
@@ -73,7 +74,7 @@ def _metrics(trades: list[dict]) -> dict[str, Any]:
     }
 
 
-def simulate_kernel(chunks: Any, config: dict[str, Any], on_trade: Any = None, on_candle: Any = None, on_entry: Any = None, on_signal: Any = None) -> list[dict]:
+def simulate_kernel(chunks: Any, config: dict[str, Any], on_trade: Any = None, on_candle: Any = None, on_entry: Any = None, on_signal: Any = None, signal_decider: Any = None) -> list[dict]:
     """Single stateful execution kernel; chunk boundaries have no trading meaning."""
     trades: list[dict] = []; before_signal = None; signal = None; active = None
     def record(trade: dict) -> None:
@@ -91,20 +92,25 @@ def simulate_kernel(chunks: Any, config: dict[str, Any], on_trade: Any = None, o
             stop_hit, target_hit = candle["low"] <= active["stop"], candle["high"] >= active["target"]
             if stop_hit or target_hit:
                 exit_price, reason = (active["stop"], "AMBIGUOUS_STOP_FIRST" if target_hit else "STOP_LOSS") if stop_hit else (active["target"], "TAKE_PROFIT")
-                gross = exit_price-active["entry"]; record({"signal_timestamp":str(active["signal"]["timestamp"]),"entry_timestamp":str(active["entry_bar"]["timestamp"]),"exit_timestamp":str(candle["timestamp"]),"side":"LONG","entry_price":round(active["entry"],6),"stop_price":round(active["stop"],6),"target_price":round(active["target"],6),"exit_price":round(exit_price,6),"exit_reason":reason,"gross_pnl_price":round(gross,6),"net_pnl_price":round(gross-config["commission_price"],6),"mae_price":round(active["min_low"]-active["entry"],6),"mfe_price":round(active["max_high"]-active["entry"],6)})
+                gross = exit_price-active["entry"]; record({"signal_timestamp":str(active["signal"]["timestamp"]),"entry_timestamp":str(active["entry_bar"]["timestamp"]),"exit_timestamp":str(candle["timestamp"]),"side":"LONG","entry_price":round(active["entry"],6),"stop_price":round(active["stop"],6),"target_price":round(active["target"],6),"exit_price":round(exit_price,6),"exit_reason":reason,"gross_pnl_price":round(gross,6),"net_pnl_price":round(gross-config["commission_price"],6),"mae_price":round(active["min_low"]-active["entry"],6),"mfe_price":round(active["max_high"]-active["entry"],6),**({"rule_evaluation":active["rule_evaluation"]} if signal_decider else {})})
                 active=None
                 closed_this_candle = True
-        elif before_signal and signal and before_signal["close"] < before_signal["open"] and signal["close"] > signal["open"]:
+        elif before_signal and signal:
+            rule_evaluation = signal_decider(before_signal, signal) if signal_decider else None
+            eligible = bool(rule_evaluation and rule_evaluation.get("eligible")) if signal_decider else before_signal["close"] < before_signal["open"] and signal["close"] > signal["open"]
+            if not eligible:
+                before_signal, signal = signal, candle
+                continue
             if on_signal:
                 on_signal(signal)
-            entry=candle["open"]+config["spread_price"]; active={"signal":signal,"entry_bar":candle,"entry":entry,"stop":entry-config["stop_distance"],"target":entry+config["target_distance"],"max_high":candle["high"],"min_low":candle["low"]}
+            entry=candle["open"]+config["spread_price"]; active={"signal":signal,"entry_bar":candle,"entry":entry,"stop":entry-config["stop_distance"],"target":entry+config["target_distance"],"max_high":candle["high"],"min_low":candle["low"],"rule_evaluation":rule_evaluation}
             if on_entry:
                 on_entry(candle)
             # The entry candle participates in STOP_FIRST just as the original loop did.
             stop_hit, target_hit=candle["low"]<=active["stop"],candle["high"]>=active["target"]
             if stop_hit or target_hit:
                 exit_price,reason=(active["stop"],"AMBIGUOUS_STOP_FIRST" if target_hit else "STOP_LOSS") if stop_hit else (active["target"],"TAKE_PROFIT"); gross=exit_price-entry
-                record({"signal_timestamp":str(signal["timestamp"]),"entry_timestamp":str(candle["timestamp"]),"exit_timestamp":str(candle["timestamp"]),"side":"LONG","entry_price":round(entry,6),"stop_price":round(active["stop"],6),"target_price":round(active["target"],6),"exit_price":round(exit_price,6),"exit_reason":reason,"gross_pnl_price":round(gross,6),"net_pnl_price":round(gross-config["commission_price"],6),"mae_price":round(candle["low"]-entry,6),"mfe_price":round(candle["high"]-entry,6)}); active=None
+                record({"signal_timestamp":str(signal["timestamp"]),"entry_timestamp":str(candle["timestamp"]),"exit_timestamp":str(candle["timestamp"]),"side":"LONG","entry_price":round(entry,6),"stop_price":round(active["stop"],6),"target_price":round(active["target"],6),"exit_price":round(exit_price,6),"exit_reason":reason,"gross_pnl_price":round(gross,6),"net_pnl_price":round(gross-config["commission_price"],6),"mae_price":round(candle["low"]-entry,6),"mfe_price":round(candle["high"]-entry,6),**({"rule_evaluation":rule_evaluation} if signal_decider else {})}); active=None
                 closed_this_candle = True
         # Legacy sets index = exit_index + 1.  Resetting the two-candle
         # signal window means the exit candle cannot become a signal itself;
@@ -114,11 +120,11 @@ def simulate_kernel(chunks: Any, config: dict[str, Any], on_trade: Any = None, o
         else:
             before_signal, signal = signal, candle
     if active:
-        candle = signal; gross=candle["close"]-active["entry"]; record({"signal_timestamp":str(active["signal"]["timestamp"]),"entry_timestamp":str(active["entry_bar"]["timestamp"]),"exit_timestamp":str(candle["timestamp"]),"side":"LONG","entry_price":round(active["entry"],6),"stop_price":round(active["stop"],6),"target_price":round(active["target"],6),"exit_price":round(candle["close"],6),"exit_reason":"DATA_END","gross_pnl_price":round(gross,6),"net_pnl_price":round(gross-config["commission_price"],6),"mae_price":round(active["min_low"]-active["entry"],6),"mfe_price":round(active["max_high"]-active["entry"],6)})
+        candle = signal; gross=candle["close"]-active["entry"]; record({"signal_timestamp":str(active["signal"]["timestamp"]),"entry_timestamp":str(active["entry_bar"]["timestamp"]),"exit_timestamp":str(candle["timestamp"]),"side":"LONG","entry_price":round(active["entry"],6),"stop_price":round(active["stop"],6),"target_price":round(active["target"],6),"exit_price":round(candle["close"],6),"exit_reason":"DATA_END","gross_pnl_price":round(gross,6),"net_pnl_price":round(gross-config["commission_price"],6),"mae_price":round(active["min_low"]-active["entry"],6),"mfe_price":round(active["max_high"]-active["entry"],6),**({"rule_evaluation":active["rule_evaluation"]} if signal_decider else {})})
     return trades
 
-def _simulate(bars: list[dict], config: dict[str, Any]) -> list[dict]:
-    return simulate_kernel([bars], config)
+def _simulate(bars: list[dict], config: dict[str, Any], signal_decider: Any = None) -> list[dict]:
+    return simulate_kernel([bars], config, signal_decider=signal_decider)
 
 def _simulate_legacy(bars: list[dict], config: dict[str, Any]) -> list[dict]:
     trades: list[dict] = []; index = 1
@@ -349,20 +355,31 @@ def run_supplemental_full_validation(session: Session, strategy: StrategyVersion
     return item, False
 
 
-def _cost_sensitivity(bars: list[dict], config: dict[str, Any]) -> dict[str, Any]:
-    return {str(multiplier): _metrics(_simulate(bars, {**config, "spread_price": config["spread_price"] * multiplier})) for multiplier in (0.5, 1.0, 2.0)}
+def _cost_sensitivity(bars: list[dict], config: dict[str, Any], signal_decider: Any = None) -> dict[str, Any]:
+    return {str(multiplier): _metrics(_simulate(bars, {**config, "spread_price": config["spread_price"] * multiplier}, signal_decider)) for multiplier in (0.5, 1.0, 2.0)}
 
 
 def run_backtest(session: Session, payload: dict[str, Any]) -> tuple[BacktestRun, bool]:
     strategy_version_id = str((payload or {}).get("strategy_version_id", "")) or None
     strategy = None
+    generic_contract = None
     if strategy_version_id:
         strategy = session.get(StrategyVersion, strategy_version_id)
         if not strategy or not strategy.strategy_contract:
             raise ValueError("strategy version with a Strategy Contract is required")
-        from .strategy_compiler import compile_contract
-        compiled = compile_contract(strategy.strategy_contract)
-        config = compiled["kernel_config"]
+        from .strategy_capabilities import GENERIC, assess as assess_capability
+        capability = assess_capability(strategy.strategy_contract)
+        if capability["status"] != "CONTRACT_VALID":
+            raise ValueError("Strategy Contract is not executable: " + " ".join(capability["issues"]))
+        if capability["evaluator_capability_id"] == GENERIC:
+            from .completed_candle_evaluator import kernel_config
+            generic_contract = capability["normalized_contract"]
+            config = kernel_config(generic_contract)
+            compiled = None
+        else:
+            from .strategy_compiler import compile_contract
+            compiled = compile_contract(strategy.strategy_contract)
+            config = compiled["kernel_config"]
     else:
         config = validate_backtest_config(payload)
     dataset = session.scalar(select(Dataset).where(Dataset.symbol == "XAUUSD").order_by(Dataset.imported_at.desc()))
@@ -371,6 +388,33 @@ def run_backtest(session: Session, payload: dict[str, Any]) -> tuple[BacktestRun
     asset = next((item for item in dataset.bars if item.timeframe == "M1"), None)
     if not asset:
         raise ValueError("Registered M1 dataset is unavailable")
+    # Quick remains an interactive, bounded latest-5,000-bar experiment.
+    bars = read_bars(asset, start=None, end=None, limit=5000, latest=True)
+    generic_evaluator = None
+    generic_artifact = None
+    if generic_contract:
+        from .completed_candle_evaluator import build
+        requested = {"M1"}
+        def timeframes(rule: dict) -> set[str]:
+            if rule["block_id"] in {"ALL_OF", "ANY_OF"}:
+                return set().union(*(timeframes(item) for item in rule["children"]))
+            if rule["block_id"] == "NOT":
+                return timeframes(rule["child"])
+            return {rule.get("timeframe", "M1")}
+        for section in ("context_rules", "setup_rules", "trigger_rules"):
+            for rule in generic_contract[section]: requested.update(timeframes(rule))
+        assets = {item.timeframe: item for item in dataset.bars}
+        lineage_assets: dict[str, dict[str, Any]] = {}
+        bars_by_timeframe = {"M1": bars}
+        start = bars[0]["timestamp"] - timedelta(days=30) if bars else None
+        for timeframe in sorted(requested):
+            context_asset = assets.get(timeframe)
+            if not context_asset:
+                raise ValueError(f"CAPABILITY_NOT_SUPPORTED: registered {timeframe} context asset is unavailable")
+            lineage_assets[timeframe] = {"dataset_id": dataset.id, "dataset_fingerprint": dataset.fingerprint, "timeframe": timeframe, "row_count": context_asset.row_count, "range_start": context_asset.range_start.isoformat(), "range_end": context_asset.range_end.isoformat()}
+            if timeframe != "M1":
+                bars_by_timeframe[timeframe] = read_bars(context_asset, start=start, end=None, limit=10_000)
+        generic_evaluator, generic_artifact = build(generic_contract, bars_by_timeframe, lineage_assets)
     fingerprint_input: dict[str, Any] = {"dataset": dataset.fingerprint, "config": config, "strategy_version_id": strategy_version_id}
     strategy_lineage = None
     if strategy:
@@ -384,18 +428,17 @@ def run_backtest(session: Session, payload: dict[str, Any]) -> tuple[BacktestRun
             "evaluator_version": STRATEGY_EVALUATOR_VERSION,
             "cost_contract": {"spread_price": config["spread_price"], "commission_price": config["commission_price"]},
             "execution_semantics": {"execution_resolution": config["execution_resolution"], "ambiguity_policy": config["ambiguity_policy"], "entry_timing": "NEXT_BAR_OPEN"},
-            "compiler": {key: compiled[key] for key in ("compiler_version", "fingerprint", "assessment_fingerprint", "registry", "evaluator_capability_id", "kernel_config_fingerprint", "timing_semantics")},
         }
+        if compiled:
+            strategy_lineage["compiler"] = {key: compiled[key] for key in ("compiler_version", "fingerprint", "assessment_fingerprint", "registry", "evaluator_capability_id", "kernel_config_fingerprint", "timing_semantics")}
+        if generic_artifact:
+            strategy_lineage["completed_candle_evaluator"] = generic_artifact
         fingerprint_input["strategy_lineage"] = strategy_lineage
     fingerprint = sha256(json.dumps(fingerprint_input, sort_keys=True).encode()).hexdigest()
     existing = session.scalar(select(BacktestRun).where(BacktestRun.fingerprint == fingerprint))
     if existing:
         return existing, True
-    # Quick remains an interactive, bounded latest-5,000-bar experiment.
-    # ``latest`` also makes the bounded fragment query apply before dedupe,
-    # preventing a Quick run from materialising the full production history.
-    bars = read_bars(asset, start=None, end=None, limit=5000, latest=True)
-    trades = _simulate(bars, config)
+    trades = _simulate(bars, config, generic_evaluator.decide if generic_evaluator else None)
     split_at = int(len(bars) * 0.7)
     split_time = str(bars[split_at]["timestamp"]) if bars else None
     in_sample = [trade for trade in trades if trade["entry_timestamp"] < split_time] if split_time else []
@@ -404,10 +447,10 @@ def run_backtest(session: Session, payload: dict[str, Any]) -> tuple[BacktestRun
     if len(bars) >= 30:
         window_size = len(bars) // 3
         for start in range(0, len(bars) - window_size + 1, window_size):
-            windows.append({"start": str(bars[start]["timestamp"]), "end": str(bars[start + window_size - 1]["timestamp"]), "metrics": _metrics(_simulate(bars[start:start + window_size], config))})
+            windows.append({"start": str(bars[start]["timestamp"]), "end": str(bars[start + window_size - 1]["timestamp"]), "metrics": _metrics(_simulate(bars[start:start + window_size], config, generic_evaluator.decide if generic_evaluator else None))})
     regime_validation = build_historical_regime_validation(bars, trades)
     trades = regime_validation.pop("trades")
-    result = {"dataset_id": dataset.id, "dataset_fingerprint": dataset.fingerprint, "strategy_lineage": strategy_lineage, "execution_resolution": "M1_BROAD", "ambiguity_policy": "STOP_FIRST", "metrics": _metrics(trades), "split": {"method": "chronological_70_30", "split_timestamp": split_time, "in_sample": _metrics(in_sample), "out_of_sample": _metrics(out_sample)}, "walk_forward": {"available": bool(windows), "windows": windows, "reason": None if windows else "At least 30 M1 bars are required for rolling windows."}, "cost_sensitivity": _cost_sensitivity(bars, config), "regime_validation": regime_validation, "warning": "Backtest experiment only. It is not a strategy approval, trade signal, or MT5 instruction."}
+    result = {"dataset_id": dataset.id, "dataset_fingerprint": dataset.fingerprint, "strategy_lineage": strategy_lineage, "execution_resolution": "M1_BROAD", "ambiguity_policy": "STOP_FIRST", "metrics": _metrics(trades), "split": {"method": "chronological_70_30", "split_timestamp": split_time, "in_sample": _metrics(in_sample), "out_of_sample": _metrics(out_sample)}, "walk_forward": {"available": bool(windows), "windows": windows, "reason": None if windows else "At least 30 M1 bars are required for rolling windows."}, "cost_sensitivity": _cost_sensitivity(bars, config, generic_evaluator.decide if generic_evaluator else None), "regime_validation": regime_validation, "warning": "Backtest experiment only. It is not a strategy approval, trade signal, or MT5 instruction."}
     run = BacktestRun(dataset_id=dataset.id, fingerprint=fingerprint, configuration=config, result=result, trades=trades, strategy_version_id=strategy_version_id)
     session.add(run); session.commit(); session.refresh(run)
     return run, False
