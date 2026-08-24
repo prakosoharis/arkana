@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.database import Base, SessionLocal, engine
 from app.main import app
-from app.models import BrokerMetadataSnapshot, FixedLotCapitalSimulation, FixedLotEquityPoint, StrategyVersion
+from app.models import BrokerMetadataSnapshot, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, StrategyVersion
 import app.capital_contracts as capital_contracts
 import app.main as main_module
 from app.strategy_contracts import fingerprint as strategy_contract_fingerprint
@@ -131,6 +131,32 @@ def test_fixed_lot_capital_simulation_api_creates_lists_and_pages_equity(monkeyp
     with TestClient(app) as client:
         response = client.post("/api/v1/capital-contracts/api-contract/fixed-lot-simulations", json={"source_full_validation_id": "api-full"})
         assert response.status_code == 422 and "not ready" in response.json()["detail"]
+
+
+def test_fractional_risk_simulation_api_exposes_boundary_and_paged_points(monkeypatch):
+    with SessionLocal() as session:
+        item=FractionalRiskCapitalSimulation(capital_contract_id="fractional-contract",source_full_validation_id="fractional-full",strategy_version_id="fractional-strategy",dataset_id="fractional-dataset",fingerprint="fractional-api-fingerprint",protocol_version="FRACTIONAL_RISK_EQUITY_V1",status="SIZING_BOUNDARY_REACHED",result={"metrics":{"source_trades_observed":2,"simulated_trades":1,"equity_path_points":3,"sizing_boundary":{"reason":"BELOW_MINIMUM_VOLUME"}},"sizing":{"compounding":True},"boundaries":{"margin_constraints_applied":False}})
+        session.add(item);session.flush()
+        session.add_all([
+            FractionalRiskEquityPoint(simulation_id=item.id,sequence=0,payload={"sequence":0,"event":"STARTING_CAPITAL"}),
+            FractionalRiskEquityPoint(simulation_id=item.id,sequence=1,payload={"sequence":1,"event":"TRADE_CLOSED","rounded_volume":.1}),
+            FractionalRiskEquityPoint(simulation_id=item.id,sequence=2,payload={"sequence":2,"event":"SIZING_BOUNDARY","reason":"BELOW_MINIMUM_VOLUME"}),
+        ]);session.commit();item_id=item.id
+    monkeypatch.setattr(main_module,"run_fractional_risk_simulation",lambda session,contract_id,full_id:(session.get(FractionalRiskCapitalSimulation,item_id),True))
+    with TestClient(app) as client:
+        created=client.post("/api/v1/capital-contracts/fractional-contract/fractional-risk-simulations",json={"source_full_validation_id":"fractional-full"})
+        assert created.status_code==200 and created.json()["reused"] is True and created.json()["equity_path_points"]==3
+        listed=client.get("/api/v1/capital-contracts/fractional-contract/fractional-risk-simulations")
+        assert listed.status_code==200 and listed.json()["simulations"][0]["id"]==item_id
+        detail=client.get(f"/api/v1/fractional-risk-capital-simulations/{item_id}")
+        assert detail.status_code==200 and detail.json()["status"]=="SIZING_BOUNDARY_REACHED"
+        page=client.get(f"/api/v1/fractional-risk-capital-simulations/{item_id}/equity-path",params={"offset":2,"limit":1})
+        assert page.json()["total"]==3 and page.json()["equity_path"][0]["reason"]=="BELOW_MINIMUM_VOLUME"
+        assert client.get("/api/v1/fractional-risk-capital-simulations/missing").status_code==404
+    monkeypatch.setattr(main_module,"run_fractional_risk_simulation",lambda *args:(_ for _ in ()).throw(ValueError("Capital simulation requires FRACTIONAL_RISK")))
+    with TestClient(app) as client:
+        blocked=client.post("/api/v1/capital-contracts/fractional-contract/fractional-risk-simulations",json={"source_full_validation_id":"fractional-full"})
+        assert blocked.status_code==422 and "FRACTIONAL_RISK" in blocked.json()["detail"]
 
 
 def test_hypothesis_api_persists_assessment_and_version():

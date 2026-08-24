@@ -185,7 +185,7 @@ intratrade mark-to-market, StrategyVersion promotion, DEMO/LIVE action, or
 
 ## ARK-S14-02 verification report — 2026-08-24
 
-Implementation status: **COMPLETE, awaiting Owner acceptance**.
+Implementation status: **ACCEPTED and pushed at commit `4873d7a`**.
 
 - focused adapter/capital/API/migration OAT: 35 passed;
 - complete research-service regression: 115 passed;
@@ -210,4 +210,77 @@ Implementation status: **COMPLETE, awaiting Owner acceptance**.
   finding; point count/distinct sequences, single fingerprint row, lifecycle,
   and all deferred-boundary claims were independently verified.
 
-ARK-S14-03 has not started.
+## ARK-S14-03 implemented sizing contract
+
+`FRACTIONAL_RISK_EQUITY_V1` extends capital evidence without adding a second
+trade kernel. For every canonical trade it:
+
+- uses starting capital as the risk base when compounding is disabled and the
+  latest realized balance when compounding is enabled;
+- derives target risk from the immutable contract's `risk_fraction`;
+- calculates per-lot stop risk from stop distance plus explicit commission,
+  MT5 tick size, and loss tick value;
+- applies `FLOOR_TO_BROKER_GRID_FROM_VOLUME_MIN`, which never rounds above raw
+  risk volume and never silently clamps below-minimum or above-maximum values;
+- records raw/rounded volume, target and actual stop risk, balance, peak, and
+  drawdown for each simulated trade;
+- stops the account path at `SIZING_BOUNDARY_REACHED` when no valid rounded
+  volume exists, while continuing the canonical source traversal solely to
+  verify exact source trade-count and price-PnL invariants.
+
+`SIZING_BOUNDARY_REACHED` is not an execution rejection, skipped-trade policy,
+margin failure, liquidation, or strategy verdict. ARK-S14-04 owns the decision
+about unable-to-trade continuation and broker/margin constraints.
+
+## ARK-S14-03 API contract
+
+- `POST /api/v1/capital-contracts/{id}/fractional-risk-simulations` creates or
+  reuses exact immutable evidence.
+- `GET /api/v1/capital-contracts/{id}/fractional-risk-simulations` lists it.
+- `GET /api/v1/fractional-risk-capital-simulations/{id}` returns result/lineage.
+- `GET /api/v1/fractional-risk-capital-simulations/{id}/equity-path` returns
+  bounded sequence pages.
+
+## Owner Acceptance Test — ARK-S14-03
+
+1. Use fractional contract `b98d3d0f-dc25-40dd-9a02-e37722947a6c` and exact
+   full validation `ae83634e-7411-46f9-9dc5-4f1d8d1deb7f`.
+2. POST the fractional simulation and verify protocol/calculation versions,
+   compounding true, 1% risk, and floor rounding policy.
+3. Verify the first trade uses risk base USD 10,000, target/actual stop risk
+   USD 100, and rounded volume 10.0.
+4. Verify the last point is the first below-minimum boundary: balance USD 9.90,
+   target risk USD 0.099, raw volume 0.0099, broker minimum 0.01.
+5. Repeat the POST and verify the same hardened id/fingerprint is reused.
+6. Verify exact point sequences, source invariant count 704,706, and unchanged
+   StrategyVersion status/evidence lineage.
+
+## ARK-S14-03 verification report — 2026-08-24
+
+Implementation status: **COMPLETE, awaiting Owner acceptance**.
+
+- focused capital/adapter/API/migration OAT: 43 passed;
+- complete research-service regression: 123 passed;
+- web regression: lint passed, typecheck passed, 15 tests passed, and production
+  build completed successfully;
+- migration 020 applied and recorded in live PostgreSQL;
+- runtime fractional contract: `b98d3d0f-dc25-40dd-9a02-e37722947a6c`,
+  fingerprint `39bc5aeee9383189a13be425fe6eaece35418a1de9053a2689022a89ddff0e8a`,
+  starting USD 10,000, risk 1%, compounding enabled;
+- hardened runtime simulation: `17051746-5172-45e0-bb03-c5b5a737d2ed`,
+  fingerprint `47e82e3d7d64c72a63339d968e9a088ebb66d4d9f44ecad71176b53b6e1ee308`,
+  calculation `FRACTIONAL_RISK_CALCULATION_V1_COMMISSION_AWARE`;
+- source invariants: all 704,706 canonical trades observed; 1,037 trades sized
+  before the first boundary; 1,039 point rows including start and boundary;
+- path result: ending balance USD 9.90, net -9,990.10, min/max volume 0.01/10,
+  and `BELOW_MINIMUM_VOLUME` at source trade 1,038;
+- an earlier pre-commission-aware runtime OAT row remains immutable and is
+  superseded by the hardened calculation-version fingerprint rather than
+  rewritten;
+- lifecycle remains `CONTRACT_VALID` with null validation evidence/timestamp;
+  no DEMO/LIVE, margin, liquidation, or unable-to-trade continuation occurred.
+- independent review: PASS with no correctness, security, or domain finding;
+  compounding modes, commission-aware risk, floor rounding, calculation-version
+  lineage, atomicity/concurrency, runtime rows, and deferred boundaries passed.
+
+ARK-S14-04 has not started.

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -32,6 +32,7 @@ from .broker_metadata import import_snapshot, import_order_calc_validation
 from .financial_evidence import materialize as materialize_financial
 from .capital_contracts import PROTOCOL_VERSION as CAPITAL_CONTRACT_PROTOCOL_VERSION, create as create_capital_contract, serialize as serialize_capital_contract, validation_report as capital_contract_validation_report
 from .capital_simulations import run as run_fixed_lot_capital_simulation, serialize as serialize_fixed_lot_capital_simulation
+from .fractional_risk_simulations import run as run_fractional_risk_simulation, serialize as serialize_fractional_risk_simulation
 
 
 app = FastAPI(title="ARKANA Research Service", version="0.1.0")
@@ -434,6 +435,39 @@ def get_fixed_lot_equity_path(simulation_id: str, offset: int = Query(0, ge=0), 
         raise HTTPException(404, "fixed-lot capital simulation not found")
     points = session.scalars(select(FixedLotEquityPoint).where(FixedLotEquityPoint.simulation_id == item.id, FixedLotEquityPoint.sequence >= offset).order_by(FixedLotEquityPoint.sequence).limit(limit)).all()
     total = int((item.result or {}).get("metrics", {}).get("completed_trades", 0)) + 1
+    return {"simulation_id": item.id, "offset": offset, "limit": limit, "total": total, "equity_path": [point.payload for point in points]}
+
+
+@app.post("/api/v1/capital-contracts/{capital_contract_id}/fractional-risk-simulations")
+def create_fractional_risk_simulation(capital_contract_id: str, payload: dict, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = run_fractional_risk_simulation(session, capital_contract_id, str(payload.get("source_full_validation_id", "")))
+        return serialize_fractional_risk_simulation(item, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/capital-contracts/{capital_contract_id}/fractional-risk-simulations")
+def list_fractional_risk_simulations(capital_contract_id: str, session: Session = Depends(get_session)) -> dict:
+    items = session.scalars(select(FractionalRiskCapitalSimulation).where(FractionalRiskCapitalSimulation.capital_contract_id == capital_contract_id).order_by(FractionalRiskCapitalSimulation.created_at.desc())).all()
+    return {"simulations": [serialize_fractional_risk_simulation(item) for item in items]}
+
+
+@app.get("/api/v1/fractional-risk-capital-simulations/{simulation_id}")
+def get_fractional_risk_simulation(simulation_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(FractionalRiskCapitalSimulation, simulation_id)
+    if not item:
+        raise HTTPException(404, "fractional-risk capital simulation not found")
+    return serialize_fractional_risk_simulation(item)
+
+
+@app.get("/api/v1/fractional-risk-capital-simulations/{simulation_id}/equity-path")
+def get_fractional_risk_equity_path(simulation_id: str, offset: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=1000), session: Session = Depends(get_session)) -> dict:
+    item = session.get(FractionalRiskCapitalSimulation, simulation_id)
+    if not item:
+        raise HTTPException(404, "fractional-risk capital simulation not found")
+    points = session.scalars(select(FractionalRiskEquityPoint).where(FractionalRiskEquityPoint.simulation_id == item.id, FractionalRiskEquityPoint.sequence >= offset).order_by(FractionalRiskEquityPoint.sequence).limit(limit)).all()
+    total = int((item.result or {}).get("metrics", {}).get("equity_path_points", 0))
     return {"simulation_id": item.id, "offset": offset, "limit": limit, "total": total, "equity_path": [point.payload for point in points]}
 
 

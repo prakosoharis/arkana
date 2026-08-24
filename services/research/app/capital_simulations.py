@@ -144,7 +144,7 @@ def build_equity_path(trades: list[dict], *, metadata: dict, starting_capital: f
     return path, accumulator.metrics()
 
 
-def _lineage(session: Session, contract_id: str, full_id: str) -> tuple[CapitalBrokerContract, SupplementalHistoricalValidation, StrategyVersion, BrokerMetadataSnapshot, Dataset, Any, dict]:
+def _lineage(session: Session, contract_id: str, full_id: str, *, required_mode: str = "FIXED_LOT") -> tuple[CapitalBrokerContract, SupplementalHistoricalValidation, StrategyVersion, BrokerMetadataSnapshot, Dataset, Any, dict]:
     contract = session.get(CapitalBrokerContract, contract_id)
     full = session.get(SupplementalHistoricalValidation, full_id)
     if not contract:
@@ -152,7 +152,9 @@ def _lineage(session: Session, contract_id: str, full_id: str) -> tuple[CapitalB
     if contract.status != CAPITAL_CONTRACT_READY:
         raise ValueError("Capital broker contract is not ready")
     sizing = contract.contract.get("sizing_policy", {})
-    if sizing.get("mode") != "FIXED_LOT" or sizing.get("compounding") is not False:
+    if sizing.get("mode") != required_mode:
+        raise ValueError(f"Capital simulation requires {required_mode}")
+    if required_mode == "FIXED_LOT" and sizing.get("compounding") is not False:
         raise ValueError("ARK-S14-02 requires FIXED_LOT with compounding disabled")
     if not full or full.status != "COMPLETED":
         raise ValueError("Completed supplemental full-history validation is required")

@@ -155,11 +155,13 @@ without creating a second backtest kernel or changing that strategy status.
 4. **ARK-S14-04:** margin, unable-to-trade, and broker constraints.
 5. **ARK-S14-05:** Owner UI, full-history verification, and acceptance.
 
-ARK-S14-01 is accepted and pushed. The active checkpoint is **ARK-S14-02**.
-`FIXED_LOT_REALIZED_EQUITY_V1` uses the sole canonical kernel and exact
-full-history lineage to produce an immutable, paginable realized-equity path
-for a frozen fixed volume. It does not apply compounding, margin/liquidation,
-intratrade mark-to-market, or grant `VALIDATED`, DEMO, or LIVE status.
+ARK-S14-01 and ARK-S14-02 are accepted and pushed. The active checkpoint is
+**ARK-S14-03**. `FRACTIONAL_RISK_EQUITY_V1` derives risk amount from starting
+capital or current balance according to explicit compounding, includes explicit
+commission in stop-risk sizing, and floors volume to the exact broker grid.
+It stops at a sizing boundary rather than inventing an unable-to-trade decision.
+Margin/liquidation and continuation after that boundary belong to ARK-S14-04;
+no `VALIDATED`, DEMO, or LIVE status is granted.
 
 Do not begin a later card automatically. Complete the accepted card, perform
 self-verification and an independent diff review, update evidence-backed

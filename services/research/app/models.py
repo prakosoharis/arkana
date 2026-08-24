@@ -184,6 +184,29 @@ class FixedLotEquityPoint(Base):
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
 
 
+class FractionalRiskCapitalSimulation(Base):
+    """Immutable fractional-risk/compounding evidence; no margin decisions."""
+    __tablename__ = "fractional_risk_capital_simulations"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_fractional_risk_capital_simulation_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    capital_contract_id: Mapped[str] = mapped_column(ForeignKey("capital_broker_contracts.id"), nullable=False, index=True)
+    source_full_validation_id: Mapped[str] = mapped_column(ForeignKey("supplemental_historical_validations.id"), nullable=False, index=True)
+    strategy_version_id: Mapped[str] = mapped_column(ForeignKey("strategy_versions.id"), nullable=False, index=True)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(48), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class FractionalRiskEquityPoint(Base):
+    __tablename__ = "fractional_risk_equity_points"
+    simulation_id: Mapped[str] = mapped_column(ForeignKey("fractional_risk_capital_simulations.id"), primary_key=True)
+    sequence: Mapped[int] = mapped_column(Integer, primary_key=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
 class SupplementalHistoricalValidation(Base):
     """Immutable full-history evidence linked to, but never replacing, approval evidence."""
     __tablename__ = "supplemental_historical_validations"
