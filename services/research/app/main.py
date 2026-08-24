@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -33,6 +33,7 @@ from .financial_evidence import materialize as materialize_financial
 from .capital_contracts import PROTOCOL_VERSION as CAPITAL_CONTRACT_PROTOCOL_VERSION, create as create_capital_contract, serialize as serialize_capital_contract, validation_report as capital_contract_validation_report
 from .capital_simulations import run as run_fixed_lot_capital_simulation, serialize as serialize_fixed_lot_capital_simulation
 from .fractional_risk_simulations import run as run_fractional_risk_simulation, serialize as serialize_fractional_risk_simulation
+from .constrained_capital_simulations import run as run_constrained_capital_simulation, serialize as serialize_constrained_capital_simulation
 
 
 app = FastAPI(title="ARKANA Research Service", version="0.1.0")
@@ -469,6 +470,39 @@ def get_fractional_risk_equity_path(simulation_id: str, offset: int = Query(0, g
     points = session.scalars(select(FractionalRiskEquityPoint).where(FractionalRiskEquityPoint.simulation_id == item.id, FractionalRiskEquityPoint.sequence >= offset).order_by(FractionalRiskEquityPoint.sequence).limit(limit)).all()
     total = int((item.result or {}).get("metrics", {}).get("equity_path_points", 0))
     return {"simulation_id": item.id, "offset": offset, "limit": limit, "total": total, "equity_path": [point.payload for point in points]}
+
+
+@app.post("/api/v1/capital-contracts/{capital_contract_id}/constrained-simulations")
+def create_constrained_capital_simulation(capital_contract_id: str, payload: dict, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = run_constrained_capital_simulation(session, capital_contract_id, str(payload.get("source_full_validation_id", "")))
+        return serialize_constrained_capital_simulation(item, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/capital-contracts/{capital_contract_id}/constrained-simulations")
+def list_constrained_capital_simulations(capital_contract_id: str, session: Session = Depends(get_session)) -> dict:
+    items = session.scalars(select(ConstrainedCapitalSimulation).where(ConstrainedCapitalSimulation.capital_contract_id == capital_contract_id).order_by(ConstrainedCapitalSimulation.created_at.desc())).all()
+    return {"simulations": [serialize_constrained_capital_simulation(item) for item in items]}
+
+
+@app.get("/api/v1/constrained-capital-simulations/{simulation_id}")
+def get_constrained_capital_simulation(simulation_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(ConstrainedCapitalSimulation, simulation_id)
+    if not item:
+        raise HTTPException(404, "constrained capital simulation not found")
+    return serialize_constrained_capital_simulation(item)
+
+
+@app.get("/api/v1/constrained-capital-simulations/{simulation_id}/capital-path")
+def get_constrained_capital_path(simulation_id: str, offset: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=1000), session: Session = Depends(get_session)) -> dict:
+    item = session.get(ConstrainedCapitalSimulation, simulation_id)
+    if not item:
+        raise HTTPException(404, "constrained capital simulation not found")
+    points = session.scalars(select(ConstrainedCapitalPoint).where(ConstrainedCapitalPoint.simulation_id == item.id, ConstrainedCapitalPoint.sequence >= offset).order_by(ConstrainedCapitalPoint.sequence).limit(limit)).all()
+    total = int((item.result or {}).get("metrics", {}).get("capital_path_points", 0))
+    return {"simulation_id": item.id, "offset": offset, "limit": limit, "total": total, "capital_path": [point.payload for point in points]}
 
 
 def serialize_oos_validation(item: OosValidation, *, reused: bool | None = None) -> dict:

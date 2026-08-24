@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.database import Base, SessionLocal, engine
 from app.main import app
-from app.models import BrokerMetadataSnapshot, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, StrategyVersion
+from app.models import BrokerMetadataSnapshot, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, StrategyVersion
 import app.capital_contracts as capital_contracts
 import app.main as main_module
 from app.strategy_contracts import fingerprint as strategy_contract_fingerprint
@@ -157,6 +157,32 @@ def test_fractional_risk_simulation_api_exposes_boundary_and_paged_points(monkey
     with TestClient(app) as client:
         blocked=client.post("/api/v1/capital-contracts/fractional-contract/fractional-risk-simulations",json={"source_full_validation_id":"fractional-full"})
         assert blocked.status_code==422 and "FRACTIONAL_RISK" in blocked.json()["detail"]
+
+
+def test_constrained_capital_api_exposes_rejections_and_paged_path(monkeypatch):
+    with SessionLocal() as session:
+        item=ConstrainedCapitalSimulation(capital_contract_id="constrained-contract",source_full_validation_id="constrained-full",strategy_version_id="constrained-strategy",dataset_id="constrained-dataset",fingerprint="constrained-api-fingerprint",protocol_version="BROKER_CONSTRAINED_CAPITAL_V1",status="COMPLETED_WITH_REJECTIONS",result={"metrics":{"source_trades_observed":2,"executed_trades":1,"rejected_trades":1,"capital_path_points":3},"boundaries":{"margin_constraints_applied":True,"unable_to_trade_continuation_applied":True}})
+        session.add(item);session.flush()
+        session.add_all([
+            ConstrainedCapitalPoint(simulation_id=item.id,sequence=0,payload={"sequence":0,"event":"STARTING_CAPITAL"}),
+            ConstrainedCapitalPoint(simulation_id=item.id,sequence=1,payload={"sequence":1,"event":"TRADE_CLOSED"}),
+            ConstrainedCapitalPoint(simulation_id=item.id,sequence=2,payload={"sequence":2,"event":"TRADE_REJECTED","reason":"INSUFFICIENT_MARGIN"}),
+        ]);session.commit();item_id=item.id
+    monkeypatch.setattr(main_module,"run_constrained_capital_simulation",lambda session,contract_id,full_id:(session.get(ConstrainedCapitalSimulation,item_id),True))
+    with TestClient(app) as client:
+        created=client.post("/api/v1/capital-contracts/constrained-contract/constrained-simulations",json={"source_full_validation_id":"constrained-full"})
+        assert created.status_code==200 and created.json()["reused"] is True and created.json()["capital_path_points"]==3
+        listed=client.get("/api/v1/capital-contracts/constrained-contract/constrained-simulations")
+        assert listed.status_code==200 and listed.json()["simulations"][0]["id"]==item_id
+        detail=client.get(f"/api/v1/constrained-capital-simulations/{item_id}")
+        assert detail.status_code==200 and detail.json()["status"]=="COMPLETED_WITH_REJECTIONS"
+        page=client.get(f"/api/v1/constrained-capital-simulations/{item_id}/capital-path",params={"offset":2,"limit":1})
+        assert page.json()["total"]==3 and page.json()["capital_path"][0]["reason"]=="INSUFFICIENT_MARGIN"
+        assert client.get("/api/v1/constrained-capital-simulations/missing").status_code==404
+    monkeypatch.setattr(main_module,"run_constrained_capital_simulation",lambda *args:(_ for _ in ()).throw(ValueError("Exact MT5 OrderCalcMargin parity is unavailable")))
+    with TestClient(app) as client:
+        blocked=client.post("/api/v1/capital-contracts/constrained-contract/constrained-simulations",json={"source_full_validation_id":"constrained-full"})
+        assert blocked.status_code==422 and "OrderCalcMargin" in blocked.json()["detail"]
 
 
 def test_hypothesis_api_persists_assessment_and_version():

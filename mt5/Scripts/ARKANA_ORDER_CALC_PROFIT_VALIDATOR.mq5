@@ -12,6 +12,7 @@ void WriteCase(int file,string id,ENUM_ORDER_TYPE type,double entry,double exit_
 void OnStart()
 {
   if(!SymbolSelect(InpBrokerSymbol,true)){Print("ARKANA OrderCalcProfit validation failed: unavailable symbol");return;}
+  for(int attempt=0;attempt<60 && (!TerminalInfoInteger(TERMINAL_CONNECTED) || SymbolInfoDouble(InpBrokerSymbol,SYMBOL_TRADE_TICK_VALUE_PROFIT)<=0 || SymbolInfoDouble(InpBrokerSymbol,SYMBOL_BID)<=0);attempt++) Sleep(500);
   double tick=SymbolInfoDouble(InpBrokerSymbol,SYMBOL_TRADE_TICK_SIZE), bid=SymbolInfoDouble(InpBrokerSymbol,SYMBOL_BID); if(tick<=0||bid<=0){Print("ARKANA OrderCalcProfit validation failed: invalid quote/metadata");return;}
   FolderCreate("ARKANA",FILE_COMMON);FolderCreate("ARKANA\\broker_metadata",FILE_COMMON);
   string metadata_collected_at="";int metadata=FileOpen("ARKANA\\broker_metadata\\latest.ini",FILE_READ|FILE_TXT|FILE_COMMON|FILE_ANSI);if(metadata==INVALID_HANDLE){Print("ARKANA validation failed: run broker metadata exporter first");return;}while(!FileIsEnding(metadata)){string line=FileReadString(metadata);if(StringFind(line,"collected_at=")==0)metadata_collected_at=StringSubstr(line,13);}FileClose(metadata);if(metadata_collected_at==""){Print("ARKANA validation failed: metadata collected_at unavailable");return;}

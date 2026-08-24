@@ -20,6 +20,7 @@ MIGRATION_017 = "017_capital_broker_contract_foundation"
 MIGRATION_018 = "018_fixed_lot_capital_simulation"
 MIGRATION_019 = "019_normalized_fixed_lot_equity_points"
 MIGRATION_020 = "020_fractional_risk_capital_simulation"
+MIGRATION_021 = "021_constrained_capital_simulation"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -231,6 +232,40 @@ def _migration_020(connection) -> None:
     """))
 
 
+def _migration_021(connection) -> None:
+    connection.execute(text("""
+        CREATE TABLE IF NOT EXISTS constrained_capital_simulations (
+            id VARCHAR(36) PRIMARY KEY,
+            capital_contract_id VARCHAR(36) NOT NULL,
+            source_full_validation_id VARCHAR(36) NOT NULL,
+            strategy_version_id VARCHAR(36) NOT NULL,
+            dataset_id VARCHAR(36) NOT NULL,
+            fingerprint VARCHAR(64) NOT NULL UNIQUE,
+            protocol_version VARCHAR(64) NOT NULL,
+            status VARCHAR(48) NOT NULL,
+            result JSON NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            FOREIGN KEY(capital_contract_id) REFERENCES capital_broker_contracts(id),
+            FOREIGN KEY(source_full_validation_id) REFERENCES supplemental_historical_validations(id),
+            FOREIGN KEY(strategy_version_id) REFERENCES strategy_versions(id),
+            FOREIGN KEY(dataset_id) REFERENCES datasets(id)
+        )
+    """))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_constrained_capital_simulations_capital_contract_id ON constrained_capital_simulations(capital_contract_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_constrained_capital_simulations_source_full_validation_id ON constrained_capital_simulations(source_full_validation_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_constrained_capital_simulations_strategy_version_id ON constrained_capital_simulations(strategy_version_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_constrained_capital_simulations_dataset_id ON constrained_capital_simulations(dataset_id)"))
+    connection.execute(text("""
+        CREATE TABLE IF NOT EXISTS constrained_capital_points (
+            simulation_id VARCHAR(36) NOT NULL,
+            sequence INTEGER NOT NULL,
+            payload JSON NOT NULL,
+            PRIMARY KEY (simulation_id, sequence),
+            FOREIGN KEY(simulation_id) REFERENCES constrained_capital_simulations(id)
+        )
+    """))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -240,6 +275,7 @@ MIGRATIONS = (
     (MIGRATION_018, _migration_018),
     (MIGRATION_019, _migration_019),
     (MIGRATION_020, _migration_020),
+    (MIGRATION_021, _migration_021),
 )
 
 

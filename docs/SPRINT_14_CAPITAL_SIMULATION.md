@@ -283,4 +283,101 @@ Implementation status: **COMPLETE, awaiting Owner acceptance**.
   compounding modes, commission-aware risk, floor rounding, calculation-version
   lineage, atomicity/concurrency, runtime rows, and deferred boundaries passed.
 
-ARK-S14-04 has not started.
+## ARK-S14-04 implemented constrained-capital contract
+
+`BROKER_CONSTRAINED_CAPITAL_V1` applies the frozen broker constraints while
+still using `simulate_kernel` as the sole canonical trade traversal. It accepts
+either an exact fixed-lot or fractional-risk capital contract and:
+
+- requires a fresh MT5 metadata snapshot carrying initial/maintenance margin,
+  BUY/SELL initial-margin rates, and observed account leverage;
+- requires an exact, snapshot-bound `OrderCalcMargin` report with BUY/SELL and
+  two volume/price cases, in addition to the existing `OrderCalcProfit` parity;
+- supports only MT5 `SYMBOL_CALC_MODE_CFD` (`trade_calc_mode=2`) with direct
+  margin/account currency; every unsupported formula or conversion fails closed;
+- uses absolute `SYMBOL_MARGIN_INITIAL × volume × side margin rate` when the
+  broker supplies initial margin, otherwise the documented CFD contract-value
+  basis; all four live broker parity cases must match within `1e-6`;
+- applies the exact broker volume grid and contract maximum-margin fraction at
+  entry; a failed condition becomes `TRADE_REJECTED` with a typed reason;
+- continues to the next canonical source trade after rejection and persists one
+  normalized point per source trade, including both closes and rejections;
+- verifies exact source trade count and summed price-PnL before committing;
+- fingerprints all strategy, contract, validation, dataset, broker, parity,
+  evaluator, configuration, formula, and calculation-version inputs;
+- atomically persists the result/path and reuses an identical/concurrent winner.
+
+The Owner-input leverage remains recorded but is correctly marked unused by
+this broker's mode-2 formula. `COMPLETED_WITH_REJECTIONS` describes historical
+account traversal; it is not strategy validation. Liquidation, intratrade
+mark-to-market, portfolio/netting/hedging margin, DEMO/LIVE, and order creation
+remain explicitly outside the boundary.
+
+The time model is deliberately `SINGLE_FROZEN_SNAPSHOT_APPLIED_TO_FULL_HISTORY`:
+the exact 2026 broker snapshot is applied uniformly to the 2017–2026 ledger.
+This is an auditable broker-parity scenario, not a reconstruction of historical
+changes in margin, leverage, rates, symbol specification, or broker policy.
+
+## ARK-S14-04 API contract
+
+- `POST /api/v1/capital-contracts/{id}/constrained-simulations` creates or
+  reuses an exact constrained simulation.
+- `GET /api/v1/capital-contracts/{id}/constrained-simulations` lists immutable
+  results.
+- `GET /api/v1/constrained-capital-simulations/{id}` returns result and exact
+  lineage.
+- `GET /api/v1/constrained-capital-simulations/{id}/capital-path` returns
+  bounded sequence pages with exact total.
+
+## Owner Acceptance Test — ARK-S14-04
+
+1. Use full validation `ae83634e-7411-46f9-9dc5-4f1d8d1deb7f` and either the
+   fresh fixed contract `f5d8a7d9-c301-46bd-a3cf-864ae0fb5758` or fractional
+   contract `935d04b4-cb3f-4843-911f-45f0c4f13be1`.
+2. POST a constrained simulation and verify both profit and margin parity are
+   `PASSED` against broker snapshot `5a39bd31-a9ac-4250-ae1b-74bdef4fe5da`.
+3. Verify `margin_constraints_applied`, `volume_constraints_applied`, and
+   `unable_to_trade_continuation_applied` are true, while liquidation,
+   intratrade mark-to-market, status promotion, and DEMO/LIVE are false.
+4. Page sequence 0 and 704706; verify exactly 704707 distinct contiguous points.
+5. Repeat the POST and verify the exact id/fingerprint is reused.
+6. Verify the StrategyVersion remains `CONTRACT_VALID` with null validation
+   evidence/timestamp.
+
+## ARK-S14-04 verification report — 2026-08-24
+
+Implementation status: **COMPLETE, awaiting Owner acceptance**.
+
+- MT5 scripts compile with zero errors/warnings; startup configs disable live
+  trading and wait for a connected quote before exporting evidence;
+- fresh broker snapshot fingerprint:
+  `9734439f0787cbb5c9328f1e72f0d8bc29d86e86ea4d43a111dc0f4fbcf182ac`;
+- frozen broker margin: mode 2 CFD, `SYMBOL_MARGIN_INITIAL=2000`, BUY/SELL
+  initial rate `0.2`, account USD, observed leverage 500;
+- native `OrderCalcMargin` parity: 0.01 lot BUY/SELL = USD 4 and 0.02 lot
+  BUY/SELL = USD 8, all four exact with zero difference;
+- complete backend regression: 131 passed; web lint/typecheck passed, 15 tests
+  passed, and production build completed successfully;
+- migration 021 is recorded in live PostgreSQL; legacy rows were not rewritten;
+- hardened fractional constrained result `d6c01994-1c09-47e6-b056-427e405d78a1`:
+  704,706 source trades, 1,037 executed, 703,669 rejected below minimum volume,
+  ending USD 9.90, and 704,707 contiguous normalized points;
+- hardened fixed constrained result `80cc7ddd-cdc8-451a-b0ca-33e9a1df695e`:
+  704,706 source trades, 247,483 executed, 457,223 insufficient-margin
+  rejections, ending USD 4.90, and 704,707 contiguous normalized points;
+- the first fixed rejection is sequence 247,484: required USD 4 exceeds the
+  frozen 80% ceiling of USD 3.92; the final source trade remains an explicit
+  rejection at sequence 704,706;
+- repeat POST reused the same fixed id/fingerprint; both runtime paths have
+  identical total/distinct counts and exact range 0–704706;
+- calculation V2 separates maximum evaluated from maximum executed required
+  margin; the earlier V1 rows `c259d09c-497b-4562-82c2-773692d74359` and
+  `e266eef9-2a1e-4963-817e-f361bad87874` remain immutable pre-hardening evidence
+  rather than being rewritten;
+- lifecycle safety: StrategyVersion remains `CONTRACT_VALID`, with null
+  validation evidence/timestamp and no DEMO/LIVE action.
+- independent review: PASS with no P0–P3 finding remaining; exact case-schema
+  tamper resistance, V2 margin metrics, additive migration, both runtime paths,
+  lifecycle boundary, and frozen-snapshot disclosure were independently checked.
+
+ARK-S14-05 has not started.
