@@ -619,6 +619,18 @@ def test_s16_capability_registry_assessment_and_confirmation_api_are_fail_closed
         verification = client.post(f"/api/v1/strategy-versions/{generic_version.json()['id']}/backtests/{generic_run.json()['id']}/verification")
         assert verification.status_code == 200 and verification.json()["owner_acceptance_readiness"] == "READY_FOR_OWNER_ACCEPTANCE"
         assert client.post(f"/api/v1/strategy-versions/{generic_version.json()['id']}/backtests/{generic_run.json()['id']}/verification").json()["reused"] is True
+        generic_oos = client.post(f"/api/v1/strategy-versions/{generic_version.json()['id']}/oos-validations")
+        assert generic_oos.status_code == 200, generic_oos.text
+        evidence = generic_oos.json()
+        assert evidence["protocol"]["version"] == "GENERIC_OOS_EVIDENCE_V1"
+        assert evidence["protocol"]["automatic_validation_transition"] is False
+        assert evidence["result"]["status"] == "GENERIC_EVIDENCE_REVIEWED"
+        assert evidence["result"]["completed_candle_evaluator"]["replay_mode"] == "SPLIT_ISOLATED_BOUNDED_STREAMING"
+        assert evidence["result"]["lifecycle"] == {"owner_gate_required": True, "validated_created": False, "demo_or_live_authorized": False, "capital_authorized": False}
+        repeated_oos = client.post(f"/api/v1/strategy-versions/{generic_version.json()['id']}/oos-validations")
+        assert repeated_oos.status_code == 200 and repeated_oos.json()["id"] == evidence["id"] and repeated_oos.json()["reused"] is True
+        current = next(item for item in client.get("/api/v1/strategy-versions").json()["strategy_versions"] if item["id"] == generic_version.json()["id"])
+        assert current["status"] == "CONTRACT_VALID" and current["validation_evidence_id"] is None
 
 
 def test_demo_deployment_requires_approval_acknowledges_exact_checksum_and_rolls_back(tmp_path, monkeypatch):

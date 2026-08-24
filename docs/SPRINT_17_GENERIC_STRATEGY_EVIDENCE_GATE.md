@@ -2,7 +2,7 @@
 
 ## Status
 
-**ACTIVE — ARK-S17 contract accepted; ARK-S17-01 is authorized.**
+**ACTIVE — ARK-S17-01 accepted; ARK-S17-02 is authorized.**
 
 Sprint 16 is complete at `9dae9ea`. It can create immutable generic
 completed-candle StrategyVersions and run them through the sole Backtest V1
@@ -59,6 +59,51 @@ final-OOS bounds without leaking a future M1 or MTF context candle.
   evaluator, asset, cost, and protocol lineage.
 - Same immutable input returns the same recorded evidence or reuse, not a
   duplicate execution.
+
+### Completion report — 2026-08-25
+
+Implemented and verified:
+
+- Added fingerprinted `GENERIC_OOS_EVIDENCE_V1` with frozen 60/20/20
+  chronological bounds, split-isolated evaluator state, exact Backtest V1
+  execution/cost semantics, and an explicit evidence-only Owner boundary.
+- The S16 completed-candle evaluator now has a bounded streaming replay mode.
+  It retains only each rule's required lookback, advances registered MTF assets
+  by completed close time, and discards context from an earlier split. Quick
+  Backtest keeps its separate bounded-snapshot mode; the legacy OOS adapter and
+  protocol remain unchanged.
+- Generic evidence fingerprints bind the StrategyVersion/checksum, capability
+  assessment, V2 registry, evaluator artifact, required M1/MTF asset lineage,
+  costs, split protocol, and dataset fingerprint. Exact retries reuse the same
+  row. Evaluator failure tests prove that no partial evidence or lifecycle
+  mutation is persisted.
+- Generic replay always records `GENERIC_EVIDENCE_REVIEWED`; even a gate `PASS`
+  cannot set `VALIDATED`. No DEMO/LIVE, capital, Router, or trade authority is
+  created.
+
+Verification evidence:
+
+- Backend regression: **170 passed**. Python compile and diff integrity checks
+  pass.
+- Docker/PostgreSQL full-history OAT used StrategyVersion
+  `37abb545-958d-4d14-a3b5-0b6f2321d8cf`, dataset
+  `de5fa845-5397-441b-91dc-fe5f8ffc8e5b`, **2,985,994 M1** and **600,274 M5**
+  bars. Observed research-service memory stayed approximately 239–253 MiB
+  during the exhaustive replay.
+- OAT evidence `099bfd6d-1137-45ce-adc8-53c30b2d337d`, fingerprint
+  `01056345e1ce4f4eb2181f3fffe7473af3c80fe69289c4aadad0ad52b8519faf`,
+  honestly returned `FAIL`: baseline holdout PnL `-1596.188`, baseline final-OOS
+  PnL `-6082.086`, and adverse final-OOS PnL `-6485.645`.
+- The exact repeated API request returned `reused=true` and the same ID and
+  fingerprint. PostgreSQL contains one generic OOS row; the StrategyVersion
+  remains `CONTRACT_VALID` with no `validation_evidence_id`.
+- Legacy protocol-V3 evidence `e8fc488b-0524-4235-a46e-9e3d11f77353`
+  remained byte-compatible and returned `reused=true`; PostgreSQL still
+  contains exactly one row for that legacy StrategyVersion. The accepted S16
+  generic Quick Backtest likewise reused its existing run and fingerprint.
+
+**Owner decision:** ARK-S17-01 accepted on 2026-08-25. Its acceptance commit
+must be pushed before ARK-S17-02 implementation begins.
 
 ## ARK-S17-02 — Robustness and parameter-stability evidence
 

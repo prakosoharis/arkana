@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from bisect import bisect_right
+from collections import deque
 from datetime import timedelta
 from hashlib import sha256
 from statistics import fmean
-from typing import Any
+from typing import Any, Iterable, Iterator
 
 from .strategy_capabilities import GENERIC, assess
 from .strategy_contracts import canonical_json
@@ -77,7 +78,90 @@ class CompletedCandleEvaluator:
         return {"eligible": truth, "decision_timestamp": str(signal_m1["timestamp"]), "sections": sections, "asset_lineage": self.asset_lineage}
 
 
+class StreamingCompletedCandleEvaluator(CompletedCandleEvaluator):
+    """Split-isolated evaluator retaining only the rule lookback it needs."""
+
+    def __init__(
+        self,
+        contract: dict[str, Any],
+        context_chunks: dict[str, Iterable[list[dict]]],
+        asset_lineage: dict[str, dict[str, Any]],
+    ) -> None:
+        self.contract = contract
+        self.asset_lineage = asset_lineage
+        lookbacks = _required_lookbacks(contract)
+        self.histories = {timeframe: deque(maxlen=count + 1) for timeframe, count in lookbacks.items()}
+        self.sources = {timeframe: _flatten(chunks) for timeframe, chunks in context_chunks.items() if timeframe != "M1"}
+        self.pending: dict[str, dict | None] = {timeframe: None for timeframe in self.sources}
+        self.exhausted: set[str] = set()
+        self.split_start = None
+
+    def observe_m1(self, candle: dict[str, Any]) -> None:
+        if self.split_start is None:
+            self.split_start = candle["timestamp"]
+        self.histories["M1"].append(candle)
+
+    def _advance_context(self, decision_bar: dict[str, Any]) -> None:
+        if self.split_start is None:
+            raise ValueError("completed-candle evaluator has not observed the split start")
+        decision_close = decision_bar["timestamp"] + timedelta(minutes=1)
+        for timeframe, source in self.sources.items():
+            while timeframe not in self.exhausted:
+                candle = self.pending[timeframe]
+                if candle is None:
+                    try:
+                        candle = next(source)
+                    except StopIteration:
+                        self.exhausted.add(timeframe)
+                        break
+                close_time = candle["timestamp"] + timedelta(minutes=_MINUTES[timeframe])
+                if close_time > decision_close:
+                    self.pending[timeframe] = candle
+                    break
+                self.pending[timeframe] = None
+                # Every split owns isolated evaluator state. A completed
+                # context candle from an earlier split is never warm-up input.
+                if close_time > self.split_start:
+                    self.histories[timeframe].append(candle)
+
+    def _available(self, timeframe: str, decision_bar: dict) -> list[dict]:
+        if timeframe not in self.histories:
+            raise ValueError(f"CAPABILITY_NOT_SUPPORTED: registered {timeframe} context asset is unavailable")
+        decision_close = decision_bar["timestamp"] + timedelta(minutes=1)
+        return [
+            candle for candle in self.histories[timeframe]
+            if candle["timestamp"] + timedelta(minutes=_MINUTES[timeframe]) <= decision_close
+        ]
+
+    def decide(self, previous_m1: dict, signal_m1: dict) -> dict[str, Any]:
+        self._advance_context(signal_m1)
+        return super().decide(previous_m1, signal_m1)
+
+
 def build(contract: object, bars_by_timeframe: dict[str, list[dict]], asset_lineage: dict[str, dict[str, Any]]) -> tuple[CompletedCandleEvaluator, dict[str, Any]]:
+    report, _required, artifact = _validated_artifact(contract, set(bars_by_timeframe), asset_lineage, None)
+    return CompletedCandleEvaluator(report["normalized_contract"], bars_by_timeframe, asset_lineage), artifact
+
+
+def build_streaming(
+    contract: object,
+    context_chunks: dict[str, Iterable[list[dict]]],
+    asset_lineage: dict[str, dict[str, Any]],
+) -> tuple[StreamingCompletedCandleEvaluator, dict[str, Any]]:
+    report, _required, artifact = _validated_artifact(contract, set(context_chunks), asset_lineage, "SPLIT_ISOLATED_BOUNDED_STREAMING")
+    return StreamingCompletedCandleEvaluator(report["normalized_contract"], context_chunks, asset_lineage), artifact
+
+
+def evaluator_artifact(contract: object, available_timeframes: set[str], asset_lineage: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    return _validated_artifact(contract, available_timeframes, asset_lineage, "SPLIT_ISOLATED_BOUNDED_STREAMING")[2]
+
+
+def _validated_artifact(
+    contract: object,
+    available_timeframes: set[str],
+    asset_lineage: dict[str, dict[str, Any]],
+    replay_mode: str | None,
+) -> tuple[dict[str, Any], set[str], dict[str, Any]]:
     report = assess(contract)
     if report["status"] != "CONTRACT_VALID" or report["evaluator_capability_id"] != GENERIC:
         raise ValueError("CAPABILITY_NOT_SUPPORTED: contract has no accepted completed-candle evaluator capability")
@@ -85,17 +169,20 @@ def build(contract: object, bars_by_timeframe: dict[str, list[dict]], asset_line
     for section in ("context_rules", "setup_rules", "trigger_rules"):
         for rule in report["normalized_contract"][section]:
             required.update(_rule_timeframes(rule))
-    missing = sorted(required - set(bars_by_timeframe))
+    missing = sorted(required - available_timeframes)
     if missing:
         raise ValueError("CAPABILITY_NOT_SUPPORTED: missing registered completed context assets: " + ", ".join(missing))
     artifact = {
-        "evaluator_version": EVALUATOR_VERSION, "assessment_fingerprint": report["fingerprint"],
+        "evaluator_version": EVALUATOR_VERSION,
+        "assessment_fingerprint": report["fingerprint"],
         "registry": report["registry"], "evaluator_capability_id": GENERIC,
         "required_timeframes": sorted(required), "asset_lineage": asset_lineage,
         "completed_candle_alignment": "CONTEXT_BAR_CLOSE_MUST_BE_AT_OR_BEFORE_M1_DECISION_CLOSE",
     }
+    if replay_mode:
+        artifact["replay_mode"] = replay_mode
     artifact["fingerprint"] = sha256(canonical_json(artifact).encode()).hexdigest()
-    return CompletedCandleEvaluator(report["normalized_contract"], bars_by_timeframe, asset_lineage), artifact
+    return report, required, artifact
 
 
 def kernel_config(contract: dict[str, Any]) -> dict[str, Any]:
@@ -114,3 +201,31 @@ def _rule_timeframes(rule: dict[str, Any]) -> set[str]:
     if rule["block_id"] == "NOT":
         return _rule_timeframes(rule["child"])
     return {rule.get("timeframe", "M1")}
+
+
+def _rule_lookbacks(rule: dict[str, Any]) -> dict[str, int]:
+    if rule["block_id"] in {"ALL_OF", "ANY_OF"}:
+        result: dict[str, int] = {}
+        for child in rule["children"]:
+            for timeframe, count in _rule_lookbacks(child).items():
+                result[timeframe] = max(result.get(timeframe, 0), count)
+        return result
+    if rule["block_id"] == "NOT":
+        return _rule_lookbacks(rule["child"])
+    timeframe = rule.get("timeframe", "M1")
+    count = rule.get("slow_period", 2 if rule["block_id"] == "TWO_BAR_REVERSAL" else 1)
+    return {timeframe: int(count)}
+
+
+def _required_lookbacks(contract: dict[str, Any]) -> dict[str, int]:
+    result = {"M1": 1}
+    for section in ("context_rules", "setup_rules", "trigger_rules"):
+        for rule in contract[section]:
+            for timeframe, count in _rule_lookbacks(rule).items():
+                result[timeframe] = max(result.get(timeframe, 0), count)
+    return result
+
+
+def _flatten(chunks: Iterable[list[dict]]) -> Iterator[dict]:
+    for chunk in chunks:
+        yield from chunk

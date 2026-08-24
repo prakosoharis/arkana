@@ -1,8 +1,16 @@
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 import app.oos_validation as oos
 from app.backtesting import DEFAULT_CONFIG, _metrics, simulate_kernel
+from app.database import Base
+from app.models import Dataset, DatasetBarAsset, OosValidation, StrategyVersion
+from app.strategy_adapters import legacy_bullish_reversal_contract
+from app.strategy_contracts import fingerprint as strategy_contract_fingerprint
 
 
 def _bars(count: int) -> list[dict]:
@@ -154,6 +162,34 @@ def test_adverse_commission_changes_metrics_through_canonical_kernel(monkeypatch
     assert baseline_result["metrics"]["trade_count"] == adverse_result["metrics"]["trade_count"] == 1
     assert baseline_result["metrics"]["net_pnl_price"] == 0.19
     assert adverse_result["metrics"]["net_pnl_price"] == 0.18
+
+
+def test_generic_evaluator_failure_persists_no_partial_evidence(tmp_path, monkeypatch):
+    engine = create_engine(f"sqlite:///{tmp_path / 'generic-oos-failure.db'}")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    source = _bars(30)
+    m5 = source[::5]
+    contract = legacy_bullish_reversal_contract(stop_distance=.2, target_distance=.3, spread_price=.01)
+    contract["context_rules"] = [{"block_id": "SMA_RELATION", "uses_completed_candles": True, "timeframe": "M5", "fast_period": 1, "slow_period": 2, "relation": "ABOVE"}]
+    checksum = strategy_contract_fingerprint(contract)
+    with Session() as session:
+        strategy = StrategyVersion(strategy_key="generic-oos-failure", version=1, name="Generic OOS failure", status="CONTRACT_VALID", strategy_contract=contract, configuration={"strategy_contract_fingerprint": checksum}, checksum=checksum)
+        dataset = Dataset(fingerprint="generic-oos-failure-dataset", symbol="XAUUSD", source="TEST", timezone_status="UNVERIFIED_BROKER_TIME")
+        for timeframe, bars in (("M1", source), ("M5", m5)):
+            dataset.bars.append(DatasetBarAsset(timeframe=timeframe, path=f"/tmp/{timeframe}.parquet", row_count=len(bars), range_start=bars[0]["timestamp"], range_end=bars[-1]["timestamp"]))
+        session.add_all([strategy, dataset]); session.commit()
+        monkeypatch.setattr(oos, "iter_bars", lambda asset, chunk_size: [source if asset.timeframe == "M1" else m5])
+
+        def fail_evaluator(*_args, **_kwargs):
+            raise RuntimeError("synthetic evaluator failure")
+
+        monkeypatch.setattr(oos, "build_streaming", fail_evaluator)
+        with pytest.raises(RuntimeError, match="synthetic evaluator failure"):
+            oos.run(session, strategy.id, chunk_size=7)
+        assert session.query(OosValidation).count() == 0
+        session.refresh(strategy)
+        assert strategy.status == "CONTRACT_VALID" and strategy.validation_evidence_id is None
 
 
 def _gate_result(*, trades: int = 100, net_pnl: float = 50.0, profit_factor: float = 1.5, final_adverse_pnl: float = 0.0, concentrated: bool = False) -> dict:

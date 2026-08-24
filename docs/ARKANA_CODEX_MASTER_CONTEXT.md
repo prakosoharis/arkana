@@ -209,13 +209,15 @@ evaluator now supports M1/M5/M15/H1 context with closed-bar alignment. This is
 still historical research only: it creates no Router, `VALIDATED`, DEMO, LIVE,
 capital, or current-trade decision claim.
 
-## Proposed milestone — Sprint 17 generic strategy evidence gate
+## Active milestone — Sprint 17 generic strategy evidence gate
 
 [`SPRINT_17_GENERIC_STRATEGY_EVIDENCE_GATE.md`](SPRINT_17_GENERIC_STRATEGY_EVIDENCE_GATE.md)
-defines four proposed cards for generic train/holdout/final-OOS replay,
+defines four cards for generic train/holdout/final-OOS replay,
 robustness evidence, an Owner-gated evidence decision, and Factory verifier/UI.
 It is a prerequisite for considering any Router or DEMO direction. The Owner
-accepted the ARK-S17 contract; ARK-S17-01 begins after its contract push.
+accepted the ARK-S17 contract and its contract commit was pushed at `eee8aec`.
+ARK-S17-01 implementation, regression, and full-history OAT are accepted.
+ARK-S17-02 is authorized after the ARK-S17-01 acceptance push.
 
 ## QA protocol
 

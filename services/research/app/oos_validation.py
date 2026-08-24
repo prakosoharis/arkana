@@ -23,9 +23,12 @@ from .backtesting import STRATEGY_EVALUATOR_VERSION, simulate_kernel
 from .market_data import iter_bars
 from .models import Dataset, DatasetBarAsset, OosValidation, StrategyVersion, VariantExperimentContract, VariantRevisionConfirmation
 from .strategy_adapters import compile_legacy_bullish_reversal
+from .strategy_capabilities import GENERIC, assess as assess_capability
+from .completed_candle_evaluator import build_streaming, evaluator_artifact as make_evaluator_artifact, kernel_config as generic_kernel_config
 
 
 PROTOCOL_VERSION = "OOS_HISTORICAL_REVIEW_V3"
+GENERIC_PROTOCOL_VERSION = "GENERIC_OOS_EVIDENCE_V1"
 REGIME_LOOKBACK = 20
 REGIME_CALIBRATION_MAX_SAMPLES = 100_000
 COST_SCENARIOS: dict[str, dict[str, float]] = {
@@ -58,6 +61,13 @@ PROTOCOL: dict[str, Any] = {
         "maximum_single_year_or_regime_pnl_concentration": 0.50,
     },
     "gate_evaluation": "DETERMINISTIC_V1",
+}
+GENERIC_PROTOCOL: dict[str, Any] = {
+    **deepcopy(PROTOCOL),
+    "version": GENERIC_PROTOCOL_VERSION,
+    "evaluator_replay": "EXACT_BACKTEST_V1_SPLIT_ISOLATED_BOUNDED_STREAMING",
+    "lineage_policy": "EVIDENCE_ONLY_REQUIRES_OWNER_GATE",
+    "automatic_validation_transition": False,
 }
 
 
@@ -222,7 +232,14 @@ def _calibrate_regime(asset: DatasetBarAsset, train_end: int, *, chunk_size: int
     }
 
 
-def evidence_fingerprint(dataset: Dataset, asset: DatasetBarAsset, strategy: StrategyVersion, config: dict[str, Any]) -> str:
+def evidence_fingerprint(
+    dataset: Dataset,
+    asset: DatasetBarAsset,
+    strategy: StrategyVersion,
+    config: dict[str, Any],
+    evaluator: dict[str, Any] | None = None,
+    protocol: dict[str, Any] | None = None,
+) -> str:
     payload = {
         "dataset_id": dataset.id,
         "dataset_fingerprint": dataset.fingerprint,
@@ -232,8 +249,10 @@ def evidence_fingerprint(dataset: Dataset, asset: DatasetBarAsset, strategy: Str
         "strategy_contract_fingerprint": strategy.configuration.get("strategy_contract_fingerprint"),
         "evaluator_version": STRATEGY_EVALUATOR_VERSION,
         "config": config,
-        "protocol": PROTOCOL,
+        "protocol": protocol or PROTOCOL,
     }
+    if evaluator is not None:
+        payload["completed_candle_evaluator"] = evaluator
     return sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
@@ -322,16 +341,21 @@ def _evaluate(
     *,
     chunk_size: int,
     regime_thresholds: dict[str, float] | None = None,
+    signal_decider: Any = None,
+    evaluator_factory: Any = None,
 ) -> dict[str, Any]:
     accumulator = _OosMetricAccumulator()
     breakdown = _BreakdownAccumulator(regime_thresholds)
     observed: dict[str, Any] = {"count": 0, "start": None, "end": None}
+    runtime_evaluator = evaluator_factory() if evaluator_factory else None
 
     def on_candle(candle: dict) -> None:
         timestamp = str(candle["timestamp"])
         observed["count"] += 1
         observed["start"] = observed["start"] or timestamp
         observed["end"] = timestamp
+        if runtime_evaluator:
+            runtime_evaluator.observe_m1(candle)
         breakdown.on_candle(candle)
 
     def on_trade(trade: dict[str, Any]) -> None:
@@ -339,7 +363,14 @@ def _evaluate(
         breakdown.on_trade(trade)
 
     chunks = slice_chunks(iter_bars(asset, chunk_size=chunk_size), start, end)
-    simulate_kernel(chunks, config, on_trade=on_trade, on_candle=on_candle, on_entry=breakdown.on_entry)
+    simulate_kernel(
+        chunks,
+        config,
+        on_trade=on_trade,
+        on_candle=on_candle,
+        on_entry=breakdown.on_entry,
+        signal_decider=runtime_evaluator.decide if runtime_evaluator else signal_decider,
+    )
     return {
         "index_range": {"start_inclusive": start, "end_exclusive": end},
         "timestamp_range": {"start": observed["start"], "end": observed["end"]},
@@ -358,6 +389,8 @@ def _evaluate_scenario(
     *,
     chunk_size: int,
     regime_thresholds: dict[str, float] | None,
+    signal_decider: Any = None,
+    evaluator_factory: Any = None,
 ) -> dict[str, Any]:
     config = scenario_config(base_config, policy)
     return {
@@ -368,7 +401,13 @@ def _evaluate_scenario(
             "unit": "PRICE",
         },
         "splits": {
-            name: _evaluate(asset, start, end, config, chunk_size=chunk_size, regime_thresholds=regime_thresholds)
+            name: (
+                _evaluate(asset, start, end, config, chunk_size=chunk_size, regime_thresholds=regime_thresholds, evaluator_factory=evaluator_factory)
+                if evaluator_factory else
+                _evaluate(asset, start, end, config, chunk_size=chunk_size, regime_thresholds=regime_thresholds, signal_decider=signal_decider)
+                if signal_decider else
+                _evaluate(asset, start, end, config, chunk_size=chunk_size, regime_thresholds=regime_thresholds)
+            )
             for name, (start, end) in bounds.items()
         },
     }
@@ -415,30 +454,57 @@ def run(
     asset = next((item for item in dataset.bars if item.timeframe == "M1"), None) if dataset else None
     if not dataset or not asset:
         raise ValueError("Registered M1 dataset is unavailable")
-    config = compile_legacy_bullish_reversal(strategy.strategy_contract)
-    fingerprint = evidence_fingerprint(dataset, asset, strategy, config)
+    capability = assess_capability(strategy.strategy_contract)
+    if capability["status"] != "CONTRACT_VALID":
+        raise ValueError("Strategy Contract is not executable for OOS evidence")
+    generic = capability["evaluator_capability_id"] == GENERIC
+    evaluator_artifact = None
+    evaluator_factory = None
+    if generic:
+        # OOS is exhaustive evidence, not the bounded Quick Backtest. The
+        # evaluator receives only registered source assets and still selects a
+        # context bar by its completed close timestamp at each M1 decision.
+        required = {"M1"}
+        def collect(rule: dict[str, Any]) -> None:
+            if rule["block_id"] in {"ALL_OF", "ANY_OF"}:
+                for child in rule["children"]: collect(child)
+            elif rule["block_id"] == "NOT": collect(rule["child"])
+            else: required.add(rule.get("timeframe", "M1"))
+        for section in ("context_rules", "setup_rules", "trigger_rules"):
+            for rule in capability["normalized_contract"][section]: collect(rule)
+        assets = {item.timeframe: item for item in dataset.bars}
+        missing = sorted(required - set(assets))
+        if missing: raise ValueError("CAPABILITY_NOT_SUPPORTED: missing registered completed context assets: " + ", ".join(missing))
+        lineage_assets = {timeframe: {"dataset_id": dataset.id, "dataset_fingerprint": dataset.fingerprint, "timeframe": timeframe, "row_count": assets[timeframe].row_count, "range_start": assets[timeframe].range_start.isoformat(), "range_end": assets[timeframe].range_end.isoformat()} for timeframe in required}
+        evaluator_artifact = make_evaluator_artifact(capability["normalized_contract"], set(assets), lineage_assets)
+        def evaluator_factory() -> Any:
+            sources = {
+                timeframe: (() if timeframe == "M1" else iter_bars(assets[timeframe], chunk_size=chunk_size))
+                for timeframe in required
+            }
+            return build_streaming(capability["normalized_contract"], sources, lineage_assets)[0]
+        config = generic_kernel_config(capability["normalized_contract"])
+    else:
+        config = compile_legacy_bullish_reversal(strategy.strategy_contract)
+    protocol = GENERIC_PROTOCOL if generic else PROTOCOL
+    fingerprint = evidence_fingerprint(dataset, asset, strategy, config, evaluator_artifact, protocol)
     existing = session.scalar(select(OosValidation).where(OosValidation.fingerprint == fingerprint))
     if existing:
         return existing, True
 
     bounds = split_bounds(asset.row_count)
     regime_calibration = _calibrate_regime(asset, bounds["train"][1], chunk_size=chunk_size)
-    scenarios = {
-        name: _evaluate_scenario(
-            asset,
-            bounds,
-            config,
-            policy,
-            chunk_size=chunk_size,
-            regime_thresholds=regime_calibration["thresholds"],
-        )
-        for name, policy in PROTOCOL["cost_scenarios"].items()
-    }
+    scenarios = {}
+    for name, policy in protocol["cost_scenarios"].items():
+        kwargs = {"chunk_size": chunk_size, "regime_thresholds": regime_calibration["thresholds"]}
+        if generic: kwargs["evaluator_factory"] = evaluator_factory
+        scenarios[name] = _evaluate_scenario(asset, bounds, config, policy, **kwargs)
     splits = deepcopy(scenarios["baseline"]["splits"])
     result = {
         "dataset_fingerprint": dataset.fingerprint,
         "strategy_version_id": strategy.id,
         "strategy_checksum": strategy.checksum,
+        "completed_candle_evaluator": evaluator_artifact,
         "splits": splits,
         "regime_calibration": regime_calibration,
         "cost_stress": {
@@ -449,12 +515,17 @@ def run(
     gate = evaluate_gate(result, regime_calibration)
     result["cost_stress"]["decision"] = gate["decision"]
     result["gate_evaluation"] = gate
-    result["status"] = "VALIDATED" if gate["decision"] == "PASS" else "OOS_REVIEWED"
-    result["warning"] = "Historical VALIDATED evidence only; it is not DEMO-ready, LIVE-ready, or a trade recommendation." if gate["decision"] == "PASS" else "Historical review evidence did not pass the robustness gate; it is not VALIDATED, DEMO-ready, LIVE-ready, or a trade recommendation."
-    item = OosValidation(strategy_version_id=strategy.id, dataset_id=dataset.id, fingerprint=fingerprint, protocol=deepcopy(PROTOCOL), result=result)
+    if generic:
+        result["status"] = "GENERIC_EVIDENCE_REVIEWED"
+        result["warning"] = "Generic historical evidence requires an explicit Owner gate; it does not create VALIDATED, DEMO-ready, LIVE-ready, capital authority, or a trade recommendation."
+        result["lifecycle"] = {"owner_gate_required": True, "validated_created": False, "demo_or_live_authorized": False, "capital_authorized": False}
+    else:
+        result["status"] = "VALIDATED" if gate["decision"] == "PASS" else "OOS_REVIEWED"
+        result["warning"] = "Historical VALIDATED evidence only; it is not DEMO-ready, LIVE-ready, or a trade recommendation." if gate["decision"] == "PASS" else "Historical review evidence did not pass the robustness gate; it is not VALIDATED, DEMO-ready, LIVE-ready, or a trade recommendation."
+    item = OosValidation(strategy_version_id=strategy.id, dataset_id=dataset.id, fingerprint=fingerprint, protocol=deepcopy(protocol), result=result)
     session.add(item)
     session.flush()
-    if apply_lineage:
+    if apply_lineage and not generic:
         apply_validation_lineage(strategy, item, gate["decision"])
     session.commit()
     session.refresh(item)

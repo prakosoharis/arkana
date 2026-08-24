@@ -130,10 +130,11 @@ Sprint 16 — Generic Deterministic Evaluator is complete and pushed at
 bounded completed-candle MTF evaluation, Factory evidence, and a materialized
 acceptance verifier. It does not create a Router or `VALIDATED` claim.
 
-The proposed next milestone is Sprint 17 — Generic Strategy Evidence Gate,
-recorded in `docs/SPRINT_17_GENERIC_STRATEGY_EVIDENCE_GATE.md`. It adds
-train/holdout/final-OOS and robustness evidence for generic evaluator contracts
-before any Router, DEMO, or lifecycle-promotion direction can be considered.
+Sprint 17 — Generic Strategy Evidence Gate is active and recorded in
+`docs/SPRINT_17_GENERIC_STRATEGY_EVIDENCE_GATE.md`. ARK-S17-01 is accepted; its bounded
+streaming generic replay produced one exact reusable evidence row over
+2,985,994 M1 bars, honestly returned `FAIL`, and left the StrategyVersion
+`CONTRACT_VALID`. ARK-S17-02 is authorized after the acceptance push.
 
 The intended next technical direction is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:
