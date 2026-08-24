@@ -140,31 +140,23 @@ StrategyVersion to the BacktestRun subsequently created from it.
 | SF-11 | Journal, controlled learning, and LIVE-readiness governance |
 | SF-12 | Dynamic Discovery enhancement after validation is trustworthy |
 
-## Active milestone — Sprint 12 compatibility thin slice
+## Active milestone — Sprint 13 OOS and robustness acceptance
 
-**Goal:** Create one deterministic StrategyVersion before a backtest, validate
-and fingerprint it, route it through the existing kernel via a compatibility
-adapter, and prove exact parity with the legacy strategy—without changing MT5
-or creating a second kernel.
+Sprint 12 is accepted and complete. Sprint 13 builds the frozen historical
+validation path required before any `VALIDATED` claim may exist, while keeping
+Backtest V1 as the sole kernel and preserving all legacy evidence.
 
-The thin slice is deliberately limited to the legacy XAUUSD/M1/LONG
-`BULLISH_REVERSAL_M1` semantics. A passing parity test labels it
-`BACKTESTED / LEGACY PROTOTYPE`, never `VALIDATED`, DEMO-ready, LIVE-ready, or a
-trade recommendation.
+The initial Sprint 13 path remains deliberately limited to the compatibility
+XAUUSD/M1/LONG `BULLISH_REVERSAL_M1` contract. ARK-S13-01 records review
+evidence only; it cannot label that negative legacy prototype `VALIDATED`,
+DEMO-ready, LIVE-ready, or a trade recommendation.
 
-### Card sequence
+### Sprint 13 card sequence
 
-1. **ARK-S12-01:** baseline/docs/ADR/legacy classification; preserve dirty
-   incremental-sync work. Documentation only.
-2. **ARK-S12-02:** forward migration for candidate, pre-backtest version, and
-   bidirectional/auditable lineage while retaining legacy records.
-3. **ARK-S12-03/04:** normalized Strategy Contract V1, timing semantics, and
-   minimal registered compatibility blocks.
-4. **ARK-S12-05/07:** legacy contract adapter and canonical-kernel golden
-   parity, including chunk/entry/exit semantics.
-5. **ARK-S12-06:** candidate/version APIs and validation report.
-6. **ARK-S12-08:** minimal Owner-friendly Strategy Factory UI.
-7. **ARK-S12-09:** full verification and Owner Acceptance Test.
+1. **ARK-S13-01:** immutable chronological 60/20/20 protocol and evidence.
+2. **ARK-S13-02:** cost stress and canonical OOS evaluator expansion.
+3. **ARK-S13-03:** deterministic robustness decision gate.
+4. **ARK-S13-04:** Owner UI, full verification, and acceptance.
 
 Do not begin a later card automatically. Complete the accepted card, perform
 self-verification and an independent diff review, update evidence-backed

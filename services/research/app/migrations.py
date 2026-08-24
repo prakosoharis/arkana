@@ -14,6 +14,7 @@ from sqlalchemy import Engine, inspect, text
 
 MIGRATION_013 = "013_strategy_factory_foundation"
 MIGRATION_014 = "014_strategy_contract_v1"
+MIGRATION_015 = "015_oos_validation_evidence"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -106,7 +107,28 @@ def _migration_014(connection) -> None:
         connection.execute(text("ALTER TABLE strategy_versions ADD COLUMN strategy_contract JSON"))
 
 
-MIGRATIONS = ((MIGRATION_013, _migration_013), (MIGRATION_014, _migration_014))
+def _migration_015(connection) -> None:
+    connection.execute(text("""
+        CREATE TABLE IF NOT EXISTS oos_validations (
+            id VARCHAR(36) PRIMARY KEY,
+            strategy_version_id VARCHAR(36) NOT NULL,
+            dataset_id VARCHAR(36) NOT NULL,
+            fingerprint VARCHAR(64) NOT NULL UNIQUE,
+            protocol JSON NOT NULL,
+            result JSON NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            FOREIGN KEY(strategy_version_id) REFERENCES strategy_versions(id),
+            FOREIGN KEY(dataset_id) REFERENCES datasets(id)
+        )
+    """))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_oos_validations_strategy_version_id ON oos_validations(strategy_version_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_oos_validations_dataset_id ON oos_validations(dataset_id)"))
+
+MIGRATIONS = (
+    (MIGRATION_013, _migration_013),
+    (MIGRATION_014, _migration_014),
+    (MIGRATION_015, _migration_015),
+)
 
 
 def run_migrations(engine: Engine) -> None:

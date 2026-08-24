@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
-from app.migrations import MIGRATION_013, MIGRATION_014, run_migrations
+from app.migrations import MIGRATION_013, MIGRATION_014, MIGRATION_015, run_migrations
 from app.models import BacktestRun, StrategyCandidate, StrategyVersion
 
 
@@ -55,6 +55,7 @@ def test_strategy_factory_migration_preserves_legacy_and_supports_pre_backtest_l
     run_migrations(engine)
     metadata = inspect(engine)
     assert "strategy_candidates" in metadata.get_table_names()
+    assert "oos_validations" in metadata.get_table_names()
     assert {"strategy_candidate_id", "strategy_contract"}.issubset({column["name"] for column in metadata.get_columns("strategy_versions")})
     assert {"strategy_version_id"}.issubset({column["name"] for column in metadata.get_columns("backtest_runs")})
     assert next(column for column in metadata.get_columns("strategy_versions") if column["name"] == "backtest_run_id")["nullable"] is True
@@ -79,3 +80,4 @@ def test_strategy_factory_migration_preserves_legacy_and_supports_pre_backtest_l
     with engine.connect() as connection:
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_013}).scalar_one() == 1
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_014}).scalar_one() == 1
+        assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_015}).scalar_one() == 1

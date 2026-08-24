@@ -131,6 +131,19 @@ class BacktestRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class OosValidation(Base):
+    """Frozen OOS review evidence; it carries no automatic promotion power."""
+    __tablename__ = "oos_validations"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_oos_validation_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    strategy_version_id: Mapped[str] = mapped_column(ForeignKey("strategy_versions.id"), nullable=False, index=True)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol: Mapped[dict] = mapped_column(JSON, nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class SupplementalHistoricalValidation(Base):
     """Immutable full-history evidence linked to, but never replacing, approval evidence."""
     __tablename__ = "supplemental_historical_validations"

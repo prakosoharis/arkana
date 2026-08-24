@@ -10,11 +10,12 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, Dataset, DatasetBarAsset, Deployment, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot
+from .models import AIInteraction, BacktestRun, Dataset, DatasetBarAsset, Deployment, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
 from .backtesting import run_backtest, run_supplemental_full_validation
+from .oos_validation import run as run_oos_validation
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .deployments import adapter_preflight, create_deployment, poll_ack, preflight, rollback, serialize as serialize_deployment
@@ -348,6 +349,26 @@ def create_backtest(payload: dict, session: Session = Depends(get_session)) -> d
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
     return {**serialize_backtest(run, include_trades=True), "reused": reused}
+
+@app.post("/api/v1/strategy-versions/{strategy_version_id}/oos-validations")
+def create_oos_validation(strategy_version_id: str, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = run_oos_validation(session, strategy_version_id)
+        return serialize_oos_validation(item, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+@app.get("/api/v1/strategy-versions/{strategy_version_id}/oos-validations")
+def list_oos_validations(strategy_version_id: str, session: Session = Depends(get_session)) -> dict:
+    items = session.scalars(select(OosValidation).where(OosValidation.strategy_version_id == strategy_version_id).order_by(OosValidation.created_at.desc())).all()
+    return {"validations": [serialize_oos_validation(item) for item in items]}
+
+
+def serialize_oos_validation(item: OosValidation, *, reused: bool | None = None) -> dict:
+    payload = {"id": item.id, "fingerprint": item.fingerprint, "strategy_version_id": item.strategy_version_id, "dataset_id": item.dataset_id, "protocol": item.protocol, "result": item.result, "created_at": item.created_at.isoformat() + "Z"}
+    if reused is not None:
+        payload["reused"] = reused
+    return payload
 
 
 @app.get("/api/v1/backtests/{backtest_id}")

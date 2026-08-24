@@ -61,6 +61,21 @@ def test_strategy_factory_contract_lifecycle_is_auditable_and_cannot_promote_its
         assert repeated.status_code == 200
         assert repeated.json()["reused"] is True and repeated.json()["id"] == first_body["id"]
 
+        oos = client.post(f"/api/v1/strategy-versions/{version_body['id']}/oos-validations")
+        assert oos.status_code == 200, oos.text
+        evidence = oos.json(); assert evidence["result"]["status"] == "OOS_REVIEWED"
+        assert evidence["protocol"]["splits"] == {"train": .6, "holdout": .2, "final_oos": .2}
+        ranges = evidence["result"]["splits"]
+        assert ranges["train"]["timestamp_range"]["end"] < ranges["holdout"]["timestamp_range"]["start"] < ranges["final_oos"]["timestamp_range"]["start"]
+        assert sum(item["bars"] for item in ranges.values()) == imported.json()["dataset"]["timeframes"][0]["row_count"]
+        assert evidence["result"]["gate_evaluation"] == "NOT_EVALUATED"
+        assert "not VALIDATED" in evidence["result"]["warning"]
+        assert client.post(f"/api/v1/strategy-versions/{version_body['id']}/oos-validations").json()["reused"] is True
+        listed = client.get(f"/api/v1/strategy-versions/{version_body['id']}/oos-validations").json()["validations"]
+        assert len(listed) == 1 and listed[0]["fingerprint"] == evidence["fingerprint"]
+        versions_after_oos = client.get("/api/v1/strategy-versions").json()["strategy_versions"]
+        assert next(item for item in versions_after_oos if item["id"] == version_body["id"])["status"] == "CONTRACT_VALID"
+
         revision = client.post(f"/api/v1/strategy-versions/{version_body['id']}/revision")
         assert revision.status_code == 200 and revision.json()["status"] == "DRAFT"
         unchanged = client.get("/api/v1/strategy-versions").json()["strategy_versions"]
