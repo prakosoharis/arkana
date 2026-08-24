@@ -73,10 +73,11 @@ Implementation status: **COMPLETE, awaiting Owner acceptance**.
 
 The test warnings are pre-existing deprecations for FastAPI startup events,
 naive UTC datetime helpers, and SQLite adapters. They produced no failures.
-Runtime against the Owner's full history was not claimed: the workspace runtime
-metadata currently contains zero registered datasets, so the executable OAT
-uses the isolated registered fixture. The evaluator scans each split in bounded
-chunks and does not retain bars or a trade ledger in memory.
+Runtime against the Owner's full history was not claimed in this checkpoint:
+the workspace SQLite metadata inspected for ARK-S13-01 contained zero datasets,
+so its executable OAT used an isolated registered fixture. The Docker/Postgres
+Owner dataset was exercised later in ARK-S13-04. The evaluator scans each split
+in bounded chunks and does not retain bars or a trade ledger in memory.
 
 ## ARK-S13-02 implemented contract
 
@@ -147,9 +148,9 @@ Implementation status: **COMPLETE, awaiting Owner acceptance**.
   high/medium-priority defect.
 
 The same pre-existing FastAPI, naive-UTC, SQLite, and Vite/ESLint deprecation
-warnings remain non-failing. Full-history runtime is not claimed because the
-workspace runtime metadata still contains no registered dataset; the API OAT
-uses an isolated registered fixture.
+warnings remain non-failing. ARK-S13-02 did not claim full-history runtime; its
+API OAT used an isolated registered fixture. The Docker/Postgres Owner dataset
+was exercised later in ARK-S13-04.
 
 ## ARK-S13-03 implemented contract
 
@@ -233,9 +234,112 @@ Implementation status: **COMPLETE, awaiting Owner acceptance**.
   preserves legacy rows with nullable lineage fields;
 - independent review: PASS on all eight criteria, with no high/medium defect.
 
-The workspace runtime metadata contains no registered dataset, so no real
-full-history decision is claimed. The known low-priority residual is a race
-between truly concurrent identical POST requests: the winning transaction
+ARK-S13-03 did not claim a real full-history decision because only the workspace
+SQLite metadata had been inspected at that point. The Docker/Postgres Owner
+dataset was exercised later in ARK-S13-04. The known low-priority residual is a
+race between truly concurrent identical POST requests: the winning transaction
 remains consistent, but the losing request may receive a uniqueness error.
 Sequential evidence reuse is covered. Existing framework datetime/SQLite and
 frontend tooling deprecation warnings remain non-failing.
+
+## ARK-S13-04 implemented contract
+
+The Strategy Factory Owner UI now exposes the complete historical-validation
+surface for contract StrategyVersions:
+
+- run the canonical Backtest V1 evidence before robustness review;
+- run the protocol-V3 OOS robustness gate through the same-origin BFF;
+- reopen the latest persisted evidence after a page refresh;
+- inspect PASS/FAIL/INSUFFICIENT_EVIDENCE, protocol version, evidence id,
+  fingerprint, reuse status, nominal holdout/final-OOS metrics, adverse
+  final-OOS net PnL, every frozen check, and the complete immutable JSON;
+- distinguish `CONTRACT VALID · NOT VALIDATED` from
+  `VALIDATED · HISTORICAL ONLY` at the version level;
+- preserve explicit warnings that confirmation and PASS never deploy,
+  configure MT5, route an order, or imply DEMO/LIVE readiness.
+
+The UI adds orchestration and inspection only. It does not add another
+simulation kernel, change protocol V3, introduce a promotion endpoint, or
+alter the legacy manual-approval lifecycle.
+
+### Owner Acceptance Test — ARK-S13-04
+
+Automated verification:
+
+```bash
+DATABASE_URL=sqlite:////tmp/arkana-s13-04-oat.db \
+DATA_ROOT=/tmp/arkana-s13-04-oat-data \
+PYTHONPATH=services/research \
+/path/to/python3.13-environment/bin/pytest services/research/tests -q
+
+cd apps/web
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+Owner UI scenario:
+
+1. Open `/strategies` and verify the `NO LIVE ACTION` and historical-only
+   boundaries.
+2. Save a draft candidate, validate the compatibility contract, and confirm
+   the immutable version.
+3. Verify the version remains `CONTRACT VALID · NOT VALIDATED` and exposes
+   canonical backtest, OOS gate, latest evidence, and revision controls.
+4. Run the canonical backtest, then run the OOS gate against the Owner's
+   registered dataset.
+5. Inspect the exact decision, all frozen checks, nominal/adverse metrics,
+   evidence id and fingerprint, then reopen the latest evidence.
+6. Accept `VALIDATED · HISTORICAL ONLY` only when the API returns PASS and the
+   version links that exact evidence. FAIL, insufficient data, or unavailable
+   data must never promote.
+
+### Verification report — 2026-08-24
+
+Implementation status: **COMPLETE, awaiting Owner acceptance**.
+
+- complete research-service regression: 101 passed;
+- web regression: lint passed, typecheck passed, 15 tests passed, and the
+  production build completed successfully with the OOS BFF route;
+- UI evidence regression: PASS rendering includes protocol, decision,
+  historical-only label, frozen checks, adverse metrics, warning, and complete
+  evidence without a DEMO/LIVE claim; preserved pre-V3 evidence is skipped
+  safely when reopening a current gate result;
+- browser OAT on an isolated database: draft, contract validation, immutable
+  confirmation, and all four lifecycle controls passed; empty evidence was
+  reported honestly; an OOS request without a registered dataset returned
+  `Registered M1 dataset is unavailable` and left the version
+  `CONTRACT_VALID` with no promotion;
+- browser console: no errors during the OAT;
+- runtime full-history OAT: registered dataset
+  `90607bc61349a86c17670bb5a328c58afdb2b00d828950d753eded5d878ae9bc`
+  contains 2,985,994 M1 bars from 2017-04-12 through 2026-08-20; broker time
+  remains explicitly unverified;
+- runtime defect recovery: the first canonical backtest exposed a null-regime
+  handling defect for trades before the 20-bar lookback. The evaluator is now
+  null-safe, has a dedicated regression, and the complete suite passes;
+- canonical full-history evidence: BacktestRun
+  `3d259906-4f31-4e19-8103-a8f77182ee06` completed with 1,267 trades, net
+  PnL -99.1, and Profit Factor 0.122232;
+- protocol-V3 full-history decision: **FAIL**, evidence
+  `e8fc488b-0524-4235-a46e-9e3d11f77353`, fingerprint
+  `8b8f06032f5109239ff7882129fee242efa6201503434ba90d42d1f400676912`;
+  minimum trades and train calibration passed, while nominal PnL, Profit
+  Factor, adverse final-OOS, year concentration, and regime concentration
+  failed;
+- nominal holdout: 143,583 trades, net -6,667.5, PF 0.365779; nominal final
+  OOS: 149,509 trades, net -10,143.3, PF 0.191582; adverse final OOS: net
+  -10,397.8 and PF 0.179661;
+- persistence and safety: GET returns the same evidence, an identical POST
+  returns `reused: true`, and the StrategyVersion remains `CONTRACT_VALID`
+  with null validation evidence/timestamp and no DEMO/LIVE action;
+- production-local UI OAT: the rebuilt `/strategies` page reopened the exact
+  persisted FAIL evidence, displayed holdout/final/adverse metrics and
+  `NOT VALIDATED`, retained `CONTRACT VALID · NOT VALIDATED` on the version,
+  and produced no browser-console error.
+
+The actual legacy-compatibility strategy therefore does not meet the frozen
+historical robustness contract and must not claim `VALIDATED`. The known
+low-priority concurrent-identical-POST race and existing framework/tooling
+deprecation warnings remain unchanged.

@@ -53,7 +53,7 @@ def _by_regime(trades: list[dict[str, Any]], dimension: str) -> dict[str, dict[s
     labels = ("LOW", "MEDIUM", "HIGH") if dimension == "volatility" else ("TRENDING", "RANGING")
     result: dict[str, dict[str, Any]] = {}
     for label in labels:
-        selected = [item for item in trades if item.get("regime", {}).get(dimension) == label]
+        selected = [item for item in trades if (item.get("regime") or {}).get(dimension) == label]
         result[label] = {**_metric(selected), "support_status": "SUFFICIENT_SUPPORT" if len(selected) >= REGIME_MIN_SUPPORT else "INSUFFICIENT_SUPPORT"}
     return result
 

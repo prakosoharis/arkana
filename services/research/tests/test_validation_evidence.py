@@ -21,3 +21,15 @@ def test_regime_does_not_fabricate_context_before_lookback():
     bars = _bars()[:10]
     result = build_historical_regime_validation(bars, [{"entry_timestamp": bars[1]["timestamp"], "exit_timestamp": bars[2]["timestamp"], "net_pnl_price": 1.0}])
     assert result["status"] == "REGIME_NOT_AVAILABLE"
+
+
+def test_available_thresholds_ignore_trades_without_lookback_context():
+    bars = _bars()
+    trades = [
+        {"entry_timestamp": bars[1]["timestamp"], "exit_timestamp": bars[2]["timestamp"], "net_pnl_price": -1.0},
+        {"entry_timestamp": bars[25]["timestamp"], "exit_timestamp": bars[26]["timestamp"], "net_pnl_price": 1.0},
+    ]
+    result = build_historical_regime_validation(bars, trades)
+    assert result["status"] == "AVAILABLE"
+    assert result["trades"][0]["regime"] is None
+    assert sum(item["trade_count"] for item in result["historical_by_regime"]["volatility"].values()) == 1
