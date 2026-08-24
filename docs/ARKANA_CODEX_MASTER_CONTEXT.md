@@ -172,6 +172,20 @@ Do not begin a later card automatically. Complete the accepted card, perform
 self-verification and an independent diff review, update evidence-backed
 state, then wait for Owner OAT/authorization.
 
+## Proposed milestone — Sprint 15 bounded Variant Explorer
+
+Sprint 15 is designed but not authorized or started. Its proposed five-card
+contract is recorded in [`SPRINT_15_VARIANT_EXPLORER.md`](SPRINT_15_VARIANT_EXPLORER.md):
+
+1. **ARK-S15-01:** immutable experiment contract, bounds, and lineage;
+2. **ARK-S15-02:** deterministic variant generation and train evaluation;
+3. **ARK-S15-03:** holdout marginal-value evidence and locked selection;
+4. **ARK-S15-04:** selected revision, final-OOS gate, and lifecycle boundary;
+5. **ARK-S15-05:** Owner UI, full verification, runtime OAT, and acceptance.
+
+No implementation checkpoint may begin until the Owner explicitly accepts the
+Sprint 15 contract and authorizes ARK-S15-01.
+
 ## QA protocol
 
 Before coding: inspect the current repository, `git status`, dirty diffs,

@@ -115,6 +115,12 @@ modes; each has 704,707-point runtime evidence with every acceptance check
 passing. Concrete evidence is recorded in
 `docs/SPRINT_14_CAPITAL_SIMULATION.md`.
 
+The next milestone proposal is Sprint 15 — Bounded Variant Explorer, documented
+in `docs/SPRINT_15_VARIANT_EXPLORER.md`. It has five proposed checkpoints and is
+not authorized or started. Its key safety boundary is that final-OOS remains
+untouched until a holdout-based selection is immutably locked; exploration
+itself cannot create `VALIDATED`, DEMO, LIVE, Router, or trading-decision claims.
+
 The intended next technical direction is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:
 introduce a generic deterministic evaluator/adapter before the existing kernel,
