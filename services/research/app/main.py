@@ -10,12 +10,13 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericRobustnessEvidence, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
 from .backtesting import run_backtest, run_supplemental_full_validation
 from .oos_validation import run as run_oos_validation
+from .generic_robustness import run as run_generic_robustness, serialize as serialize_generic_robustness
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
@@ -374,6 +375,29 @@ def create_oos_validation(strategy_version_id: str, session: Session = Depends(g
 def list_oos_validations(strategy_version_id: str, session: Session = Depends(get_session)) -> dict:
     items = session.scalars(select(OosValidation).where(OosValidation.strategy_version_id == strategy_version_id).order_by(OosValidation.created_at.desc())).all()
     return {"validations": [serialize_oos_validation(item) for item in items]}
+
+
+@app.post("/api/v1/strategy-versions/{strategy_version_id}/generic-robustness")
+def create_generic_robustness(strategy_version_id: str, payload: dict | None = None, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = run_generic_robustness(session, strategy_version_id, baseline_oos_validation_id=(payload or {}).get("baseline_oos_validation_id"))
+        return serialize_generic_robustness(item, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/strategy-versions/{strategy_version_id}/generic-robustness")
+def list_generic_robustness(strategy_version_id: str, session: Session = Depends(get_session)) -> dict:
+    items = session.scalars(select(GenericRobustnessEvidence).where(GenericRobustnessEvidence.strategy_version_id == strategy_version_id).order_by(GenericRobustnessEvidence.created_at.desc())).all()
+    return {"evidence": [serialize_generic_robustness(item) for item in items]}
+
+
+@app.get("/api/v1/generic-robustness/{evidence_id}")
+def get_generic_robustness(evidence_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(GenericRobustnessEvidence, evidence_id)
+    if not item:
+        raise HTTPException(404, "generic robustness evidence not found")
+    return serialize_generic_robustness(item)
 
 
 @app.post("/api/v1/capital-contracts/validate")

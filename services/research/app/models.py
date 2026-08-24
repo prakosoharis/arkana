@@ -144,6 +144,22 @@ class OosValidation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class GenericRobustnessEvidence(Base):
+    """Bounded local stability evidence; it has no lifecycle authority."""
+    __tablename__ = "generic_robustness_evidence"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_generic_robustness_evidence_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    strategy_version_id: Mapped[str] = mapped_column(ForeignKey("strategy_versions.id"), nullable=False, index=True)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id"), nullable=False, index=True)
+    baseline_oos_validation_id: Mapped[str] = mapped_column(ForeignKey("oos_validations.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(48), nullable=False)
+    policy: Mapped[dict] = mapped_column(JSON, nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"

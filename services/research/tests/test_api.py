@@ -629,6 +629,15 @@ def test_s16_capability_registry_assessment_and_confirmation_api_are_fail_closed
         assert evidence["result"]["lifecycle"] == {"owner_gate_required": True, "validated_created": False, "demo_or_live_authorized": False, "capital_authorized": False}
         repeated_oos = client.post(f"/api/v1/strategy-versions/{generic_version.json()['id']}/oos-validations")
         assert repeated_oos.status_code == 200 and repeated_oos.json()["id"] == evidence["id"] and repeated_oos.json()["reused"] is True
+        stability = client.post(f"/api/v1/strategy-versions/{generic_version.json()['id']}/generic-robustness", json={"baseline_oos_validation_id": evidence["id"]})
+        assert stability.status_code == 200, stability.text
+        stability_body = stability.json()
+        assert stability_body["protocol_version"] == "GENERIC_PARAMETER_STABILITY_V1"
+        assert stability_body["status"] == "INSUFFICIENT_EVIDENCE"
+        assert stability_body["result"]["split_access"]["final_oos"]["accessed"] is False
+        assert stability_body["result"]["selection"]["optimization_performed"] is False
+        assert client.post(f"/api/v1/strategy-versions/{generic_version.json()['id']}/generic-robustness", json={"baseline_oos_validation_id": evidence["id"]}).json()["reused"] is True
+        assert client.get(f"/api/v1/generic-robustness/{stability_body['id']}").json()["fingerprint"] == stability_body["fingerprint"]
         current = next(item for item in client.get("/api/v1/strategy-versions").json()["strategy_versions"] if item["id"] == generic_version.json()["id"])
         assert current["status"] == "CONTRACT_VALID" and current["validation_evidence_id"] is None
 

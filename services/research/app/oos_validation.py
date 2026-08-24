@@ -423,6 +423,57 @@ def apply_validation_lineage(strategy: StrategyVersion, evidence: OosValidation,
     return True
 
 
+def generic_replay_plan(
+    dataset: Dataset,
+    contract: dict[str, Any],
+    *,
+    chunk_size: int,
+) -> tuple[dict[str, Any], dict[str, Any], Any]:
+    """Bind one generic contract to registered assets and fresh split evaluators."""
+    capability = assess_capability(contract)
+    if capability["status"] != "CONTRACT_VALID" or capability["evaluator_capability_id"] != GENERIC:
+        raise ValueError("Strategy Contract has no executable generic completed-candle capability")
+    required = {"M1"}
+
+    def collect(rule: dict[str, Any]) -> None:
+        if rule["block_id"] in {"ALL_OF", "ANY_OF"}:
+            for child in rule["children"]:
+                collect(child)
+        elif rule["block_id"] == "NOT":
+            collect(rule["child"])
+        else:
+            required.add(rule.get("timeframe", "M1"))
+
+    for section in ("context_rules", "setup_rules", "trigger_rules"):
+        for rule in capability["normalized_contract"][section]:
+            collect(rule)
+    assets = {item.timeframe: item for item in dataset.bars}
+    missing = sorted(required - set(assets))
+    if missing:
+        raise ValueError("CAPABILITY_NOT_SUPPORTED: missing registered completed context assets: " + ", ".join(missing))
+    lineage_assets = {
+        timeframe: {
+            "dataset_id": dataset.id,
+            "dataset_fingerprint": dataset.fingerprint,
+            "timeframe": timeframe,
+            "row_count": assets[timeframe].row_count,
+            "range_start": assets[timeframe].range_start.isoformat(),
+            "range_end": assets[timeframe].range_end.isoformat(),
+        }
+        for timeframe in required
+    }
+    artifact = make_evaluator_artifact(capability["normalized_contract"], set(assets), lineage_assets)
+
+    def factory() -> Any:
+        sources = {
+            timeframe: (() if timeframe == "M1" else iter_bars(assets[timeframe], chunk_size=chunk_size))
+            for timeframe in required
+        }
+        return build_streaming(capability["normalized_contract"], sources, lineage_assets)[0]
+
+    return generic_kernel_config(capability["normalized_contract"]), artifact, factory
+
+
 def run(
     session: Session,
     strategy_version_id: str,
@@ -461,29 +512,7 @@ def run(
     evaluator_artifact = None
     evaluator_factory = None
     if generic:
-        # OOS is exhaustive evidence, not the bounded Quick Backtest. The
-        # evaluator receives only registered source assets and still selects a
-        # context bar by its completed close timestamp at each M1 decision.
-        required = {"M1"}
-        def collect(rule: dict[str, Any]) -> None:
-            if rule["block_id"] in {"ALL_OF", "ANY_OF"}:
-                for child in rule["children"]: collect(child)
-            elif rule["block_id"] == "NOT": collect(rule["child"])
-            else: required.add(rule.get("timeframe", "M1"))
-        for section in ("context_rules", "setup_rules", "trigger_rules"):
-            for rule in capability["normalized_contract"][section]: collect(rule)
-        assets = {item.timeframe: item for item in dataset.bars}
-        missing = sorted(required - set(assets))
-        if missing: raise ValueError("CAPABILITY_NOT_SUPPORTED: missing registered completed context assets: " + ", ".join(missing))
-        lineage_assets = {timeframe: {"dataset_id": dataset.id, "dataset_fingerprint": dataset.fingerprint, "timeframe": timeframe, "row_count": assets[timeframe].row_count, "range_start": assets[timeframe].range_start.isoformat(), "range_end": assets[timeframe].range_end.isoformat()} for timeframe in required}
-        evaluator_artifact = make_evaluator_artifact(capability["normalized_contract"], set(assets), lineage_assets)
-        def evaluator_factory() -> Any:
-            sources = {
-                timeframe: (() if timeframe == "M1" else iter_bars(assets[timeframe], chunk_size=chunk_size))
-                for timeframe in required
-            }
-            return build_streaming(capability["normalized_contract"], sources, lineage_assets)[0]
-        config = generic_kernel_config(capability["normalized_contract"])
+        config, evaluator_artifact, evaluator_factory = generic_replay_plan(dataset, capability["normalized_contract"], chunk_size=chunk_size)
     else:
         config = compile_legacy_bullish_reversal(strategy.strategy_contract)
     protocol = GENERIC_PROTOCOL if generic else PROTOCOL

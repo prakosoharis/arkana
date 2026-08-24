@@ -217,7 +217,8 @@ robustness evidence, an Owner-gated evidence decision, and Factory verifier/UI.
 It is a prerequisite for considering any Router or DEMO direction. The Owner
 accepted the ARK-S17 contract and its contract commit was pushed at `eee8aec`.
 ARK-S17-01 implementation, regression, and full-history OAT are accepted.
-ARK-S17-02 is authorized after the ARK-S17-01 acceptance push.
+ARK-S17-02 implementation, regression, migration, and full-history OAT are
+accepted. ARK-S17-03 is authorized after the ARK-S17-02 acceptance push.
 
 ## QA protocol
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-**ACTIVE — ARK-S17-01 accepted; ARK-S17-02 is authorized.**
+**ACTIVE — ARK-S17-02 accepted; ARK-S17-03 is authorized.**
 
 Sprint 16 is complete at `9dae9ea`. It can create immutable generic
 completed-candle StrategyVersions and run them through the sole Backtest V1
@@ -126,6 +126,48 @@ neighborhoods without optimization leakage.
 - Missing support yields `INSUFFICIENT_EVIDENCE`; failed economics yields `FAIL`;
   neither is hidden or retried under changed semantics.
 - Generic and legacy costs/timing use the same kernel definitions.
+
+### Completion report — 2026-08-25
+
+Implemented and verified:
+
+- Added immutable `GENERIC_PARAMETER_STABILITY_V1` evidence and additive
+  migration `030_generic_robustness_evidence`. Its fingerprint binds the exact
+  StrategyVersion/checksum, dataset/fingerprint, baseline generic OOS ID and
+  fingerprint, and frozen stability policy.
+- The deterministic neighborhood contains exactly five ordered candidates:
+  baseline, stop distance -10%/+10%, and target distance -10%/+10%. Only one
+  axis changes at a time. Joint changes, indicator-period tuning, block or
+  timeframe mutation, cost optimization, final-OOS selection, and best-candidate
+  promotion are explicitly prohibited.
+- Baseline metrics are reused from exact S17-01 evidence. Four neighbors replay
+  only train and holdout under baseline/adverse costs through the same generic
+  completed-candle evaluator and Backtest V1 kernel. Every row retains metrics,
+  PF/PnL, trade support, year/regime breakdown, evaluator, and asset lineage.
+- The materialized decision preserves `PASS`, `FAIL`, and
+  `INSUFFICIENT_EVIDENCE`. Evaluator failures persist no partial row. Exact
+  retries reuse one fingerprinted artifact, and no lifecycle state changes.
+
+Verification evidence:
+
+- Backend regression: **175 passed**. Migration recovery, API lifecycle,
+  deterministic ordering, final-OOS blindness, negative outcomes, reuse,
+  no-partial failure, Python compile, and diff checks pass.
+- Docker/PostgreSQL OAT applied migration 030 exactly once and evaluated the
+  real 2,985,994-M1/600,274-M5 lineage. Observed service memory remained
+  approximately 213–293 MiB during more than 19 million bounded bar-evaluations.
+- Evidence `623f8097-c6f3-4969-a51f-64f7f0dcf625`, fingerprint
+  `cf44d9559533a34ca0d7898bb766e6cd39f27d8a7809456d98b157cb5ad6d116`,
+  honestly returned `FAIL`: all 5/5 candidates had sufficient trade support,
+  but 0/5 passed economics (required fraction 0.75).
+- Holdout PnL/PF ranged from `-1894.6189`/`0.821649` to
+  `-1329.9391`/`0.877593`; every adverse holdout PnL was negative. The exact
+  retry returned `reused=true`, PostgreSQL contains one robustness row,
+  final-OOS is `accessed=false`, selection is null, and the StrategyVersion
+  remains `CONTRACT_VALID` with no validation evidence link.
+
+**Owner decision:** ARK-S17-02 accepted on 2026-08-25. Its acceptance commit
+must be pushed before ARK-S17-03 implementation begins.
 
 ## ARK-S17-03 — Owner-gated generic evidence decision
 

@@ -134,7 +134,10 @@ Sprint 17 — Generic Strategy Evidence Gate is active and recorded in
 `docs/SPRINT_17_GENERIC_STRATEGY_EVIDENCE_GATE.md`. ARK-S17-01 is accepted; its bounded
 streaming generic replay produced one exact reusable evidence row over
 2,985,994 M1 bars, honestly returned `FAIL`, and left the StrategyVersion
-`CONTRACT_VALID`. ARK-S17-02 is authorized after the acceptance push.
+`CONTRACT_VALID`. ARK-S17-02 is accepted. Its five-candidate bounded stability
+evidence honestly returned `FAIL`, never accessed final-OOS, selected no
+candidate, and left lifecycle state unchanged. ARK-S17-03 is authorized after
+the acceptance push.
 
 The intended next technical direction is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:
