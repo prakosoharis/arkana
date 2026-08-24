@@ -585,6 +585,30 @@ def test_strategy_factory_candidate_contract_api_lifecycle():
         assert client.post("/api/v1/strategy-candidates/validate",json={"strategy_contract":{"schema_version":1}}).json()["ready"] is False
 
 
+def test_s16_capability_registry_assessment_and_confirmation_api_are_fail_closed():
+    contract = legacy_bullish_reversal_contract(stop_distance=.21, target_distance=.34, spread_price=.02)
+    blocked = {**contract, "context_rules": [{"block_id": "SMA_RELATION", "uses_completed_candles": True, "fast_period": 10, "slow_period": 20}]}
+    with TestClient(app) as client:
+        registry = client.get("/api/v1/strategy-capabilities")
+        assert registry.status_code == 200
+        assert registry.json()["version"] == "STRATEGY_CAPABILITY_REGISTRY_V2"
+        assert any(item["id"] == "SMA_RELATION" for item in registry.json()["blocks"])
+        candidate = client.post("/api/v1/strategy-candidates", json={"name": "S16 API", "source": "MANUAL", "provenance": {"purpose": "capability registry"}}).json()
+        assessment = client.post("/api/v1/strategy-contract-assessments", json={"strategy_contract": contract})
+        assert assessment.status_code == 200 and assessment.json()["status"] == "CONTRACT_VALID" and assessment.json()["reused"] is False
+        repeated = client.post("/api/v1/strategy-contract-assessments", json={"strategy_contract": contract})
+        assert repeated.json()["id"] == assessment.json()["id"] and repeated.json()["reused"] is True
+        assert client.get(f"/api/v1/strategy-contract-assessments/{assessment.json()['id']}").json()["fingerprint"] == assessment.json()["fingerprint"]
+        confirmed = client.post(f"/api/v1/strategy-contract-assessments/{assessment.json()['id']}/confirm", json={"strategy_candidate_id": candidate["id"]})
+        assert confirmed.status_code == 200 and confirmed.json()["status"] == "CONTRACT_VALID"
+        assert confirmed.json()["configuration"]["strategy_capability_assessment"]["id"] == assessment.json()["id"]
+        assert client.post(f"/api/v1/strategy-contract-assessments/{assessment.json()['id']}/confirm", json={"strategy_candidate_id": candidate["id"]}).json()["reused"] is True
+        unsupported = client.post("/api/v1/strategy-contract-assessments", json={"strategy_contract": blocked})
+        assert unsupported.json()["status"] == "CAPABILITY_NOT_SUPPORTED"
+        rejected = client.post(f"/api/v1/strategy-contract-assessments/{unsupported.json()['id']}/confirm", json={"strategy_candidate_id": candidate["id"]})
+        assert rejected.status_code == 422
+
+
 def test_demo_deployment_requires_approval_acknowledges_exact_checksum_and_rolls_back(tmp_path, monkeypatch):
     monkeypatch.setattr("app.settings.MT5_COMMON_FILES_ROOT", tmp_path)
     with TestClient(app) as client:

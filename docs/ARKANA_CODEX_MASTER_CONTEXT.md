@@ -172,7 +172,7 @@ Do not begin a later card automatically. Complete the accepted card, perform
 self-verification and an independent diff review, update evidence-backed
 state, then wait for Owner OAT/authorization.
 
-## Active milestone — Sprint 15 bounded Variant Explorer
+## Completed milestone — Sprint 15 bounded Variant Explorer
 
 Sprint 15's five-card contract is accepted and recorded in
 [`SPRINT_15_VARIANT_EXPLORER.md`](SPRINT_15_VARIANT_EXPLORER.md):
@@ -184,12 +184,25 @@ Sprint 15's five-card contract is accepted and recorded in
 5. **ARK-S15-05:** Owner UI, full verification, runtime OAT, and acceptance.
 
 ARK-S15-01 is accepted and pushed at `736175e`; ARK-S15-02 at `1fdc28c`;
-ARK-S15-03 at `32ed834`; and ARK-S15-04 at `e41e422`. ARK-S15-05 is accepted
-and its delivery commit is pending push. `/variants` exposes the persisted experiment chain
+ARK-S15-03 at `32ed834`; ARK-S15-04 at `e41e422`; and ARK-S15-05 at `4f391ec`.
+`/variants` exposes the persisted experiment chain
 and explicit lifecycle boundaries; the materialized verifier independently
 recomputes every accepted Sprint 15 invariant. The real lock remains
 `NO_ELIGIBLE_VARIANT`, with all ten checks passing, final-OOS locked, and no
 revision or validation claim.
+
+## Active milestone — Sprint 16 generic deterministic evaluator
+
+Sprint 16 is defined in
+[`SPRINT_16_GENERIC_EVALUATOR.md`](SPRINT_16_GENERIC_EVALUATOR.md). It expands
+the narrow compatibility adapter only through a typed, fail-closed capability
+registry and compiler feeding the existing Backtest V1 kernel. Exact legacy
+golden parity is a prerequisite to bounded completed-candle multi-timeframe
+evaluation. It creates neither a Router nor a `VALIDATED`, DEMO, LIVE, capital,
+or current-trade-decision claim. ARK-S16-01 is implemented and awaiting Owner
+acceptance: the V2 capability registry provides immutable, normalized,
+registry-fingerprinted contract assessments and an explicit compatibility-only
+confirmation path. Declared generic blocks cannot yet execute and fail closed.
 
 ## QA protocol
 

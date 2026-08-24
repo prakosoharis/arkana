@@ -391,6 +391,21 @@ class StrategyCandidate(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class StrategyContractAssessment(Base):
+    """Immutable S16 capability/normalization assessment before confirmation."""
+    __tablename__ = "strategy_contract_assessments"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_strategy_contract_assessment_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    registry_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    registry_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    evaluator_capability_id: Mapped[str | None] = mapped_column(String(96), nullable=True)
+    status: Mapped[str] = mapped_column(String(48), nullable=False)
+    normalized_contract: Mapped[dict] = mapped_column(JSON, nullable=False)
+    assessment: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class StrategyVersion(Base):
     __tablename__ = "strategy_versions"
     __table_args__ = (UniqueConstraint("strategy_key", "version", name="uq_strategy_key_version"),)

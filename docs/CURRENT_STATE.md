@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-25 — ARK-S15-05 Owner UI and acceptance verification
-**Active milestone:** Sprint 15 — Bounded Variant Explorer
-**Active card:** Sprint 15 complete — next milestone not yet authorized
+**Updated:** 2026-08-25 — ARK-S16-01 capability registry and contract assessment
+**Active milestone:** Sprint 16 — Generic Deterministic Evaluator
+**Active card:** ARK-S16-02 — authorized; acceptance push of ARK-S16-01 pending
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -40,7 +40,7 @@ Target:  StrategyCandidate → deterministic StrategyVersion → canonical Backt
 | Research Lab and deterministic rules | IMPLEMENTED but narrow | Typed hypotheses, owner-confirmed/fingerprinted research rules, historical execution, visual samples, Pattern Discovery, and Historical Similarity exist. Research rules are not executable strategies. |
 | AI research assistance | IMPLEMENTED for research; provider OAT pending | AI is optional, deterministic-first, and used for research draft/explanation paths. It does **not** draft Strategy Factory contracts and is prohibited from deterministic execution. |
 | Backtest V1 | CANONICAL COMPATIBILITY FOUNDATION | One stateful simulation kernel exists in `services/research/app/backtesting.py`, with next-bar entry, `STOP_FIRST`, cost semantics, chunk continuity, and golden legacy/contract parity evidence. It remains the only canonical simulation kernel. |
-| Generic strategy evaluation | NARROW COMPATIBILITY ADAPTER | A deterministic Strategy Contract V1 adapter compiles only the legacy `BULLISH_REVERSAL_M1` shape into the canonical kernel. Every contract run records the version, contract/checksum, adapter version, costs, and execution semantics in its evidence fingerprint. Broader strategy capability is still missing. |
+| Generic strategy evaluation | CAPABILITY REGISTRY + NARROW COMPATIBILITY ADAPTER | `STRATEGY_CAPABILITY_REGISTRY_V2` now normalizes and fingerprints typed contract assessments, persists immutable registry-bound evidence, and exposes assess/read/confirm APIs. Only the legacy `BULLISH_REVERSAL_M1` shape is executable through the canonical kernel. Generic blocks are visible but explicitly `CAPABILITY_NOT_SUPPORTED` until their compiler/evaluator cards; broader executable strategy capability is still missing. |
 | Strategy Library | LEGACY PROTOTYPE, preserved | Legacy `StrategyVersion` records remain post-backtest wrappers with their original `backtest_run_id` and manual `CANDIDATE → APPROVED` flow. The separate Strategy Factory UI exposes the narrow target compatibility lifecycle without relabeling or changing historical records. |
 | Strategy Factory | PARTIAL — executable compatibility vertical slice | Candidate/version API lifecycle, contract validation, immutable confirmation/revision, canonical Backtest V1 execution, exact golden parity, auditable StrategyVersion → BacktestRun lineage, and a guarded Strategy Factory UI now exist for the legacy compatibility contract. Broader generic capability remains missing. |
 | OOS/robustness acceptance | IMPLEMENTED gate and Owner UI; full-history OAT completed with FAIL | Protocol V3 deterministically returns `PASS`, `FAIL`, or `INSUFFICIENT_EVIDENCE` from minimum trade count, positive nominal OOS PnL, strict PF, adverse final-OOS, and train-calibrated year/regime concentration checks. The Strategy Factory can run and reopen exact evidence. The registered 2,985,994-bar Owner dataset produced FAIL for the compatibility strategy, which correctly remains `CONTRACT_VALID`. Only PASS links evidence and sets historical-only `VALIDATED`. |
@@ -115,15 +115,22 @@ modes; each has 704,707-point runtime evidence with every acceptance check
 passing. Concrete evidence is recorded in
 `docs/SPRINT_14_CAPITAL_SIMULATION.md`.
 
-The active milestone is Sprint 15 — Bounded Variant Explorer, documented in
+Sprint 15 — Bounded Variant Explorer is complete, documented in
 `docs/SPRINT_15_VARIANT_EXPLORER.md`. Its five-checkpoint contract is accepted;
 ARK-S15-01 is accepted and pushed at `736175e`; ARK-S15-02 at `1fdc28c`; and
-ARK-S15-03 at `32ed834`; and ARK-S15-04 at `e41e422`. ARK-S15-05 is accepted
-and its delivery commit is pending push. The real runtime lock is `NO_ELIGIBLE_VARIANT`; its
+ARK-S15-03 at `32ed834`; ARK-S15-04 at `e41e422`; and ARK-S15-05 at `4f391ec`.
+The real runtime lock is `NO_ELIGIBLE_VARIANT`; its
 materialized verifier reports `PASSED` and `READY_FOR_OWNER_ACCEPTANCE` across
 all ten required invariants. OAT still shows zero revision/confirmation and no
 final-OOS access or validation claim. Exploration cannot create DEMO, LIVE,
 capital, Router, or trading-decision authorization.
+
+The next proposed milestone is Sprint 16 — Generic Deterministic Evaluator,
+recorded in `docs/SPRINT_16_GENERIC_EVALUATOR.md`. It is deliberately upstream
+of a Strategy Router: it must first make a small registry of completed-candle
+strategy blocks executable through the existing canonical kernel and prove
+exact legacy parity. No Sprint 16 implementation is authorized until the Owner
+accepts its contract.
 
 The intended next technical direction is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:
