@@ -22,6 +22,7 @@ MIGRATION_019 = "019_normalized_fixed_lot_equity_points"
 MIGRATION_020 = "020_fractional_risk_capital_simulation"
 MIGRATION_021 = "021_constrained_capital_simulation"
 MIGRATION_022 = "022_constrained_capital_verification"
+MIGRATION_023 = "023_variant_experiment_contract_foundation"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -284,6 +285,26 @@ def _migration_022(connection) -> None:
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_constrained_capital_verifications_simulation_id ON constrained_capital_verifications(simulation_id)"))
 
 
+def _migration_023(connection) -> None:
+    connection.execute(text("""
+        CREATE TABLE IF NOT EXISTS variant_experiment_contracts (
+            id VARCHAR(36) PRIMARY KEY,
+            strategy_version_id VARCHAR(36) NOT NULL,
+            dataset_id VARCHAR(36) NOT NULL,
+            fingerprint VARCHAR(64) NOT NULL UNIQUE,
+            protocol_version VARCHAR(64) NOT NULL,
+            status VARCHAR(64) NOT NULL,
+            contract JSON NOT NULL,
+            assessment JSON NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            FOREIGN KEY(strategy_version_id) REFERENCES strategy_versions(id),
+            FOREIGN KEY(dataset_id) REFERENCES datasets(id)
+        )
+    """))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_variant_experiment_contracts_strategy_version_id ON variant_experiment_contracts(strategy_version_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_variant_experiment_contracts_dataset_id ON variant_experiment_contracts(dataset_id)"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -295,6 +316,7 @@ MIGRATIONS = (
     (MIGRATION_020, _migration_020),
     (MIGRATION_021, _migration_021),
     (MIGRATION_022, _migration_022),
+    (MIGRATION_023, _migration_023),
 )
 
 

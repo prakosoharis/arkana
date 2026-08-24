@@ -159,6 +159,21 @@ class CapitalBrokerContract(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class VariantExperimentContract(Base):
+    """Immutable bounded-search declaration; no variant result is stored here."""
+    __tablename__ = "variant_experiment_contracts"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_variant_experiment_contract_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    strategy_version_id: Mapped[str] = mapped_column(ForeignKey("strategy_versions.id"), nullable=False, index=True)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(64), nullable=False)
+    contract: Mapped[dict] = mapped_column(JSON, nullable=False)
+    assessment: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class FixedLotCapitalSimulation(Base):
     """Immutable realized-equity evidence produced by the sole backtest kernel."""
     __tablename__ = "fixed_lot_capital_simulations"

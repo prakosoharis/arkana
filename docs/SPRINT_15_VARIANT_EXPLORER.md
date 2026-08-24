@@ -2,11 +2,12 @@
 
 ## Proposal status
 
-**PROPOSED FOR OWNER REVIEW. No ARK-S15 checkpoint has started.**
+**ACCEPTED DEVELOPMENT CONTRACT. ARK-S15-01 is complete and awaiting Owner
+acceptance; ARK-S15-02 has not started.**
 
-This document becomes the Sprint 15 development contract only after explicit
-Owner acceptance. Planning it does not authorize implementation, schema
-changes, runtime execution, or a new strategy lifecycle claim.
+The Owner accepted this Sprint 15 development contract on 2026-08-25 and
+authorized only ARK-S15-01. That authorization does not extend to later cards
+or to a new strategy lifecycle claim.
 
 ## Milestone objective
 
@@ -81,6 +82,83 @@ executing a variant.
 - focused tests, complete backend regression, web regression where affected,
   `git diff --check`, and independent diff review pass;
 - an API OAT demonstrates one ready and representative fail-closed contracts.
+
+### Implemented S15-01 contract
+
+`VARIANT_EXPERIMENT_CONTRACT_V1` persists one immutable declaration keyed by
+the exact baseline StrategyVersion/checksum/contract fingerprint, selected
+dataset and M1 asset lineage, canonical axes, hard/declared combination limits,
+evaluator and OOS protocol versions, exact 60/20/20 half-open boundaries,
+nominal/adverse costs, eligibility rules, and deterministic tie breaks.
+
+V1 requires exactly two axes: `stop_loss_rule.distance` and
+`take_profit_rule.distance`. Both baseline values must be present. Canonical
+numeric duplicates, unsupported fields/axes, non-positive or non-finite values,
+an invalid baseline, a non-XAUUSD/M1 dataset, and a matrix beyond its declared
+or 25-combination hard limit fail closed. Canonically equivalent axis ordering
+reuses the same row; material changes produce a new fingerprint.
+
+The stored assessment explicitly records that no matrix was generated, no
+kernel or train/holdout/final-OOS bars were accessed, no StrategyVersion was
+mutated, and no `VALIDATED`, DEMO/LIVE, Router, or trading-decision claim was
+created.
+
+### S15-01 API contract
+
+- `POST /api/v1/variant-experiment-contracts/validate` returns a normalized
+  contract and `VARIANT_CONTRACT_READY`, `INVALID_VARIANT_CONTRACT`, or
+  `CAPABILITY_NOT_SUPPORTED` assessment without persistence.
+- `POST /api/v1/strategy-versions/{id}/variant-experiment-contracts` confirms
+  or reuses only a ready immutable contract.
+- `GET /api/v1/strategy-versions/{id}/variant-experiment-contracts` lists its
+  contract history.
+- `GET /api/v1/variant-experiment-contracts/{id}` reads exact detail.
+
+### Owner Acceptance Test — ARK-S15-01
+
+1. Select an eligible `CONTRACT_VALID` or historical-only `VALIDATED`
+   StrategyVersion and an explicit registered XAUUSD M1 dataset.
+2. Validate axes that include the exact baseline SL/TP values and no more than
+   25 combinations; verify the complete lineage and 60/20/20 bounds.
+3. Confirm the contract twice and verify the same id/fingerprint with
+   `reused: true` on the second request.
+4. List and reopen the artifact; verify every execution and lifecycle flag is
+   false.
+5. Add a forbidden cost axis, remove a baseline value, or exceed the bound;
+   verify validation reports an explicit fail-closed status and confirmation
+   returns 422.
+6. Verify the baseline StrategyVersion status/evidence and all prior records
+   remain unchanged.
+
+### ARK-S15-01 verification report — 2026-08-25
+
+Implementation status: **COMPLETE, awaiting Owner acceptance**.
+
+- the accepted Sprint 15 contract was committed and pushed at `e465e66` before
+  implementation began;
+- additive migration 023 is applied and recorded in live PostgreSQL; the
+  migration test proves idempotency and preservation of the legacy foundation;
+- focused domain/API/migration regression: 29 passed on Python 3.13;
+- complete research-service regression: 138 passed on Python 3.13;
+- web regression: lint and typecheck passed, 18 tests passed, and production
+  build completed successfully; no S15-01 web route or UI was introduced;
+- live baseline StrategyVersion `cd10121c-dffc-4b0e-9558-2abca2433298` and
+  dataset `de5fa845-5397-441b-91dc-fe5f8ffc8e5b` produced ready contract
+  `bb67fef5-43ea-409e-bdc7-89e903f2c988`, fingerprint
+  `2e417946bdf63017f0b4977647805d3db2cf6004c0bc5917deb70f320d44c85f`;
+- the runtime matrix declaration contains nine combinations over 2,985,994 M1
+  bars with exact half-open bounds train 0–1,791,596, holdout
+  1,791,596–2,388,795, and final-OOS 2,388,795–2,985,994;
+- the first confirmation created one row and the second reused the same id;
+  list/detail returned the exact fingerprint, while a forbidden cost axis
+  reported `INVALID_VARIANT_CONTRACT` and confirmation returned HTTP 422;
+- the baseline remained `CONTRACT_VALID` with null validation lineage/timestamp;
+  every generation, kernel, split-access, validation, deployment, Router, and
+  trading-decision flag remained false;
+- final diff review found no duplicate kernel, data access, look-ahead path,
+  lineage loss, silent fallback, status overclaim, or DEMO/LIVE mutation in the
+  S15-01 scope. The observed warnings are pre-existing FastAPI lifecycle,
+  naive-UTC, SQLite adapter, and SQLAlchemy test-cleanup warnings.
 
 ## ARK-S15-02 — Deterministic generation and train evaluation
 

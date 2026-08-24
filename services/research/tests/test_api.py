@@ -6,10 +6,12 @@ from fastapi.testclient import TestClient
 
 from app.database import Base, SessionLocal, engine
 from app.main import app
-from app.models import BrokerMetadataSnapshot, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, StrategyVersion
+from app.models import BrokerMetadataSnapshot, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, StrategyVersion
 import app.capital_contracts as capital_contracts
 import app.main as main_module
 from app.strategy_contracts import fingerprint as strategy_contract_fingerprint
+from app.strategy_adapters import legacy_bullish_reversal_contract
+from app.variant_experiment_contracts import COST_SCENARIOS, PARTITION_POLICY, SELECTION_POLICY
 
 
 FIXTURE = Path(__file__).parents[3] / "data" / "fixtures" / "xauusd_m1_sample.csv"
@@ -95,6 +97,103 @@ def test_capital_contract_api_validates_persists_reuses_and_never_promotes(monke
     with SessionLocal() as session:
         strategy = session.get(StrategyVersion, strategy_id)
         assert strategy.status == "CONTRACT_VALID" and strategy.validation_evidence_id is None
+
+
+def test_variant_experiment_contract_api_validates_confirms_reuses_lists_and_reads():
+    strategy_contract = legacy_bullish_reversal_contract(
+        stop_distance=0.2,
+        target_distance=0.4,
+        spread_price=0.02,
+        commission_price=0.01,
+    )
+    strategy_fp = strategy_contract_fingerprint(strategy_contract)
+    with SessionLocal() as session:
+        strategy = StrategyVersion(
+            strategy_key="api-variant-contract",
+            version=1,
+            name="API variant contract",
+            profile="SCALPING",
+            status="CONTRACT_VALID",
+            strategy_contract=strategy_contract,
+            configuration={"strategy_contract_fingerprint": strategy_fp},
+            checksum=strategy_fp,
+        )
+        dataset = Dataset(
+            fingerprint="api-variant-dataset-fingerprint",
+            symbol="XAUUSD",
+            source="TEST",
+            timezone_status="UNVERIFIED_BROKER_TIME",
+            imported_at=datetime(2000, 1, 1),
+        )
+        dataset.bars.append(DatasetBarAsset(
+            timeframe="M1",
+            path="/tmp/api-variant.parquet",
+            row_count=1000,
+            range_start=datetime(2020, 1, 1),
+            range_end=datetime(2020, 1, 2),
+        ))
+        session.add_all([strategy, dataset])
+        session.commit()
+        strategy_id, dataset_id = strategy.id, dataset.id
+
+    contract = {
+        "schema_version": 1,
+        "axes": {
+            "stop_loss_rule.distance": [0.2, 0.1],
+            "take_profit_rule.distance": [0.4, 0.2],
+        },
+        "maximum_combinations": 25,
+        "cost_scenarios": COST_SCENARIOS,
+        "partition_policy": PARTITION_POLICY,
+        "selection_policy": SELECTION_POLICY,
+    }
+    payload = {"strategy_version_id": strategy_id, "dataset_id": dataset_id, "contract": contract}
+    with TestClient(app) as client:
+        report = client.post("/api/v1/variant-experiment-contracts/validate", json=payload)
+        assert report.status_code == 200
+        assert report.json()["assessment"]["status"] == "VARIANT_CONTRACT_READY"
+        assert report.json()["contract"]["combination_count"] == 4
+        assert report.json()["assessment"]["lineage"]["split_bounds"]["final_oos"] == {"start": 800, "end": 1000}
+        assert report.json()["assessment"]["execution"]["kernel_execution_performed"] is False
+
+        first = client.post(
+            f"/api/v1/strategy-versions/{strategy_id}/variant-experiment-contracts",
+            json={"dataset_id": dataset_id, "contract": contract},
+        )
+        assert first.status_code == 200 and first.json()["reused"] is False
+        assert first.json()["status"] == "VARIANT_CONTRACT_READY"
+
+        second = client.post(
+            f"/api/v1/strategy-versions/{strategy_id}/variant-experiment-contracts",
+            json={"dataset_id": dataset_id, "contract": contract},
+        )
+        assert second.status_code == 200 and second.json()["reused"] is True
+        assert second.json()["id"] == first.json()["id"]
+
+        listed = client.get(f"/api/v1/strategy-versions/{strategy_id}/variant-experiment-contracts")
+        assert listed.status_code == 200
+        assert listed.json()["variant_experiment_contracts"][0]["fingerprint"] == first.json()["fingerprint"]
+        detail = client.get(f"/api/v1/variant-experiment-contracts/{first.json()['id']}")
+        assert detail.status_code == 200 and detail.json()["id"] == first.json()["id"]
+        assert client.get("/api/v1/variant-experiment-contracts/missing").status_code == 404
+
+        invalid = {**contract, "axes": {**contract["axes"], "cost_assumptions.commission_price": [0.0, 0.01]}}
+        invalid_report = client.post(
+            "/api/v1/variant-experiment-contracts/validate",
+            json={**payload, "contract": invalid},
+        )
+        assert invalid_report.status_code == 200
+        assert invalid_report.json()["assessment"]["status"] == "INVALID_VARIANT_CONTRACT"
+        blocked = client.post(
+            f"/api/v1/strategy-versions/{strategy_id}/variant-experiment-contracts",
+            json={"dataset_id": dataset_id, "contract": invalid},
+        )
+        assert blocked.status_code == 422 and "INVALID_VARIANT_CONTRACT" in blocked.json()["detail"]
+
+    with SessionLocal() as session:
+        strategy = session.get(StrategyVersion, strategy_id)
+        assert strategy.status == "CONTRACT_VALID"
+        assert strategy.validation_evidence_id is None and strategy.validated_at is None
 
 
 def test_fixed_lot_capital_simulation_api_creates_lists_and_pages_equity(monkeypatch):
