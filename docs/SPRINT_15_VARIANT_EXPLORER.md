@@ -2,12 +2,13 @@
 
 ## Proposal status
 
-**ACCEPTED DEVELOPMENT CONTRACT. ARK-S15-01 is complete and awaiting Owner
-acceptance; ARK-S15-02 has not started.**
+**ACCEPTED DEVELOPMENT CONTRACT. ARK-S15-01 is accepted; ARK-S15-02 is complete
+and awaiting Owner acceptance; ARK-S15-03 has not started.**
 
-The Owner accepted this Sprint 15 development contract on 2026-08-25 and
-authorized only ARK-S15-01. That authorization does not extend to later cards
-or to a new strategy lifecycle claim.
+The Owner accepted this Sprint 15 development contract on 2026-08-25. ARK-S15-01
+was subsequently accepted and pushed; only ARK-S15-02 is currently authorized.
+That authorization does not extend to later cards or to a new strategy
+lifecycle claim.
 
 ## Milestone objective
 
@@ -132,7 +133,7 @@ created.
 
 ### ARK-S15-01 verification report — 2026-08-25
 
-Implementation status: **COMPLETE, awaiting Owner acceptance**.
+Implementation status: **ACCEPTED and pushed at commit `736175e`**.
 
 - the accepted Sprint 15 contract was committed and pushed at `e465e66` before
   implementation began;
@@ -187,6 +188,86 @@ the frozen train partition only.
 - boundary-spy tests fail if a train run requests any bar at or beyond holdout;
 - focused/API/migration tests and complete regression pass, followed by runtime
   OAT on the registered Owner dataset and independent review.
+
+### Implemented S15-02 execution contract
+
+`VARIANT_TRAIN_EVALUATION_V1` expands the two canonically sorted axes through
+`BOUNDED_CARTESIAN_VARIANT_GENERATOR_V1`. Every combination receives a stable
+ordinal, exact parameter payload, Strategy Contract fingerprint, evaluator
+configuration, and variant fingerprint. The matrix must match the confirmed
+combination count, contain unique fingerprints, and include exactly one
+immutable baseline.
+
+The executor requires the exact protocol-V3 OOS baseline fingerprint for the
+same StrategyVersion, dataset, M1 asset, contract, evaluator, and cost policy.
+It calibrates regimes from train only, then calls the existing OOS `_evaluate`
+orchestration over half-open range `[0, train_end)` for nominal and adverse
+costs. `_evaluate` remains a wrapper around the sole `simulate_kernel`; no new
+kernel or trade semantics are introduced. The generated baseline's complete
+train payload must equal both stored protocol-V3 scenarios exactly or the run
+fails closed.
+
+One run fingerprint has a single mutable `RUNNING` lease and one immutable
+`COMPLETED` winner. A heartbeat is committed after every variant. Fresh work
+returns HTTP 409, while `FAILED` or a 30-minute stale lease may recover the same
+row. Partial progress is never returned as completed evidence.
+
+### S15-02 API contract
+
+- `POST /api/v1/variant-experiment-contracts/{id}/train-runs` executes or
+  reuses the exact train matrix.
+- `GET /api/v1/variant-experiment-contracts/{id}/train-runs` lists recorded
+  runs without execution.
+- `GET /api/v1/variant-train-runs/{id}` reads exact evidence without execution.
+
+### Owner Acceptance Test — ARK-S15-02
+
+1. Use accepted contract `bb67fef5-43ea-409e-bdc7-89e903f2c988` and verify
+   its exact protocol-V3 baseline evidence is available.
+2. POST its train run and verify nine stable ordinal/fingerprint records, each
+   with nominal and adverse train metrics.
+3. Verify `baseline_parity.status` and both scenario checks are `PASS`.
+4. Verify train range is `[0, 1791596)`, while holdout and final-OOS remain
+   `accessed: false`.
+5. Repeat POST and verify the exact completed id/fingerprint is reused.
+6. List and reopen the evidence; verify the StrategyVersion remains
+   `CONTRACT_VALID` with no selection, `VALIDATED`, DEMO/LIVE, Router, or
+   trading-decision side effect.
+
+### ARK-S15-02 verification report — 2026-08-25
+
+Implementation status: **COMPLETE, awaiting Owner acceptance**.
+
+- S15-01 was accepted, committed, and pushed at `736175e` before this card;
+- additive migration 024 is applied and recorded in live PostgreSQL; legacy
+  records and the S15-01 contract remain unchanged;
+- focused domain/API/migration regression: 35 passed on Python 3.13, including
+  fail-closed behavior when exact protocol-V3 baseline evidence is absent;
+- complete research-service regression: 144 passed on Python 3.13;
+- web regression: lint and typecheck passed, 18 tests passed, and production
+  build completed successfully; S15-02 adds no UI or BFF route;
+- runtime train run `8b5a1180-e8cf-4aa0-8ad2-438fc6c1fc57`, fingerprint
+  `9814ce36f22b89fd59cf7e8dab111ee0801f2471bbd565d60acc32c5c13670d6`,
+  completed the nine-variant matrix in 551.548 seconds;
+- ordinals 0–8 and all fingerprints are unique; baseline SL/TP 0.1/0.1 is
+  ordinal 4 and exactly matches protocol-V3 baseline/adverse train evidence;
+- all 18 canonical traversals used train `[0, 1791596)` only. Holdout and
+  final-OOS stayed unaccessed; a boundary spy regression asserts the same for
+  every scenario and variant;
+- repeated POST reused the exact completed row; list/detail returned its exact
+  fingerprint. Tests also cover HTTP 409 for a fresh winner, typed `FAILED`,
+  immediate failed retry, and 30-minute stale-lease recovery;
+- all nine train results are historically negative under nominal and adverse
+  costs. The least-negative nominal result in this bounded matrix is ordinal 2
+  (SL 0.05, TP 0.15) at -6,715.85 price units with profit factor 0.612731;
+  S15-02 does not select or recommend it;
+- the baseline remains `CONTRACT_VALID` with null validation lineage/timestamp;
+  no selection, `VALIDATED`, DEMO/LIVE, Router, or trading-decision action
+  occurred;
+- final diff review found no second kernel, look-ahead/final-OOS path, matrix
+  truncation, parity bypass, silent fallback, lifecycle overclaim, or unsafe
+  duplicate winner. Observed warnings remain the documented pre-existing
+  FastAPI lifecycle, naive-UTC, SQLite adapter, and SQLAlchemy cleanup warnings.
 
 ## ARK-S15-03 — Holdout marginal value and locked selection
 

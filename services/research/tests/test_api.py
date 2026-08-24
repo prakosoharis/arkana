@@ -6,12 +6,13 @@ from fastapi.testclient import TestClient
 
 from app.database import Base, SessionLocal, engine
 from app.main import app
-from app.models import BrokerMetadataSnapshot, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, StrategyVersion
+from app.models import BrokerMetadataSnapshot, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, StrategyVersion, VariantTrainRun
 import app.capital_contracts as capital_contracts
 import app.main as main_module
 from app.strategy_contracts import fingerprint as strategy_contract_fingerprint
 from app.strategy_adapters import legacy_bullish_reversal_contract
 from app.variant_experiment_contracts import COST_SCENARIOS, PARTITION_POLICY, SELECTION_POLICY
+from app.variant_train_runs import TrainRunConflict
 
 
 FIXTURE = Path(__file__).parents[3] / "data" / "fixtures" / "xauusd_m1_sample.csv"
@@ -194,6 +195,53 @@ def test_variant_experiment_contract_api_validates_confirms_reuses_lists_and_rea
         strategy = session.get(StrategyVersion, strategy_id)
         assert strategy.status == "CONTRACT_VALID"
         assert strategy.validation_evidence_id is None and strategy.validated_at is None
+
+
+def test_variant_train_run_api_creates_lists_reads_and_reports_conflict(monkeypatch):
+    with SessionLocal() as session:
+        item = VariantTrainRun(
+            experiment_contract_id="api-variant-contract",
+            strategy_version_id="api-variant-strategy",
+            dataset_id="api-variant-dataset",
+            baseline_oos_validation_id="api-variant-oos",
+            fingerprint="api-variant-train-fingerprint",
+            protocol_version="VARIANT_TRAIN_EVALUATION_V1",
+            status="COMPLETED",
+            result={
+                "status": "COMPLETED",
+                "matrix": {"combination_count": 1, "variants": []},
+                "baseline_parity": {"status": "PASS"},
+                "split_access": {"train": {"accessed": True}, "holdout": {"accessed": False}, "final_oos": {"accessed": False}},
+            },
+        )
+        session.add(item)
+        session.commit()
+        session.refresh(item)
+        item_id = item.id
+
+    monkeypatch.setattr(
+        main_module,
+        "run_variant_train_evaluation",
+        lambda session, contract_id: (session.get(VariantTrainRun, item_id), True),
+    )
+    with TestClient(app) as client:
+        created = client.post("/api/v1/variant-experiment-contracts/api-variant-contract/train-runs")
+        assert created.status_code == 200 and created.json()["reused"] is True
+        assert created.json()["result"]["baseline_parity"]["status"] == "PASS"
+        listed = client.get("/api/v1/variant-experiment-contracts/api-variant-contract/train-runs")
+        assert listed.status_code == 200 and listed.json()["train_runs"][0]["id"] == item_id
+        detail = client.get(f"/api/v1/variant-train-runs/{item_id}")
+        assert detail.status_code == 200 and detail.json()["result"]["split_access"]["final_oos"]["accessed"] is False
+        assert client.get("/api/v1/variant-train-runs/missing").status_code == 404
+
+    monkeypatch.setattr(
+        main_module,
+        "run_variant_train_evaluation",
+        lambda *_args: (_ for _ in ()).throw(TrainRunConflict("already running")),
+    )
+    with TestClient(app) as client:
+        conflict = client.post("/api/v1/variant-experiment-contracts/api-variant-contract/train-runs")
+        assert conflict.status_code == 409 and conflict.json()["detail"] == "already running"
 
 
 def test_fixed_lot_capital_simulation_api_creates_lists_and_pages_equity(monkeypatch):

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -35,6 +35,7 @@ from .capital_simulations import run as run_fixed_lot_capital_simulation, serial
 from .fractional_risk_simulations import run as run_fractional_risk_simulation, serialize as serialize_fractional_risk_simulation
 from .constrained_capital_simulations import get_materialized_verification, materialize_verification, run as run_constrained_capital_simulation, serialize as serialize_constrained_capital_simulation, serialize_verification
 from .variant_experiment_contracts import PROTOCOL_VERSION as VARIANT_CONTRACT_PROTOCOL_VERSION, create as create_variant_experiment_contract, serialize as serialize_variant_experiment_contract, validation_report as variant_experiment_validation_report
+from .variant_train_runs import TrainRunConflict, run as run_variant_train_evaluation, serialize as serialize_variant_train_run
 
 
 app = FastAPI(title="ARKANA Research Service", version="0.1.0")
@@ -448,6 +449,35 @@ def get_variant_experiment_contract(contract_id: str, session: Session = Depends
     if not item:
         raise HTTPException(404, "variant experiment contract not found")
     return serialize_variant_experiment_contract(item)
+
+
+@app.post("/api/v1/variant-experiment-contracts/{contract_id}/train-runs")
+def create_variant_train_run(contract_id: str, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = run_variant_train_evaluation(session, contract_id)
+        return serialize_variant_train_run(item, reused=reused)
+    except TrainRunConflict as error:
+        raise HTTPException(409, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/variant-experiment-contracts/{contract_id}/train-runs")
+def list_variant_train_runs(contract_id: str, session: Session = Depends(get_session)) -> dict:
+    items = session.scalars(
+        select(VariantTrainRun)
+        .where(VariantTrainRun.experiment_contract_id == contract_id)
+        .order_by(VariantTrainRun.created_at.desc())
+    ).all()
+    return {"train_runs": [serialize_variant_train_run(item) for item in items]}
+
+
+@app.get("/api/v1/variant-train-runs/{run_id}")
+def get_variant_train_run(run_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(VariantTrainRun, run_id)
+    if not item:
+        raise HTTPException(404, "variant train run not found")
+    return serialize_variant_train_run(item)
 
 
 @app.post("/api/v1/capital-contracts/{capital_contract_id}/fixed-lot-simulations")

@@ -3,7 +3,7 @@
 **Status:** Canonical repository current-state document
 **Updated:** 2026-08-25 — ARK-S14-05 Owner UI and full-history verification
 **Active milestone:** Sprint 15 — Bounded Variant Explorer
-**Active card:** ARK-S15-01 — complete, awaiting Owner acceptance
+**Active card:** ARK-S15-02 — complete, awaiting Owner acceptance
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -46,7 +46,7 @@ Target:  StrategyCandidate → deterministic StrategyVersion → canonical Backt
 | OOS/robustness acceptance | IMPLEMENTED gate and Owner UI; full-history OAT completed with FAIL | Protocol V3 deterministically returns `PASS`, `FAIL`, or `INSUFFICIENT_EVIDENCE` from minimum trade count, positive nominal OOS PnL, strict PF, adverse final-OOS, and train-calibrated year/regime concentration checks. The Strategy Factory can run and reopen exact evidence. The registered 2,985,994-bar Owner dataset produced FAIL for the compatibility strategy, which correctly remains `CONTRACT_VALID`. Only PASS links evidence and sets historical-only `VALIDATED`. |
 | DEMO deployment and telemetry | IMPLEMENTED legacy foundation; MT5 OAT pending | DEMO-only versioned config, acknowledgement, rollback, journal ingestion, and forward-evidence scaffolding exist. The EA supports the legacy rule only and fixed `0.01` volume. |
 | Capital Simulation | BROKER-CONSTRAINED FIXED/FRACTIONAL HISTORY AND OWNER UI IMPLEMENTED | Immutable `CAPITAL_BROKER_CONTRACT_V1` and `BROKER_CONSTRAINED_CAPITAL_V1` evidence bind exact StrategyVersion, full-history validation, dataset, MT5 profit/margin parity, sizing, and broker assumptions. The Owner UI validates/confirms contracts, runs or reuses results, and explicitly materializes one fingerprint-bound full-replay verifier artifact; GET is lightweight and never reruns the kernel. The verifier compares every normalized point and recomputed metric, exact lineage, constraints, disclosures, and lifecycle safety. One frozen 2026 snapshot is applied to the full 2017–2026 ledger, not reconstructed historical broker terms. Acceptance readiness is not `VALIDATED`, DEMO/LIVE authorization, or a trade recommendation. |
-| Variant Explorer | FOUNDATION ONLY — ARK-S15-01 | An immutable bounded experiment contract, explicit SL/TP-only axes, 25-combination hard limit, exact StrategyVersion/dataset/split/evaluator lineage, frozen cost/selection policy, migration, and validate/confirm/list/read API lifecycle exist. No variant matrix has been generated and no train, holdout, or final-OOS bars have been accessed. |
+| Variant Explorer | TRAIN EVIDENCE — ARK-S15-02 | The immutable S15-01 contract plus deterministic bounded Cartesian generation, train-only nominal/adverse execution through the existing canonical evaluator, exact protocol-V3 baseline parity, single-winner/recovery lifecycle, and read APIs exist. Holdout/final-OOS selection and lifecycle integration remain unimplemented. |
 | Strategy Router / Current or Live Decision | MISSING | No deterministic eligibility/router or current LONG/SHORT/NO-TRADE decision product exists. Existing UI/telemetry must not be interpreted as this capability. |
 
 ## Legacy Backtest and strategy classification
@@ -117,8 +117,8 @@ passing. Concrete evidence is recorded in
 
 The active milestone is Sprint 15 — Bounded Variant Explorer, documented in
 `docs/SPRINT_15_VARIANT_EXPLORER.md`. Its five-checkpoint contract is accepted;
-only ARK-S15-01 is authorized, implemented, and awaiting Owner acceptance. Its
-key safety boundary is that final-OOS remains
+ARK-S15-01 is accepted and pushed at `736175e`; only ARK-S15-02 is currently
+authorized. Its key safety boundary is that final-OOS remains
 untouched until a holdout-based selection is immutably locked; exploration
 itself cannot create `VALIDATED`, DEMO, LIVE, Router, or trading-decision claims.
 
