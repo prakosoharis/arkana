@@ -644,6 +644,14 @@ def test_s16_capability_registry_assessment_and_confirmation_api_are_fail_closed
         assert decision_body["decision"] == "INSUFFICIENT_EVIDENCE"
         assert decision_body["result"]["owner_gate"]["acknowledgement_creates_validation"] is False
         assert client.post(f"/api/v1/strategy-versions/{generic_version.json()['id']}/generic-evidence-decisions", json={"robustness_evidence_id": stability_body["id"]}).json()["reused"] is True
+        verifier = client.post(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/verification")
+        assert verifier.status_code == 200, verifier.text
+        verifier_body = verifier.json()
+        assert verifier_body["status"] == "PASSED" and verifier_body["owner_acceptance_readiness"] == "READY_FOR_OWNER_ACCEPTANCE"
+        assert verifier_body["evidence_outcome"] == decision_body["decision"]
+        assert all(check["status"] == "PASS" for check in verifier_body["checks"].values())
+        assert client.post(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/verification").json()["reused"] is True
+        assert client.get(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/verification").json()["id"] == verifier_body["id"]
         assert client.post(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/owner-confirmations", json={"acknowledgement": "PROMOTE"}).status_code == 422
         confirmation = client.post(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/owner-confirmations", json={"acknowledgement": "ACKNOWLEDGE_GENERIC_EVIDENCE_DECISION_V1"})
         assert confirmation.status_code == 200 and confirmation.json()["result"]["promotion"]["authorized"] is False

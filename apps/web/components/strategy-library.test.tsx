@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { latestRenderableOosEvidence, OosEvidence, RobustnessEvidence, StrategyLibrary } from "./strategy-library";
+import { GenericDecision, GenericEvidenceChain, GenericEvidenceVerification, latestRenderableOosEvidence, OosEvidence, RobustnessEvidence, StrategyLibrary } from "./strategy-library";
 
 const split = (trade_count: number, net_pnl_price: number, profit_factor: number) => ({ metrics: { trade_count, net_pnl_price, profit_factor } });
 
@@ -36,7 +36,8 @@ describe("StrategyLibrary", () => {
     expect(markup).toContain("Confirm immutable version");
     expect(markup).toContain("does not mark a version");
     expect(markup).toContain("NO LIVE ACTION");
-    expect(markup).toContain("VALIDATED is historical-only");
+    expect(markup).toContain("never create VALIDATED");
+    expect(markup).toContain("future promotion requires a separate contract");
   });
 
   it("renders an inspectable PASS decision without implying deployment", () => {
@@ -52,5 +53,18 @@ describe("StrategyLibrary", () => {
     const legacy = { ...evidence, protocol: { version: "OOS_HISTORICAL_REVIEW_V2" } };
     expect(latestRenderableOosEvidence([legacy, evidence])).toBe(evidence);
     expect(latestRenderableOosEvidence([legacy])).toBeUndefined();
+  });
+
+  it.each(["FAIL", "INSUFFICIENT_EVIDENCE"] as const)("renders generic %s evidence as NOT VALIDATED with a separate Owner boundary", outcome => {
+    const decision: GenericDecision = {
+      id: "decision-12345678", strategy_version_id: "strategy-1", oos_validation_id: "oos-1", robustness_evidence_id: "stability-1", fingerprint: "decision-fingerprint", protocol_version: "GENERIC_EVIDENCE_DECISION_V1", decision: outcome,
+      result: { source_outcomes: { generic_oos: outcome, parameter_stability: outcome }, thresholds: {}, observations: {}, lineage: {}, owner_gate: { acknowledgement_required: true, acknowledgement_creates_validation: false, future_promotion_workflow_required: true }, lifecycle: { validated_created: false } },
+    };
+    const verifier: GenericEvidenceVerification = { id: "verifier-1", decision_id: decision.id, fingerprint: "verifier-fingerprint", verifier_version: "GENERIC_EVIDENCE_ACCEPTANCE_VERIFIER_V1", status: "PASSED", owner_acceptance_readiness: "READY_FOR_OWNER_ACCEPTANCE", evidence_outcome: outcome, owner_boundary: { acknowledgement_required: true, acknowledgement_present: false, acknowledgement_is_not_validation: true, future_promotion_contract_required: true }, checks: { lifecycle_safety: { status: "PASS" } }, warning: "Integrity only; not trading authority." };
+    const markup = renderToStaticMarkup(<GenericEvidenceChain chain={{ strategyVersionId: "strategy-1", decision, verifier }} />);
+    expect(markup).toContain(outcome);
+    expect(markup).toContain("NOT VALIDATED");
+    expect(markup).toContain("separate future promotion contract");
+    expect(markup).toContain("No VALIDATED claim");
   });
 });

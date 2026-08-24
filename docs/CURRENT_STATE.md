@@ -136,11 +136,14 @@ streaming generic replay produced one exact reusable evidence row over
 2,985,994 M1 bars, honestly returned `FAIL`, and left the StrategyVersion
 `CONTRACT_VALID`. ARK-S17-02 is accepted. Its five-candidate bounded stability
 evidence honestly returned `FAIL`, never accessed final-OOS, selected no
-candidate, and left lifecycle state unchanged. ARK-S17-03 source, tests,
-migration, and runtime OAT are complete and awaiting Owner acceptance. Its
-combined decision honestly returned `FAIL`; acknowledgement is separated,
-creates no promotion, and has not been fabricated on the real evidence.
-ARK-S17-04 has not started.
+candidate, and left lifecycle state unchanged. ARK-S17-03 is accepted and
+pushed at `ae98995`; its combined decision honestly returned `FAIL`, and no real
+Owner acknowledgement was fabricated. ARK-S17-04 source, tests, additive
+migration, Docker OAT, and browser OAT are complete and awaiting Owner
+acceptance. The materialized verifier passed all nine chain-integrity checks
+while the evidence outcome remained `FAIL`; the StrategyVersion remains
+`CONTRACT_VALID`. Sprint 17 is technically 4/4 complete and no later milestone
+has started.
 
 The intended next technical direction is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:

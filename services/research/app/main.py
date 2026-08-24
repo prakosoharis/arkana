@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericRobustnessEvidence, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -18,6 +18,7 @@ from .backtesting import run_backtest, run_supplemental_full_validation
 from .oos_validation import run as run_oos_validation
 from .generic_robustness import run as run_generic_robustness, serialize as serialize_generic_robustness
 from .generic_evidence_decisions import confirm as confirm_generic_evidence, materialize as materialize_generic_evidence_decision, serialize_confirmation as serialize_generic_evidence_confirmation, serialize_decision as serialize_generic_evidence_decision
+from .generic_evidence_verification import get as get_generic_evidence_verification, materialize as materialize_generic_evidence_verification, serialize as serialize_generic_evidence_verification
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
@@ -439,6 +440,23 @@ def get_generic_evidence_confirmation(decision_id: str, session: Session = Depen
     if not item:
         raise HTTPException(404, "generic evidence Owner confirmation not found")
     return serialize_generic_evidence_confirmation(item)
+
+
+@app.get("/api/v1/generic-evidence-decisions/{decision_id}/verification")
+def get_generic_evidence_acceptance_verification(decision_id: str, session: Session = Depends(get_session)) -> dict:
+    item = get_generic_evidence_verification(session, decision_id)
+    if not item:
+        raise HTTPException(404, "generic evidence verification has not been materialized")
+    return serialize_generic_evidence_verification(item)
+
+
+@app.post("/api/v1/generic-evidence-decisions/{decision_id}/verification")
+def materialize_generic_evidence_acceptance_verification(decision_id: str, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = materialize_generic_evidence_verification(session, decision_id)
+        return serialize_generic_evidence_verification(item, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
 
 
 @app.post("/api/v1/capital-contracts/validate")

@@ -218,9 +218,12 @@ It is a prerequisite for considering any Router or DEMO direction. The Owner
 accepted the ARK-S17 contract and its contract commit was pushed at `eee8aec`.
 ARK-S17-01 implementation, regression, and full-history OAT are accepted.
 ARK-S17-02 implementation, regression, migration, and full-history OAT are
-accepted. ARK-S17-03 implementation, regression, migration, and runtime
-decision OAT are complete and awaiting Owner acceptance; ARK-S17-04 has not
-started.
+accepted. ARK-S17-03 is accepted and pushed at `ae98995`. ARK-S17-04 Factory
+evidence UI, materialized acceptance verifier, regression, migration recovery,
+Docker OAT, and browser OAT are complete and awaiting Owner acceptance. Its
+real verifier passed every integrity check while preserving the honest `FAIL`
+evidence outcome and `CONTRACT_VALID` lifecycle state. Sprint 17 is technically
+4/4 complete; no later milestone has started.
 
 ## QA protocol
 

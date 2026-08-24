@@ -31,6 +31,7 @@ MIGRATION_028 = "028_strategy_contract_capability_assessments"
 MIGRATION_029 = "029_strategy_evaluator_verifications"
 MIGRATION_030 = "030_generic_robustness_evidence"
 MIGRATION_031 = "031_generic_evidence_owner_gate"
+MIGRATION_032 = "032_generic_evidence_verification"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -478,6 +479,15 @@ def _migration_031(connection) -> None:
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_generic_evidence_owner_confirmations_strategy_version_id ON generic_evidence_owner_confirmations(strategy_version_id)"))
 
 
+def _migration_032(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS generic_evidence_verifications (
+        id VARCHAR(36) PRIMARY KEY, decision_id VARCHAR(36) NOT NULL UNIQUE,
+        strategy_version_id VARCHAR(36) NOT NULL, fingerprint VARCHAR(64) NOT NULL UNIQUE,
+        verifier_version VARCHAR(64) NOT NULL, status VARCHAR(32) NOT NULL,
+        result JSON NOT NULL, created_at TIMESTAMP NOT NULL)"""))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_generic_evidence_verifications_strategy_version_id ON generic_evidence_verifications(strategy_version_id)"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -498,6 +508,7 @@ MIGRATIONS = (
     (MIGRATION_029, _migration_029),
     (MIGRATION_030, _migration_030),
     (MIGRATION_031, _migration_031),
+    (MIGRATION_032, _migration_032),
 )
 
 

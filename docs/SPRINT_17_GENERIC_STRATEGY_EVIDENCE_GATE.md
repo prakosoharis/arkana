@@ -2,7 +2,7 @@
 
 ## Status
 
-**ACTIVE — ARK-S17-03 is technically complete and awaiting Owner acceptance. ARK-S17-04 has not started.**
+**ACTIVE — ARK-S17-03 accepted; ARK-S17-04 is technically complete and awaiting Owner acceptance.**
 
 Sprint 16 is complete at `9dae9ea`. It can create immutable generic
 completed-candle StrategyVersions and run them through the sole Backtest V1
@@ -228,9 +228,8 @@ Verification evidence:
   acknowledgement rows. No acknowledgement was fabricated during OAT. The
   StrategyVersion remains `CONTRACT_VALID` with no `validation_evidence_id`.
 
-**Checkpoint status:** implementation and OAT are complete; awaiting explicit
-Owner acceptance. ARK-S17-04 has not started, and this checkpoint has not been
-committed or pushed.
+**Checkpoint status:** accepted by the Owner and pushed to `origin/main` at
+`ae98995` before ARK-S17-04 began.
 
 ## ARK-S17-04 — Factory evidence UI and materialized acceptance verifier
 
@@ -253,6 +252,63 @@ requests re-running expensive evaluation.
 - The UI cannot represent a failed or insufficient result as validated.
 - Verifier GET is read-only and its artifact is reused by exact fingerprint.
 - Production build and all required OAT checks pass.
+
+### Completion report
+
+Implementation:
+
+- Added `GENERIC_EVIDENCE_ACCEPTANCE_VERIFIER_V1` as a separately materialized,
+  immutable snapshot. It reads recorded metadata/evidence only and never reads
+  bar payloads or replays Backtest V1 during GET.
+- The verifier checks the exact Strategy Contract checksum, bound registry
+  assessment, current generic evaluator artifact, registered M1/context assets,
+  isolated 60/20/20 OOS bounds, train/holdout-only stability bounds, frozen
+  protocols and thresholds, recomputed OOS → robustness → decision lineage,
+  one-row-per-fingerprint idempotency, and lifecycle safety.
+- Additive migration `032_generic_evidence_verification` creates the verifier
+  table. POST materializes or reuses an exact fingerprint; GET only returns the
+  existing artifact and returns 404 before materialization.
+- Strategy Factory now exposes ordered generic split, parameter-stability, and
+  combined-decision controls plus a complete chain view. It renders declared
+  policy, negative checks, stability support, exact lineage, the Owner boundary,
+  and all verifier checks. Generic `PASS`, `FAIL`, and
+  `INSUFFICIENT_EVIDENCE` are always labeled `NOT VALIDATED`; acknowledgement
+  cannot promote and a separate future promotion contract remains mandatory.
+- Added Next.js proxy routes for generic robustness, decisions, and verifier
+  GET/POST. The preserved legacy OOS/validation presentation remains separate.
+
+Verification evidence:
+
+- Backend regression: **184 passed**. Focused verifier/API/migration regression
+  passed `32` tests, including exact reuse, read-only GET, tampered-threshold
+  failure, changed-source rejection, lifecycle neutrality, and migration
+  recovery.
+- Web regression: **23 passed** across 9 test files. Dedicated Factory tests
+  prove both `FAIL` and `INSUFFICIENT_EVIDENCE` render as `NOT VALIDATED` with a
+  separate Owner boundary. ESLint and TypeScript checks pass.
+- Local and Docker production builds pass and contain all three new proxy
+  routes. The only build notices are the pre-existing Next.js ESLint-plugin and
+  CSS autoprefixer warnings; compilation, type checking, and static generation
+  succeed.
+- Docker/PostgreSQL OAT applied migration 032 exactly once and materialized real
+  verifier `9dcba588-1848-41c7-8e53-5124af12fd19`, fingerprint
+  `1ae9aaae0afa3c1c18e0da66bcecc34ba785755b8a347f3f9ec6dcc1e564014e`.
+  Its chain-integrity status is `PASSED`, every one of nine checks is `PASS`,
+  and the evidence outcome remains honestly `FAIL`; the exact retry returned
+  `reused=true` and the web proxy returned the same artifact.
+- Browser OAT on `/strategies` loaded the real generic chain, displayed split
+  `FAIL`, stability `FAIL`, combined `FAIL`, verifier `PASSED`, all nine checks,
+  `NOT VALIDATED`, the explicit Owner boundary, and the no-trading disclosure.
+  Browser console errors: zero.
+- The real StrategyVersion remains `CONTRACT_VALID` with no
+  `validation_evidence_id`; real Owner acknowledgement rows remain zero. No
+  acknowledgement, `VALIDATED`, deployment, capital, Router, order, or trade
+  side effect was fabricated.
+
+**Checkpoint status:** source, automated tests, migration recovery, Docker OAT,
+and browser OAT are complete; awaiting explicit Owner acceptance. Sprint 17 is
+technically 4/4 complete, ARK-S17-04 is uncommitted/unpushed, and no later
+milestone has started.
 
 ## Acceptance protocol
 

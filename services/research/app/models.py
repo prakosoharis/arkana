@@ -194,6 +194,23 @@ class GenericEvidenceOwnerConfirmation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class GenericEvidenceVerification(Base):
+    """Materialized read-only verification of the complete generic evidence chain."""
+    __tablename__ = "generic_evidence_verifications"
+    __table_args__ = (
+        UniqueConstraint("decision_id", name="uq_generic_evidence_verification_decision"),
+        UniqueConstraint("fingerprint", name="uq_generic_evidence_verification_fingerprint"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    decision_id: Mapped[str] = mapped_column(ForeignKey("generic_evidence_decisions.id"), nullable=False, index=True)
+    strategy_version_id: Mapped[str] = mapped_column(ForeignKey("strategy_versions.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    verifier_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"
