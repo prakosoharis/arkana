@@ -19,6 +19,7 @@ from .oos_validation import run as run_oos_validation
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
+from .strategy_compiler import compile_contract as compile_strategy_contract
 from .deployments import adapter_preflight, create_deployment, poll_ack, preflight, rollback, serialize as serialize_deployment
 from .settings import DATA_ROOT, MAX_BARS_PER_REQUEST
 from .telemetry import serialize as serialize_journal_event, snapshot as telemetry_snapshot, sync as sync_telemetry
@@ -832,6 +833,20 @@ def get_strategy_contract_assessment(assessment_id: str, session: Session = Depe
     if not item:
         raise HTTPException(404, "strategy contract assessment not found")
     return serialize_capability_assessment(item)
+
+
+@app.post("/api/v1/strategy-contract-assessments/{assessment_id}/compile")
+def compile_strategy_contract_assessment(assessment_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(StrategyContractAssessment, assessment_id)
+    if not item:
+        raise HTTPException(404, "strategy contract assessment not found")
+    try:
+        compiled = compile_strategy_contract(item.normalized_contract)
+        if compiled["assessment_fingerprint"] != item.fingerprint:
+            raise ValueError("assessment no longer matches the active registry")
+        return compiled
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
 
 
 @app.post("/api/v1/strategy-contract-assessments/{assessment_id}/confirm")

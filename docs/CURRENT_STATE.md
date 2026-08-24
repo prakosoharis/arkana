@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-25 — ARK-S16-01 capability registry and contract assessment
+**Updated:** 2026-08-25 — ARK-S16-02 compatibility compiler and golden parity
 **Active milestone:** Sprint 16 — Generic Deterministic Evaluator
-**Active card:** ARK-S16-02 — authorized; acceptance push of ARK-S16-01 pending
+**Active card:** ARK-S16-03 — authorized; acceptance push of ARK-S16-02 pending
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -40,7 +40,7 @@ Target:  StrategyCandidate → deterministic StrategyVersion → canonical Backt
 | Research Lab and deterministic rules | IMPLEMENTED but narrow | Typed hypotheses, owner-confirmed/fingerprinted research rules, historical execution, visual samples, Pattern Discovery, and Historical Similarity exist. Research rules are not executable strategies. |
 | AI research assistance | IMPLEMENTED for research; provider OAT pending | AI is optional, deterministic-first, and used for research draft/explanation paths. It does **not** draft Strategy Factory contracts and is prohibited from deterministic execution. |
 | Backtest V1 | CANONICAL COMPATIBILITY FOUNDATION | One stateful simulation kernel exists in `services/research/app/backtesting.py`, with next-bar entry, `STOP_FIRST`, cost semantics, chunk continuity, and golden legacy/contract parity evidence. It remains the only canonical simulation kernel. |
-| Generic strategy evaluation | CAPABILITY REGISTRY + NARROW COMPATIBILITY ADAPTER | `STRATEGY_CAPABILITY_REGISTRY_V2` now normalizes and fingerprints typed contract assessments, persists immutable registry-bound evidence, and exposes assess/read/confirm APIs. Only the legacy `BULLISH_REVERSAL_M1` shape is executable through the canonical kernel. Generic blocks are visible but explicitly `CAPABILITY_NOT_SUPPORTED` until their compiler/evaluator cards; broader executable strategy capability is still missing. |
+| Generic strategy evaluation | CAPABILITY REGISTRY + COMPILER SEAM + NARROW COMPATIBILITY ADAPTER | `STRATEGY_CAPABILITY_REGISTRY_V2` normalizes and fingerprints typed contract assessments. `STRATEGY_CONTRACT_COMPILER_V1` now produces exact Backtest V1 input and records compiler/timing evidence in contract-run lineage. Only legacy `BULLISH_REVERSAL_M1` executes; generic blocks remain explicitly `CAPABILITY_NOT_SUPPORTED` until completed-candle evaluator work. |
 | Strategy Library | LEGACY PROTOTYPE, preserved | Legacy `StrategyVersion` records remain post-backtest wrappers with their original `backtest_run_id` and manual `CANDIDATE → APPROVED` flow. The separate Strategy Factory UI exposes the narrow target compatibility lifecycle without relabeling or changing historical records. |
 | Strategy Factory | PARTIAL — executable compatibility vertical slice | Candidate/version API lifecycle, contract validation, immutable confirmation/revision, canonical Backtest V1 execution, exact golden parity, auditable StrategyVersion → BacktestRun lineage, and a guarded Strategy Factory UI now exist for the legacy compatibility contract. Broader generic capability remains missing. |
 | OOS/robustness acceptance | IMPLEMENTED gate and Owner UI; full-history OAT completed with FAIL | Protocol V3 deterministically returns `PASS`, `FAIL`, or `INSUFFICIENT_EVIDENCE` from minimum trade count, positive nominal OOS PnL, strict PF, adverse final-OOS, and train-calibrated year/regime concentration checks. The Strategy Factory can run and reopen exact evidence. The registered 2,985,994-bar Owner dataset produced FAIL for the compatibility strategy, which correctly remains `CONTRACT_VALID`. Only PASS links evidence and sets historical-only `VALIDATED`. |

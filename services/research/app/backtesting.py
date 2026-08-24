@@ -234,8 +234,9 @@ def _full_regime_breakdown(asset: Any, config: dict[str, Any], *, chunk_size: in
 def _strategy_config(strategy: StrategyVersion, original: BacktestRun) -> dict[str, Any]:
     """Prove the deployed v1 rule inputs, not a reconfigured approximation."""
     if strategy.strategy_contract:
-        from .strategy_adapters import compile_legacy_bullish_reversal
-        config = compile_legacy_bullish_reversal(strategy.strategy_contract)
+        from .strategy_compiler import compile_contract
+        compiled = compile_contract(strategy.strategy_contract)
+        config = compiled["kernel_config"]
         if original.strategy_version_id != strategy.id:
             raise ValueError("BacktestRun is not linked to this StrategyVersion")
         if original.configuration != config:
@@ -249,6 +250,9 @@ def _strategy_config(strategy: StrategyVersion, original: BacktestRun) -> dict[s
         }
         if any(lineage.get(key) != value for key, value in expected.items()):
             raise ValueError("Linked BacktestRun does not carry the exact Strategy Contract lineage")
+        compiler_lineage = lineage.get("compiler")
+        if compiler_lineage and compiler_lineage != {key: compiled[key] for key in ("compiler_version", "fingerprint", "assessment_fingerprint", "registry", "evaluator_capability_id", "kernel_config_fingerprint", "timing_semantics")}:
+            raise ValueError("Linked BacktestRun compiler evidence differs from the exact Strategy Contract output")
         return config
     strategy_config = strategy.configuration
     original_config = original.configuration
@@ -356,8 +360,9 @@ def run_backtest(session: Session, payload: dict[str, Any]) -> tuple[BacktestRun
         strategy = session.get(StrategyVersion, strategy_version_id)
         if not strategy or not strategy.strategy_contract:
             raise ValueError("strategy version with a Strategy Contract is required")
-        from .strategy_adapters import compile_legacy_bullish_reversal
-        config = compile_legacy_bullish_reversal(strategy.strategy_contract)
+        from .strategy_compiler import compile_contract
+        compiled = compile_contract(strategy.strategy_contract)
+        config = compiled["kernel_config"]
     else:
         config = validate_backtest_config(payload)
     dataset = session.scalar(select(Dataset).where(Dataset.symbol == "XAUUSD").order_by(Dataset.imported_at.desc()))
@@ -379,6 +384,7 @@ def run_backtest(session: Session, payload: dict[str, Any]) -> tuple[BacktestRun
             "evaluator_version": STRATEGY_EVALUATOR_VERSION,
             "cost_contract": {"spread_price": config["spread_price"], "commission_price": config["commission_price"]},
             "execution_semantics": {"execution_resolution": config["execution_resolution"], "ambiguity_policy": config["ambiguity_policy"], "entry_timing": "NEXT_BAR_OPEN"},
+            "compiler": {key: compiled[key] for key in ("compiler_version", "fingerprint", "assessment_fingerprint", "registry", "evaluator_capability_id", "kernel_config_fingerprint", "timing_semantics")},
         }
         fingerprint_input["strategy_lineage"] = strategy_lineage
     fingerprint = sha256(json.dumps(fingerprint_input, sort_keys=True).encode()).hexdigest()

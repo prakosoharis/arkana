@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta
+from hashlib import sha256
 from app.backtesting import _metrics, _simulate, _simulate_legacy, _strategy_config, DEFAULT_CONFIG, STRATEGY_EVALUATOR_VERSION, simulate_kernel
 from app.models import BacktestRun, StrategyVersion
-from app.strategy_contracts import fingerprint as contract_fingerprint
+from app.strategy_contracts import canonical_json, fingerprint as contract_fingerprint
 from app.strategy_adapters import compile_legacy_bullish_reversal, legacy_bullish_reversal_contract
+from app.strategy_compiler import COMPILER_VERSION, compile_contract
 
 
 def test_legacy_contract_compiles_to_exact_existing_kernel_input_and_ledger():
@@ -11,6 +13,26 @@ def test_legacy_contract_compiles_to_exact_existing_kernel_input_and_ledger():
     assert compiled == {**DEFAULT_CONFIG,"stop_distance":.2,"target_distance":.3,"spread_price":.01,"commission_price":.02}
     start=datetime(2026,1,1); bars=[{"timestamp":start+timedelta(minutes=i),"open":100+i*.1,"high":100.7+i*.1,"low":99.8+i*.1,"close":(99.9 if i==0 else 100.2+i*.1)} for i in range(4)]
     assert _simulate(bars,compiled)==_simulate(bars,{**DEFAULT_CONFIG,"stop_distance":.2,"target_distance":.3,"spread_price":.01,"commission_price":.02})
+
+
+def test_s16_compiler_emits_stable_evidence_and_rejects_unimplemented_capability():
+    contract = legacy_bullish_reversal_contract(stop_distance=.2, target_distance=.3, spread_price=.01, commission_price=.02)
+    artifact = compile_contract(contract)
+    assert artifact["compiler_version"] == COMPILER_VERSION
+    assert artifact["kernel_config"] == compile_legacy_bullish_reversal(contract)
+    assert artifact["kernel_config_fingerprint"] == sha256(canonical_json(artifact["kernel_config"]).encode()).hexdigest()
+    assert artifact["timing_semantics"] == {
+        "signal_inputs": "TWO_COMPLETED_M1_CANDLES", "minimum_completed_bars": 2,
+        "entry_timing": "NEXT_M1_BAR_OPEN", "context_alignment": "M1_CLOSE_AVAILABLE_AT_DECISION_ONLY",
+        "warmup": {"required_completed_bars": 2, "missing_history": "NO_SIGNAL"}, "ambiguity_policy": "STOP_FIRST",
+    }
+    assert artifact == compile_contract(contract)
+    unsupported = {**contract, "context_rules": [{"block_id":"SMA_RELATION","uses_completed_candles":True,"fast_period":10,"slow_period":20}]}
+    try:
+        compile_contract(unsupported)
+        assert False, "declared generic block must not compile before S16-03"
+    except ValueError as error:
+        assert "CAPABILITY_NOT_SUPPORTED" in str(error)
 
 
 def test_contract_adapter_has_golden_legacy_parity_across_chunk_boundaries():

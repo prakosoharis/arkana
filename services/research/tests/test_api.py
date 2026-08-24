@@ -599,12 +599,16 @@ def test_s16_capability_registry_assessment_and_confirmation_api_are_fail_closed
         repeated = client.post("/api/v1/strategy-contract-assessments", json={"strategy_contract": contract})
         assert repeated.json()["id"] == assessment.json()["id"] and repeated.json()["reused"] is True
         assert client.get(f"/api/v1/strategy-contract-assessments/{assessment.json()['id']}").json()["fingerprint"] == assessment.json()["fingerprint"]
+        compiled = client.post(f"/api/v1/strategy-contract-assessments/{assessment.json()['id']}/compile")
+        assert compiled.status_code == 200 and compiled.json()["compiler_version"] == "STRATEGY_CONTRACT_COMPILER_V1"
+        assert compiled.json()["timing_semantics"]["entry_timing"] == "NEXT_M1_BAR_OPEN"
         confirmed = client.post(f"/api/v1/strategy-contract-assessments/{assessment.json()['id']}/confirm", json={"strategy_candidate_id": candidate["id"]})
         assert confirmed.status_code == 200 and confirmed.json()["status"] == "CONTRACT_VALID"
         assert confirmed.json()["configuration"]["strategy_capability_assessment"]["id"] == assessment.json()["id"]
         assert client.post(f"/api/v1/strategy-contract-assessments/{assessment.json()['id']}/confirm", json={"strategy_candidate_id": candidate["id"]}).json()["reused"] is True
         unsupported = client.post("/api/v1/strategy-contract-assessments", json={"strategy_contract": blocked})
         assert unsupported.json()["status"] == "CAPABILITY_NOT_SUPPORTED"
+        assert client.post(f"/api/v1/strategy-contract-assessments/{unsupported.json()['id']}/compile").status_code == 422
         rejected = client.post(f"/api/v1/strategy-contract-assessments/{unsupported.json()['id']}/confirm", json={"strategy_candidate_id": candidate["id"]})
         assert rejected.status_code == 422
 

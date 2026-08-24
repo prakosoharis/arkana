@@ -199,10 +199,13 @@ the narrow compatibility adapter only through a typed, fail-closed capability
 registry and compiler feeding the existing Backtest V1 kernel. Exact legacy
 golden parity is a prerequisite to bounded completed-candle multi-timeframe
 evaluation. It creates neither a Router nor a `VALIDATED`, DEMO, LIVE, capital,
-or current-trade-decision claim. ARK-S16-01 is implemented and awaiting Owner
-acceptance: the V2 capability registry provides immutable, normalized,
-registry-fingerprinted contract assessments and an explicit compatibility-only
-confirmation path. Declared generic blocks cannot yet execute and fail closed.
+or current-trade-decision claim. ARK-S16-01 is accepted and pushed at
+`5ebe2c8`; ARK-S16-02 is accepted and awaiting its required acceptance push.
+The V2
+registry provides immutable, normalized, registry-fingerprinted contract
+assessments, while `STRATEGY_CONTRACT_COMPILER_V1` produces exact Backtest V1
+input and fingerprinted timing/compiler lineage. Declared generic blocks cannot
+yet execute and fail closed.
 
 ## QA protocol
 

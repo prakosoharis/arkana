@@ -144,6 +144,43 @@ legacy result.
 - Independent review finds no second simulator, future leak, mutable strategy,
   or hidden legacy-special-case path.
 
+### Completion report — 2026-08-25
+
+Implemented and verified:
+
+- `STRATEGY_CONTRACT_COMPILER_V1` is the single compatibility compiler seam.
+  It accepts only a `CONTRACT_VALID` assessment for
+  `LEGACY_BULLISH_REVERSAL_M1_V1`, produces the exact existing Backtest V1
+  kernel configuration, and never contains a simulation loop or fallback.
+- Compiler evidence contains compiler/kernel identity, immutable assessment and
+  registry fingerprints, normalized kernel-config fingerprint, and explicit
+  completed-candle timing: two completed M1 inputs, no signal during warm-up,
+  next M1 open entry, and `STOP_FIRST` ambiguity semantics.
+- `POST /api/v1/strategy-contract-assessments/{id}/compile` exposes that
+  deterministic, read-only artifact. A strategy-version Backtest records the
+  exact compiler evidence under `result.strategy_lineage.compiler`; its
+  fingerprint includes the lineage. Historical pre-S16 lineage remains readable
+  without requiring the new compiler field.
+- The public legacy adapter now delegates to this seam but returns precisely the
+  same canonical kernel config. Declared generic blocks remain uncompiled and
+  fail with `CAPABILITY_NOT_SUPPORTED` before a BacktestRun can be created.
+
+Verification evidence:
+
+- Backend regression: **166 passed** (`pytest tests -q`).
+- Golden tests compare compiler output to the prior adapter configuration and
+  compare the legacy oracle with the shared kernel ledger/metrics across chunk
+  boundaries, including `AMBIGUOUS_STOP_FIRST` timing.
+- Docker API OAT compiled assessment
+  `758a031a-ea34-483b-bbf3-05a47c15fe1f` to compiler fingerprint
+  `12e97d9515e8a0b12024a2c339f1f9d413a12da25af1a16e71873a72efa05cb4`.
+  The resulting BacktestRun `2b79728c-3670-45dd-b4e0-33862cdf7959` carries the
+  same compiler fingerprint; a repeat call reused that exact run. A
+  `SMA_RELATION` compile attempt was rejected with HTTP 422 before kernel work.
+
+**Owner decision:** ARK-S16-02 accepted on 2026-08-25. Its acceptance commit
+must be pushed before any S16-03 work begins.
+
 ## ARK-S16-03 — Bounded multi-timeframe completed-candle evaluation
 
 ### Objective

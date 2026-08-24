@@ -136,6 +136,10 @@ def _legacy_shape_issues(contract: dict[str, Any]) -> list[str]:
         actual_ids = {item.get("block_id") for item in values if isinstance(item, dict)}
         if actual_ids != required_ids:
             issues.append(f"CAPABILITY_NOT_SUPPORTED: {section} is outside the executable legacy envelope.")
+    costs = contract.get("cost_assumptions")
+    commission = costs.get("commission_price") if isinstance(costs, dict) else None
+    if not isinstance(commission, (int, float)) or isinstance(commission, bool) or not isfinite(commission) or commission < 0:
+        issues.append("cost_assumptions.commission_price must be finite and non-negative for the executable legacy envelope.")
     return issues
 
 
