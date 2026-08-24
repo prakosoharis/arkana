@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -20,6 +20,7 @@ from .strategies import approve_candidate, create_candidate, create_strategy_can
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
 from .strategy_compiler import compile_contract as compile_strategy_contract
+from .strategy_evaluator_verification import get as get_strategy_evaluator_verification, materialize as materialize_strategy_evaluator_verification, serialize as serialize_strategy_evaluator_verification
 from .deployments import adapter_preflight, create_deployment, poll_ack, preflight, rollback, serialize as serialize_deployment
 from .settings import DATA_ROOT, MAX_BARS_PER_REQUEST
 from .telemetry import serialize as serialize_journal_event, snapshot as telemetry_snapshot, sync as sync_telemetry
@@ -854,6 +855,22 @@ def confirm_strategy_contract_assessment(assessment_id: str, payload: dict, sess
     try:
         item, reused = confirm_capability_assessment(session, assessment_id, str(payload.get("strategy_candidate_id", "")), payload.get("strategy_key"))
         return {**serialize_strategy(item), "reused": reused}
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/strategy-versions/{strategy_version_id}/backtests/{backtest_id}/verification")
+def get_strategy_evaluator_acceptance_verification(strategy_version_id: str, backtest_id: str, session: Session = Depends(get_session)) -> dict:
+    item = get_strategy_evaluator_verification(session, strategy_version_id, backtest_id)
+    if not item: raise HTTPException(404, "strategy evaluator verification has not been materialized")
+    return serialize_strategy_evaluator_verification(item)
+
+
+@app.post("/api/v1/strategy-versions/{strategy_version_id}/backtests/{backtest_id}/verification")
+def materialize_strategy_evaluator_acceptance_verification(strategy_version_id: str, backtest_id: str, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = materialize_strategy_evaluator_verification(session, strategy_version_id, backtest_id)
+        return serialize_strategy_evaluator_verification(item, reused=reused)
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
 

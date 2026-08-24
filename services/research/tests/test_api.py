@@ -616,6 +616,9 @@ def test_s16_capability_registry_assessment_and_confirmation_api_are_fail_closed
         assert generic_run.status_code == 200, generic_run.text
         lineage = generic_run.json()["result"]["strategy_lineage"]
         assert lineage["completed_candle_evaluator"]["evaluator_version"] == "COMPLETED_CANDLE_MULTI_TIMEFRAME_EVALUATOR_V1"
+        verification = client.post(f"/api/v1/strategy-versions/{generic_version.json()['id']}/backtests/{generic_run.json()['id']}/verification")
+        assert verification.status_code == 200 and verification.json()["owner_acceptance_readiness"] == "READY_FOR_OWNER_ACCEPTANCE"
+        assert client.post(f"/api/v1/strategy-versions/{generic_version.json()['id']}/backtests/{generic_run.json()['id']}/verification").json()["reused"] is True
 
 
 def test_demo_deployment_requires_approval_acknowledges_exact_checksum_and_rolls_back(tmp_path, monkeypatch):

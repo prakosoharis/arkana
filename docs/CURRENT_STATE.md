@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-25 — ARK-S16-03 completed-candle MTF evaluator
-**Active milestone:** Sprint 16 — Generic Deterministic Evaluator
-**Active card:** ARK-S16-04 — authorized; acceptance push of ARK-S16-03 pending
+**Updated:** 2026-08-25 — ARK-S16-04 Factory evidence and acceptance verifier
+**Active milestone:** Sprint 16 — Generic Deterministic Evaluator complete
+**Active card:** No active implementation card — Sprint 16 acceptance push pending
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a

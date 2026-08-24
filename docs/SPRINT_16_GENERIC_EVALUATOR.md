@@ -271,6 +271,38 @@ the complete evaluator evidence chain without replay on GET.
 - Backend/frontend regression, migration recovery, production build, runtime
   OAT, and final review pass with no unresolved safety or lineage finding.
 
+### Completion report — 2026-08-25
+
+Implemented and verified:
+
+- Strategy Factory now reads and renders the actual V2 capability registry,
+  exposing block IDs, category, execution envelope, and completed-candle
+  requirement rather than presenting hidden defaults as supported inputs.
+- Added the materialized `STRATEGY_EVALUATOR_ACCEPTANCE_VERIFIER_V1` with
+  additive migration `029`. It reads exact StrategyVersion, assessment,
+  Backtest, evaluator lineage, asset lineage, per-trade explanations, and
+  lifecycle state; it never reads bars or replays Backtest V1. Repeated calls
+  reuse the same immutable verifier fingerprint.
+- New BFF routes expose the registry and verifier to the Factory UI. The UI can
+  materialize the verifier from recorded Backtest evidence and visibly reports
+  the acceptance readiness plus checks; it contains no control for DEMO/LIVE,
+  Router, or trade execution.
+
+Verification evidence:
+
+- Backend regression: **168 passed**. Web lint, typecheck, **21 tests**, and
+  production build all pass.
+- PostgreSQL Docker OAT applied migration
+  `029_strategy_evaluator_verifications`. Verifier
+  `f46975ff-dd31-4d94-bb6d-28e03b009508` for the recorded generic M1/M5 run is
+  `PASSED` and `READY_FOR_OWNER_ACCEPTANCE`; all checks pass and the second
+  call reused its exact fingerprint without a Backtest replay.
+- The verifier does not create OOS, `VALIDATED`, DEMO/LIVE, capital, Router, or
+  trade-decision state.
+
+**Owner decision:** ARK-S16-04 accepted on 2026-08-25. Sprint 16 is complete;
+the acceptance commit must be pushed before any later milestone begins.
+
 ## Owner acceptance protocol
 
 Each card requires source, tests, concrete OAT evidence, an updated report, and

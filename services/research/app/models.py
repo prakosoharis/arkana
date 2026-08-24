@@ -406,6 +406,20 @@ class StrategyContractAssessment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class StrategyEvaluatorVerification(Base):
+    """Materialized S16 owner acceptance verifier; never reruns Backtest V1."""
+    __tablename__ = "strategy_evaluator_verifications"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_strategy_evaluator_verification_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    strategy_version_id: Mapped[str] = mapped_column(ForeignKey("strategy_versions.id"), nullable=False, index=True)
+    backtest_run_id: Mapped[str] = mapped_column(ForeignKey("backtest_runs.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    verifier_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class StrategyVersion(Base):
     __tablename__ = "strategy_versions"
     __table_args__ = (UniqueConstraint("strategy_key", "version", name="uq_strategy_key_version"),)
