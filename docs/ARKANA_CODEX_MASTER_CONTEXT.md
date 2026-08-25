@@ -262,7 +262,12 @@ Decision UI exposes exact outcome, timestamp, blockers, parameter and lineage
 state. Its immutable verifier checks decision identity, parameter lineage,
 semantics, explicit LONG assumptions, and safety boundaries. Real runtime is
 honestly NO_TRADE with no numeric parameters while chain integrity is PASSED.
-S19-05 is authorized but has not started.
+ARK-S19-05 and Sprint 19 are accepted and closed with technical claim
+`VALIDATED`. Its read-only six-check safety auditor and acceptance regression
+prove current lifecycle/input invalidation, stale broker blocking, legacy
+isolation, concurrency/idempotency, restart recovery, and execution isolation.
+Runtime remains honestly NO_TRADE and the audit fingerprint survives PostgreSQL
+and service restart exactly. No post-S19 milestone is implicitly authorized.
 
 ## QA protocol
 

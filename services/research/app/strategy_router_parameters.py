@@ -64,7 +64,12 @@ def _decision_exact(session: Session, decision: StrategyRouterDecision) -> tuple
     ):
         return False, {"code": "DECISION_PROTOCOL_INVALID"}
     if decision.decision == "NO_TRADE":
-        exact = decision.selected_strategy_version_id is None and decision.selected_eligibility_id is None and decision.result.get("selected") is None
+        candidates = decision.result.get("candidates", [])
+        exact = decision.selected_strategy_version_id is None and decision.selected_eligibility_id is None and decision.result.get("selected") is None and isinstance(candidates, list) and bool(candidates)
+        for candidate in candidates if isinstance(candidates, list) else []:
+            eligibility = session.get(StrategyRouterEligibility, candidate.get("eligibility_id")) if isinstance(candidate, dict) else None
+            current_exact = exact_eligibility(session, eligibility)[0] if eligibility else False
+            exact = exact and current_exact and candidate.get("eligibility_exact") is True and candidate.get("eligibility_status") == eligibility.status
         return exact, {"code": "NO_TRADE" if exact else "NO_TRADE_DECISION_NOT_EXACT"}
     if decision.decision != "LONG" or not decision.selected_strategy_version_id or not decision.selected_eligibility_id:
         return False, {"code": "UNSUPPORTED_OR_INCOMPLETE_DECISION"}

@@ -1,10 +1,10 @@
 # Sprint 19 — Deterministic Strategy Router and Current Decision
 
-**Contract status:** active delivery; ARK-S19-00 accepted
+**Contract status:** accepted and closed
 
-**Active checkpoint:** ARK-S19-05 authorized; implementation not started
+**Active checkpoint:** none — ARK-S19-00 through ARK-S19-05 accepted
 
-**Implementation authority:** S19-05 only
+**Implementation authority:** no post-S19 scope is authorized by this contract
 
 ## Product objective
 
@@ -399,4 +399,71 @@ Owner acceptance phrase:
 ```text
 DITERIMA — ARK-S19-04
 Lanjut ARK-S19-05.
+```
+
+## ARK-S19-05 safety and acceptance closure evidence
+
+Implemented boundary:
+
+- `STRATEGY_ROUTER_SAFETY_AUDITOR_V1` provides a read-only, fingerprinted
+  `/api/v1/strategy-router/safety-report`; it writes no database row;
+- the auditor checks the latest complete decision → parameters → verifier
+  chain, exact protocols/fingerprints, current lifecycle/input exactness,
+  NO_TRADE/LONG and legacy isolation, idempotent storage, and execution
+  isolation;
+- NO_TRADE exactness is hardened to recheck every referenced eligibility. A
+  lifecycle/input change therefore invalidates both LONG and NO_TRADE current
+  claims instead of leaving a structurally valid but stale decision;
+- the acceptance regression proves concurrency, lifecycle invalidation, stale
+  broker rejection, legacy isolation, restart/database reopen recovery, and
+  absence of deployment/order/trade side effects.
+
+Automated evidence:
+
+- S19-05 acceptance suite: **6 passed**;
+- complete Router suites: **43 passed**;
+- backend regression: **249 passed** on the final source;
+- web regression: **28 passed across 10 files**; TypeScript, ESLint, and
+  optimized production build passed;
+- `git diff --check` passed.
+
+The acceptance suite specifically proves:
+
+- two concurrent exact verifier requests retain one immutable winner;
+- mutation from an exact selected lifecycle to `RETIRED` makes the audit fail
+  `current_lifecycle_and_input_exactness` without changing deployment count;
+- stale broker metadata materializes `BLOCKED` and no numeric parameters while
+  preserving coherent historical evidence;
+- legacy `APPROVED` is `INELIGIBLE → NO_TRADE`, never selected, and subsequent
+  lifecycle mutation invalidates current exactness;
+- close/reopen of the database preserves the exact safety fingerprint;
+- repeated audits are byte-equivalent and create no rows or side effects.
+
+Docker/runtime closure OAT:
+
+- final research image rebuilt; runtime safety audit is
+  `PASSED / READY_FOR_OWNER_ACCEPTANCE` with fingerprint
+  `5a393e82923e66ec27a571ded95b3aa6b2c107aa806e5ba3aab04427a6b7c9c5`;
+- all six audit checks PASS: latest chain, protocols/fingerprints, current
+  lifecycle/input exactness, outcome/legacy isolation, idempotent storage, and
+  execution isolation;
+- truthful counts are policy 1, eligibility 2, decision 2, parameter 1,
+  verifier 1, and existing deployments 5;
+- PostgreSQL and research were restarted. The post-restart audit had the exact
+  same fingerprint and counts; no replacement artifact was created;
+- post-restart browser OAT reopened `/current-decision`, restored `NO_TRADE`
+  and `READY_FOR_OWNER_ACCEPTANCE`, and reported no console warning/error;
+- no Router OAT created or changed a deployment, contacted MT5, or created an
+  order/trade.
+
+**ARK-S19-05 status:** accepted with technical claim **VALIDATED**. Sprint 19 is
+accepted and closed. `VALIDATED` here means the Router
+source, tests, audit, restart recovery, Docker/browser OAT, and safety boundaries
+are verified. It is not profitability proof or trading authorization.
+
+Final acceptance phrase:
+
+```text
+DITERIMA — ARK-S19-05
+DITERIMA — SPRINT 19
 ```

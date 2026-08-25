@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-25 — ARK-S19-04 accepted; ARK-S19-05 authorized
+**Updated:** 2026-08-25 — Sprint 19 accepted and closed
 **Active milestone:** Sprint 19 — Deterministic Strategy Router and Current Decision
-**Active card:** ARK-S19-05 — authorized; Router safety/acceptance closure has not started
+**Active card:** none — next milestone has not been contracted
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -48,7 +48,7 @@ Next:    VALIDATED-only Router eligibility → LONG/SHORT/NO_TRADE decision cont
 | DEMO deployment and telemetry | IMPLEMENTED legacy foundation; MT5 OAT pending | DEMO-only versioned config, acknowledgement, rollback, journal ingestion, and forward-evidence scaffolding exist. The EA supports the legacy rule only and fixed `0.01` volume. |
 | Capital Simulation | BROKER-CONSTRAINED FIXED/FRACTIONAL HISTORY AND OWNER UI IMPLEMENTED | Immutable `CAPITAL_BROKER_CONTRACT_V1` and `BROKER_CONSTRAINED_CAPITAL_V1` evidence bind exact StrategyVersion, full-history validation, dataset, MT5 profit/margin parity, sizing, and broker assumptions. The Owner UI validates/confirms contracts, runs or reuses results, and explicitly materializes one fingerprint-bound full-replay verifier artifact; GET is lightweight and never reruns the kernel. The verifier compares every normalized point and recomputed metric, exact lineage, constraints, disclosures, and lifecycle safety. One frozen 2026 snapshot is applied to the full 2017–2026 ledger, not reconstructed historical broker terms. Acceptance readiness is not `VALIDATED`, DEMO/LIVE authorization, or a trade recommendation. |
 | Variant Explorer | OWNER WORKFLOW + MATERIALIZED ACCEPTANCE VERIFIER — ARK-S15-05 | `/variants` exposes bounded contract, train, holdout, lock, matrix, split ledger, explicit confirmation boundary, and persisted verifier evidence. Runtime truth is `NO_ELIGIBLE_VARIANT`; all ten verifier checks pass while final-OOS stays locked, with zero confirmation/revision and no lifecycle promotion. |
-| Strategy Router / Current or Live Decision | CURRENT DECISION UI + MATERIALIZED VERIFIER IMPLEMENTED — ARK-S19-04 | `/current-decision` presents exact decision/parameter lineage and fail-closed blockers. `STRATEGY_ROUTER_VERIFIER_V1` checks five complete-chain invariants. Real runtime is honestly `NO_TRADE`, with no selected strategy or numbers, while verifier integrity is `PASSED / READY_FOR_OWNER_ACCEPTANCE`. UI/verifier are read-only and grant no deployment, MT5, order, or trade authority. |
+| Strategy Router / Current or Live Decision | SPRINT 19 ACCEPTED AND CLOSED | Policy, eligibility, deterministic decision, exact parameter evidence, Current Decision UI, materialized verifier, and `STRATEGY_ROUTER_SAFETY_AUDITOR_V1` are accepted. Real runtime is honestly NO_TRADE; verifier and six-check safety audit PASS. Restart fingerprint is exact. No Router path grants deployment, MT5, order, or trade authority. |
 
 ## Legacy Backtest and strategy classification
 
@@ -166,13 +166,12 @@ ARK-S19-02 is accepted and technically validated.
 The positive fixture produces exact `LONG`; no-signal and every blocker produce
 `NO_TRADE` without least-bad selection. Real runtime truth is `NO_TRADE` with
 no selected strategy because the exact current eligibility is `INELIGIBLE`.
-ARK-S19-03 is accepted. ARK-S19-04 Current Decision UI, migration 041,
-materialized verifier, API/UI regression, 243-test backend regression,
-production build, and Docker/browser OAT are accepted with technical claim
-`VALIDATED`. Real runtime remains honestly
-`NO_TRADE`; verifier chain integrity is PASSED without creating Entry/SL/TP/
-size, deployment, MT5, order, or trade. S19-05 is authorized; its closure work
-has not started.
+ARK-S19-03 and ARK-S19-04 are accepted. ARK-S19-05 safety audit, 6-test
+acceptance regression, 43-test Router regression, final 249-test backend
+regression, web verification, production build, Docker restart recovery, and
+post-restart browser OAT are accepted with technical claim `VALIDATED`. Audit
+fingerprint is `5a393e82923e66ec27a571ded95b3aa6b2c107aa806e5ba3aab04427a6b7c9c5`.
+Sprint 19 is accepted and closed; no next milestone is implicitly authorized.
 
 The historical evaluator compatibility seam is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:

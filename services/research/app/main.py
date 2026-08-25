@@ -27,6 +27,7 @@ from .strategy_router_eligibility import current_policy as current_router_policy
 from .strategy_router_decisions import decision_contract as router_decision_contract, list_all as list_router_decisions, materialize as materialize_router_decision, serialize as serialize_router_decision
 from .strategy_router_parameters import materialize as materialize_router_parameters, parameter_contract as router_parameter_contract, serialize as serialize_router_parameters
 from .strategy_router_verification import get_latest as get_latest_router_verification, materialize as materialize_router_verification, serialize as serialize_router_verification
+from .strategy_router_safety import audit as audit_router_safety
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
@@ -698,6 +699,11 @@ def get_strategy_router_verification_by_id(verification_id: str, session: Sessio
     if not item:
         raise HTTPException(404, "strategy Router verification not found")
     return serialize_router_verification(item)
+
+
+@app.get("/api/v1/strategy-router/safety-report")
+def get_strategy_router_safety_report(session: Session = Depends(get_session)) -> dict:
+    return audit_router_safety(session)
 
 
 @app.post("/api/v1/capital-contracts/validate")
