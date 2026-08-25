@@ -33,6 +33,8 @@ MIGRATION_030 = "030_generic_robustness_evidence"
 MIGRATION_031 = "031_generic_evidence_owner_gate"
 MIGRATION_032 = "032_generic_evidence_verification"
 MIGRATION_033 = "033_generic_validation_eligibility"
+MIGRATION_034 = "034_generic_validation_promotion"
+MIGRATION_035 = "035_generic_validation_promotion_column_recovery"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -500,6 +502,27 @@ def _migration_033(connection) -> None:
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_generic_validation_eligibilities_decision_id ON generic_validation_eligibilities(decision_id)"))
 
 
+def _migration_034(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS generic_validation_promotions (
+        id VARCHAR(36) PRIMARY KEY, eligibility_id VARCHAR(36) NOT NULL UNIQUE,
+        strategy_version_id VARCHAR(36) NOT NULL, decision_id VARCHAR(36) NOT NULL,
+        fingerprint VARCHAR(64) NOT NULL UNIQUE, protocol_version VARCHAR(64) NOT NULL,
+        authorization_phrase VARCHAR(96) NOT NULL, status VARCHAR(48) NOT NULL,
+        result JSON NOT NULL, created_at TIMESTAMP NOT NULL)"""))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_generic_validation_promotions_strategy_version_id ON generic_validation_promotions(strategy_version_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_generic_validation_promotions_decision_id ON generic_validation_promotions(decision_id)"))
+    columns = {row[1] for row in connection.execute(text("PRAGMA table_info(strategy_versions)"))} if connection.dialect.name == "sqlite" else {row[0] for row in connection.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'strategy_versions'"))}
+    if "generic_validation_promotion_id" not in columns:
+        connection.execute(text("ALTER TABLE strategy_versions ADD COLUMN generic_validation_promotion_id VARCHAR(36) REFERENCES generic_validation_promotions(id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_strategy_versions_generic_validation_promotion_id ON strategy_versions(generic_validation_promotion_id)"))
+
+
+def _migration_035(connection) -> None:
+    columns = {row[1] for row in connection.execute(text("PRAGMA table_info(generic_validation_promotions)"))} if connection.dialect.name == "sqlite" else {row[0] for row in connection.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'generic_validation_promotions'"))}
+    if "authorization" in columns and "authorization_phrase" not in columns:
+        connection.execute(text('ALTER TABLE generic_validation_promotions RENAME COLUMN "authorization" TO authorization_phrase'))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -522,6 +545,8 @@ MIGRATIONS = (
     (MIGRATION_031, _migration_031),
     (MIGRATION_032, _migration_032),
     (MIGRATION_033, _migration_033),
+    (MIGRATION_034, _migration_034),
+    (MIGRATION_035, _migration_035),
 )
 
 

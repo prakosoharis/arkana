@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationPromotion, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -20,6 +20,7 @@ from .generic_robustness import run as run_generic_robustness, serialize as seri
 from .generic_evidence_decisions import confirm as confirm_generic_evidence, materialize as materialize_generic_evidence_decision, serialize_confirmation as serialize_generic_evidence_confirmation, serialize_decision as serialize_generic_evidence_decision
 from .generic_evidence_verification import get as get_generic_evidence_verification, materialize as materialize_generic_evidence_verification, serialize as serialize_generic_evidence_verification
 from .generic_validation_eligibility import list_for_decision as list_generic_validation_eligibilities, materialize as materialize_generic_validation_eligibility, serialize as serialize_generic_validation_eligibility
+from .generic_validation_promotions import get_for_eligibility as get_generic_validation_promotion, promote as promote_generic_validation, serialize as serialize_generic_validation_promotion
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
@@ -480,6 +481,31 @@ def get_generic_validation_eligibility(eligibility_id: str, session: Session = D
     if not item:
         raise HTTPException(404, "generic validation eligibility not found")
     return serialize_generic_validation_eligibility(item)
+
+
+@app.post("/api/v1/generic-validation-eligibilities/{eligibility_id}/promotions")
+def create_generic_validation_promotion(eligibility_id: str, payload: dict, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = promote_generic_validation(session, eligibility_id, str(payload.get("authorization", "")))
+        return serialize_generic_validation_promotion(item, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/generic-validation-eligibilities/{eligibility_id}/promotion")
+def get_generic_validation_promotion_for_eligibility(eligibility_id: str, session: Session = Depends(get_session)) -> dict:
+    item = get_generic_validation_promotion(session, eligibility_id)
+    if not item:
+        raise HTTPException(404, "generic validation promotion not found")
+    return serialize_generic_validation_promotion(item)
+
+
+@app.get("/api/v1/generic-validation-promotions/{promotion_id}")
+def get_generic_validation_promotion_by_id(promotion_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(GenericValidationPromotion, promotion_id)
+    if not item:
+        raise HTTPException(404, "generic validation promotion not found")
+    return serialize_generic_validation_promotion(item)
 
 
 @app.post("/api/v1/capital-contracts/validate")

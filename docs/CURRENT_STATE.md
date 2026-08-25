@@ -138,20 +138,19 @@ streaming generic replay produced one exact reusable evidence row over
 evidence honestly returned `FAIL`, never accessed final-OOS, selected no
 candidate, and left lifecycle state unchanged. ARK-S17-03 is accepted and
 pushed at `ae98995`; its combined decision honestly returned `FAIL`, and no real
-Owner acknowledgement was fabricated. ARK-S17-04 source, tests, additive
-migration, Docker OAT, and browser OAT are complete and awaiting Owner
-acceptance. The materialized verifier passed all nine chain-integrity checks
-while the evidence outcome remained `FAIL`; the StrategyVersion remains
-`CONTRACT_VALID`. Sprint 17 is accepted and complete at `deca4ee`.
+Owner acknowledgement was fabricated. ARK-S17-04 and Sprint 17 are accepted and
+complete at `deca4ee`. Its materialized verifier passed all nine chain-integrity
+checks while the evidence outcome remained `FAIL`; the StrategyVersion remains
+`CONTRACT_VALID`.
 
 Sprint 18 — Generic Strategy Validation Lifecycle is authorized and recorded in
-`docs/SPRINT_18_GENERIC_VALIDATION_LIFECYCLE.md`. ARK-S18-01 source, tests,
-migration recovery, and runtime OAT are complete and awaiting Owner acceptance.
-The materialized real eligibility snapshot classifies the Sprint 17 `FAIL`
-chain as `INELIGIBLE`, reuses its exact fingerprint, and leaves the strategy
-`CONTRACT_VALID`. No real acknowledgement or promotion was fabricated.
-ARK-S18-02 has not started; no Router, DEMO/LIVE, capital, MT5, order, or trade
-scope is authorized.
+`docs/SPRINT_18_GENERIC_VALIDATION_LIFECYCLE.md`. ARK-S18-01 is accepted and
+pushed at `6df078e`. ARK-S18-02 atomic historical promotion implementation,
+regression, migration recovery, and negative runtime OAT are complete and
+awaiting Owner acceptance. The real `INELIGIBLE` chain rejects both an invalid
+phrase and the exact promotion phrase, persists zero promotions, and leaves the
+strategy `CONTRACT_VALID`. ARK-S18-03 has not started; no Router, DEMO/LIVE,
+capital, MT5, order, or trade scope is authorized.
 
 The intended next technical direction is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:

@@ -2,7 +2,7 @@
 
 ## Status
 
-**ACTIVE — ARK-S18-01 is technically complete and awaiting Owner acceptance.**
+**ACTIVE — ARK-S18-01 accepted; ARK-S18-02 is technically complete and awaiting Owner acceptance.**
 
 Sprint 17 provides immutable split evidence, bounded parameter-stability
 evidence, a combined Owner-gated decision, and a materialized chain verifier.
@@ -96,9 +96,8 @@ Verification evidence:
   `validated_at` remain null, and real Owner acknowledgement rows remain zero.
   No acknowledgement or promotion was fabricated.
 
-**Checkpoint status:** source, tests, migration recovery, and runtime OAT are
-complete; awaiting explicit Owner acceptance. ARK-S18-02 has not started and
-ARK-S18-01 is uncommitted/unpushed.
+**Checkpoint status:** accepted by the Owner and pushed to `origin/main` at
+`6df078e` before ARK-S18-02 began.
 
 ### ARK-S18-02 — Owner-authorized atomic promotion
 
@@ -106,6 +105,55 @@ Add an authorization distinct from acknowledgement and allow only the atomic
 `CONTRACT_VALID → VALIDATED` transition for an exact eligible assessment.
 Persist immutable promotion lineage; reject negative, stale, duplicate,
 concurrent, or mismatched authorization. No deployment or trading action.
+
+#### Completion report
+
+Implementation:
+
+- Added explicit `GENERIC_HISTORICAL_VALIDATION_PROMOTION_V1` with the exact
+  separate phrase `AUTHORIZE_GENERIC_HISTORICAL_VALIDATION_V1`. The Sprint 17
+  acknowledgement phrase is rejected and cannot authorize promotion.
+- Promotion requires an exact current `ELIGIBLE` assessment bound to a `PASS`
+  decision. It re-evaluates the eligibility snapshot fingerprint/result before
+  mutation and rejects stale, tampered, negative, missing, or inconsistent
+  lineage.
+- One database transaction inserts an immutable promotion record and performs
+  a compare-and-set `CONTRACT_VALID → VALIDATED` transition. It binds the exact
+  OOS evidence in `validation_evidence_id`, the promotion in
+  `generic_validation_promotion_id`, and one `validated_at` timestamp. A lost
+  race rolls back; an exact concurrent/repeated request reuses the sole row.
+- `VALIDATED` is explicitly `HISTORICAL_VALIDATION_ONLY`. Promotion creates no
+  deployment, DEMO/LIVE authority, capital authority, Router/current decision,
+  order, or trade action. Strategy API serialization exposes promotion lineage.
+- Additive migration 034 creates promotion storage and StrategyVersion lineage.
+  Docker OAT exposed PostgreSQL `authorization` keyword portability and a
+  partial table left by `create_all` before the failed migration rolled back.
+  Storage now uses `authorization_phrase`; forward recovery migration 035
+  detects and renames the partial quoted column without manual database edits.
+
+Verification evidence:
+
+- Backend regression: **198 passed**. Focused API/promotion/migration suite:
+  **36 passed**. Dedicated tests cover valid atomic promotion, wrong phrase,
+  exact retry, `FAIL`/`INSUFFICIENT_EVIDENCE` rejection, stale eligibility,
+  decision tampering, lifecycle neutrality, and two synchronized concurrent
+  writers producing exactly one promotion and one transition.
+- Migration tests cover legacy schema preservation, migrations 034/035 exactly
+  once, the new StrategyVersion column, and explicit recovery of an orphaned
+  quoted `authorization` column. Python compile and `git diff --check` pass.
+- Docker/PostgreSQL OAT applies migrations 034 and 035 exactly once and exposes
+  only `authorization_phrase`. The wrong acknowledgement-as-authorization is
+  rejected; the correct promotion phrase is also rejected against real
+  eligibility `7a19352e-a829-43d7-abfd-34f5c91360b8` because it is
+  `INELIGIBLE`. Promotion GET returns 404 and promotion-row count remains zero.
+- After service restart, both migrations remain one row, the real strategy
+  remains `CONTRACT_VALID`, and `validation_evidence_id`, `validated_at`, and
+  `generic_validation_promotion_id` remain null. No accepted authorization,
+  promotion, deployment, or trading side effect was fabricated.
+
+**Checkpoint status:** source, tests, migration recovery, and negative runtime
+OAT are complete; awaiting explicit Owner acceptance. ARK-S18-03 has not
+started and ARK-S18-02 is uncommitted/unpushed.
 
 ### ARK-S18-03 — Retirement and lifecycle governance
 
@@ -126,5 +174,5 @@ Each checkpoint requires source, automated tests, runtime OAT, updated report,
 and explicit Owner acceptance. An accepted checkpoint is committed and pushed
 to `origin/main` before the next begins. Generated/runtime files are excluded.
 
-The accepted contract authorizes only ARK-S18-01. Do not begin ARK-S18-02 until
-the Owner explicitly accepts ARK-S18-01.
+Do not begin the next checkpoint until the Owner explicitly accepts the current
+checkpoint. An accepted checkpoint is pushed before its successor begins.
