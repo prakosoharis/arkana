@@ -2,9 +2,9 @@
 
 **Contract status:** active delivery; ARK-S19-00 accepted
 
-**Active checkpoint:** ARK-S19-02 authorized; implementation not started
+**Active checkpoint:** ARK-S19-03 authorized; implementation not started
 
-**Implementation authority:** S19-02 only; S19-03 and later are not authorized
+**Implementation authority:** S19-03 only; S19-04 and later are not authorized
 
 ## Product objective
 
@@ -209,4 +209,68 @@ Owner acceptance phrase:
 ```text
 DITERIMA — ARK-S19-01
 Lanjut ARK-S19-02.
+```
+
+## ARK-S19-02 implementation and validation evidence
+
+Implemented boundary:
+
+- migration `039_strategy_router_decision` adds one immutable, uniquely
+  fingerprinted `strategy_router_decisions` artifact;
+- `STRATEGY_ROUTER_DECISION_V1` exposes a fingerprinted decision contract:
+  explicit exact eligibility IDs, one evaluation timestamp, completed candles,
+  exactly one signal or `NO_TRADE`, no least-bad fallback, LONG supported, and
+  SHORT explicitly unavailable;
+- every candidate eligibility is recomputed without silently creating a
+  replacement. Legacy/stale/ineligible candidates are blocked before market
+  rule evaluation;
+- exact registered assets are read only to the bounded rule lookback, ending at
+  the registered completed M1 decision candle. The persisted fingerprint binds
+  OHLC inputs, dataset/assets, evaluator artifact, rule evidence, eligibility,
+  policy, outcome, and decision contract;
+- one exact signal materializes `LONG`; no signal, multiple dataset snapshots,
+  stale/ineligible lineage, unavailable input, multiple signals, or unsupported
+  direction materialize `NO_TRADE`. No path fabricates `SHORT`;
+- POST/list/read APIs and a read-only decision-contract API are implemented.
+
+Automated evidence:
+
+- S19-02 suite: **10 passed** covering exact LONG, no-signal NO_TRADE,
+  multi-dataset rejection, ineligible/stale lifecycle, missing input lineage,
+  invalid cohort/time, idempotency, concurrency, API, and absence of deployment
+  or Entry/SL/TP/size side effects;
+- combined Router suites: **21 passed**;
+- backend regression: **227 passed**;
+- web regression: **26 passed across 9 files**; typecheck, ESLint, and optimized
+  Next.js production build passed;
+- migration preservation and `git diff --check` passed.
+
+Docker/runtime OAT:
+
+- final research image rebuilt/restarted; health is `ok`; migration 039 is
+  recorded in PostgreSQL;
+- decision-contract fingerprint is
+  `3a72855806c1f54f948aaa76ae9a4396331d0815912654a224e5d890593ff585`;
+- the corrected current real eligibility is immutable ID
+  `84d2aabf-aeb3-4f80-b1b9-ed58010467ec`, status `INELIGIBLE`, with the seven
+  truthful lifecycle/evidence/timezone/sync/freshness blockers;
+- exact real decision ID `28bb2131-b0a1-4ea8-bd33-7e9eec0d27fe` is
+  `NO_TRADE`, selects no strategy, and exact retry reuses the same ID and
+  fingerprint;
+- an earlier decision over the pre-correction eligibility remains immutable as
+  `NO_TRADE / STALE_ELIGIBILITY`; it was not rewritten or hidden;
+- runtime has two decision evidence rows, neither selects a strategy. Existing
+  deployment records are not mutated and the decision service imports/calls no
+  deployment, MT5, capital, order, or trade path.
+
+**ARK-S19-02 status:** accepted with technical claim **VALIDATED**. This means deterministic decision
+source, migration, positive and fail-closed tests, Docker OAT, exact retry, and
+documentation are complete. It does not authorize Entry/SL/TP/size, UI,
+deployment, MT5, capital, order, or trade behavior.
+
+Owner acceptance phrase:
+
+```text
+DITERIMA — ARK-S19-02
+Lanjut ARK-S19-03.
 ```

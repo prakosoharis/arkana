@@ -311,6 +311,23 @@ class StrategyRouterEligibility(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class StrategyRouterDecision(Base):
+    """Deterministic current-direction evidence; never an order or execution instruction."""
+    __tablename__ = "strategy_router_decisions"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_strategy_router_decision_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    router_policy_id: Mapped[str] = mapped_column(ForeignKey("strategy_router_policies.id"), nullable=False, index=True)
+    selected_strategy_version_id: Mapped[str | None] = mapped_column(ForeignKey("strategy_versions.id"), nullable=True, index=True)
+    selected_eligibility_id: Mapped[str | None] = mapped_column(ForeignKey("strategy_router_eligibilities.id"), nullable=True, index=True)
+    dataset_id: Mapped[str | None] = mapped_column(ForeignKey("datasets.id"), nullable=True, index=True)
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    decision: Mapped[str] = mapped_column(String(16), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"

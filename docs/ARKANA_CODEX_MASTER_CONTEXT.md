@@ -253,7 +253,11 @@ immutable policy and read-only eligibility snapshots fail closed against exact
 lifecycle, capability, dataset, timezone, sync, and freshness evidence. Runtime
 truth is honestly `INELIGIBLE`; no LONG/SHORT/NO_TRADE decision, Entry/SL/TP/
 size, UI, DEMO/LIVE, MT5, capital, deployment, order, or trade behavior exists.
-ARK-S19-02 is authorized but has not started; later cards remain unauthorized.
+ARK-S19-02 is accepted and technically validated.
+Its immutable decision contract requires an explicit exact eligibility cohort,
+one dataset snapshot, and exactly one completed-candle signal; otherwise it
+materializes NO_TRADE. SHORT and all execution authority remain unavailable.
+ARK-S19-03 is authorized but has not started; later cards remain unauthorized.
 
 ## QA protocol
 

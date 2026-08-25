@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterEligibility, StrategyRouterPolicy, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterEligibility, StrategyRouterPolicy, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -24,6 +24,7 @@ from .generic_validation_promotions import get_for_eligibility as get_generic_va
 from .generic_validation_retirements import get_for_strategy as get_generic_validation_retirement, retire as retire_generic_validation, serialize as serialize_generic_validation_retirement
 from .generic_validation_lifecycle_verification import get_latest as get_generic_lifecycle_verification, materialize as materialize_generic_lifecycle_verification, serialize as serialize_generic_lifecycle_verification
 from .strategy_router_eligibility import current_policy as current_router_policy, list_for_strategy as list_router_eligibilities, materialize as materialize_router_eligibility, materialize_policy as materialize_router_policy, parse_evaluated_at, serialize as serialize_router_eligibility, serialize_policy as serialize_router_policy
+from .strategy_router_decisions import decision_contract as router_decision_contract, list_all as list_router_decisions, materialize as materialize_router_decision, serialize as serialize_router_decision
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
@@ -607,6 +608,33 @@ def get_strategy_router_eligibility(eligibility_id: str, session: Session = Depe
     if not item:
         raise HTTPException(404, "strategy Router eligibility not found")
     return serialize_router_eligibility(item)
+
+
+@app.post("/api/v1/strategy-router/decisions")
+def create_strategy_router_decision(payload: dict, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = materialize_router_decision(session, payload.get("eligibility_ids"), parse_evaluated_at(payload.get("evaluated_at")))
+        return serialize_router_decision(item, reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/strategy-router/decision-contract")
+def get_strategy_router_decision_contract() -> dict:
+    return router_decision_contract()
+
+
+@app.get("/api/v1/strategy-router/decisions")
+def get_strategy_router_decisions(session: Session = Depends(get_session)) -> dict:
+    return {"decisions": [serialize_router_decision(item) for item in list_router_decisions(session)]}
+
+
+@app.get("/api/v1/strategy-router/decisions/{decision_id}")
+def get_strategy_router_decision(decision_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(StrategyRouterDecision, decision_id)
+    if not item:
+        raise HTTPException(404, "strategy Router decision not found")
+    return serialize_router_decision(item)
 
 
 @app.post("/api/v1/capital-contracts/validate")

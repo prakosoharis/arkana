@@ -161,7 +161,7 @@ def assess(session: Session, strategy_id: str, evaluated_at: datetime, policy: S
 def materialize(session: Session, strategy_id: str, evaluated_at: datetime) -> tuple[StrategyRouterEligibility, bool]:
     policy, _ = materialize_policy(session)
     result, snapshot = assess(session, strategy_id, evaluated_at, policy)
-    value = sha256(canonical_json({"protocol_version": ELIGIBILITY_PROTOCOL_VERSION, "sources": snapshot}).encode()).hexdigest()
+    value = sha256(canonical_json({"protocol_version": ELIGIBILITY_PROTOCOL_VERSION, "sources": snapshot, "result": result}).encode()).hexdigest()
     existing = session.scalar(select(StrategyRouterEligibility).where(StrategyRouterEligibility.fingerprint == value))
     if existing:
         return existing, True
@@ -177,6 +177,17 @@ def materialize(session: Session, strategy_id: str, evaluated_at: datetime) -> t
         raise
     session.refresh(item)
     return item, False
+
+
+def exact_report(session: Session, item: StrategyRouterEligibility) -> tuple[bool, dict[str, Any], dict[str, Any]]:
+    """Recompute an eligibility without creating a replacement snapshot."""
+    policy = session.get(StrategyRouterPolicy, item.router_policy_id)
+    if not policy:
+        return False, item.result, {"missing_router_policy_id": item.router_policy_id}
+    result, snapshot = assess(session, item.strategy_version_id, item.evaluated_at, policy)
+    expected = sha256(canonical_json({"protocol_version": ELIGIBILITY_PROTOCOL_VERSION, "sources": snapshot, "result": result}).encode()).hexdigest()
+    exact = item.protocol_version == ELIGIBILITY_PROTOCOL_VERSION and item.fingerprint == expected and item.status == result["status"] and item.result == result
+    return exact, result, snapshot
 
 
 def serialize_policy(item: StrategyRouterPolicy, reused: bool | None = None) -> dict[str, Any]:
