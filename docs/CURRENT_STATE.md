@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-25 — Sprint 19 accepted and closed
-**Active milestone:** Sprint 19 — Deterministic Strategy Router and Current Decision
-**Active card:** none — next milestone has not been contracted
+**Updated:** 2026-08-25 — Sprint 20 contract accepted; ARK-S20-00 active
+**Active milestone:** Sprint 20 — Generic DEMO Compiler and Forward Validation
+**Active card:** ARK-S20-00 — post-S19 canonical baseline and prerequisite audit
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -23,14 +23,16 @@ path.
 
 The repository is being extended, not rewritten. Existing deterministic data,
 research, simulation, version/configuration, deployment, telemetry, and DEMO
-plumbing are reusable foundations. The bounded historical Strategy Factory
-loop is implemented; Router and generic execution remain missing:
+plumbing are reusable foundations. The bounded historical Strategy Factory and
+deterministic Router loops are implemented; generic DEMO execution remains
+missing:
 
 ```text
 Legacy:  hard-coded BacktestRun → legacy StrategyVersion wrapper → manual APPROVED → DEMO
 Current: StrategyCandidate → deterministic StrategyVersion → canonical Backtest V1
          → generic evidence → eligibility → explicit historical VALIDATED → RETIRED
-Next:    VALIDATED-only Router eligibility → LONG/SHORT/NO_TRADE decision contract
+Router:  VALIDATED-only eligibility → LONG/NO_TRADE → Entry/SL/TP/size evidence
+Next:    historically VALIDATED generic strategy → DEMO compiler → forward evidence
 ```
 
 ## Capability classification

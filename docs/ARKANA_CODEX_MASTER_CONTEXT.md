@@ -98,18 +98,23 @@ StrategyCandidate → deterministic StrategyVersion → Backtest V1
 → generic OOS/stability/decision → eligibility
 → explicit historical VALIDATED → immutable RETIRED
 
+Implemented Router path:
+VALIDATED-only Router eligibility → LONG / NO_TRADE decision contract
+→ exact Entry / SL / TP / size evidence → Current Decision verifier
+
 Next missing path:
-VALIDATED-only Router eligibility → LONG / SHORT / NO_TRADE decision contract
-→ future generic DEMO compiler and forward validation
+historically VALIDATED generic strategy → generic DEMO compiler
+→ exact MT5 DEMO acknowledgement → separated forward validation
 ```
 
 StrategyCandidate, immutable StrategyVersion contracts, the block registry,
 generic evaluator/compiler seam, version-to-backtest lineage, Strategy Factory
 UX, frozen generic evidence gate, capital simulation, bounded Variant Explorer,
-historical promotion/retirement, and lifecycle verification are implemented in
-their accepted bounded scopes. Missing target capabilities begin at Strategy
-Router/current decision, then generic DEMO compilation/forward validation,
-LIVE-readiness governance, and later Dynamic Discovery enhancement.
+historical promotion/retirement, lifecycle verification, and deterministic
+Router/current-decision evidence are implemented in their accepted bounded
+scopes. Missing target capabilities begin at generic DEMO compilation/forward
+validation, then LIVE-readiness governance, and later Dynamic Discovery
+enhancement.
 
 `BULLISH_REVERSAL_M1` is a **LEGACY_EXECUTION_PROTOTYPE**, useful for
 regression and DEMO plumbing but not a validated edge, Router candidate, or
@@ -244,7 +249,7 @@ promotions and retirements. Its lifecycle verifier is PASSED while claiming
 only `NOT_VALIDATED`. Sprint 18 authorizes no Router, DEMO/LIVE, MT5, capital,
 order, or trading decision.
 
-## Active milestone — Sprint 19 deterministic Strategy Router
+## Completed milestone — Sprint 19 deterministic Strategy Router
 
 [`SPRINT_19_DETERMINISTIC_STRATEGY_ROUTER.md`](SPRINT_19_DETERMINISTIC_STRATEGY_ROUTER.md)
 defines the Router/current-decision delivery sequence. ARK-S19-00 is accepted.
@@ -268,6 +273,18 @@ prove current lifecycle/input invalidation, stale broker blocking, legacy
 isolation, concurrency/idempotency, restart recovery, and execution isolation.
 Runtime remains honestly NO_TRADE and the audit fingerprint survives PostgreSQL
 and service restart exactly. No post-S19 milestone is implicitly authorized.
+
+## Active milestone — Sprint 20 generic DEMO and forward validation
+
+[`SPRINT_20_GENERIC_DEMO_FORWARD_VALIDATION.md`](SPRINT_20_GENERIC_DEMO_FORWARD_VALIDATION.md)
+is an accepted six-checkpoint contract. ARK-S20-00 authorizes documentation and
+read-only audit only. The sprint covers post-S19 reconciliation, immutable
+generic DEMO eligibility/contract, deterministic Strategy Contract → MT5
+compilation, DEMO-only publication and EA acknowledgement, separated
+forward-evidence lineage, Owner UI/verifier, restart recovery, and safety
+closure. The real generic strategy is not historically VALIDATED, so runtime
+must remain blocked unless genuine evidence and Owner MT5 DEMO acknowledgement
+become available.
 
 ## QA protocol
 
