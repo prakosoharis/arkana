@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./styles.css";
+import "./router.css";
 import { AppSidebar } from "../components/app-sidebar";
 
 export const metadata: Metadata = {

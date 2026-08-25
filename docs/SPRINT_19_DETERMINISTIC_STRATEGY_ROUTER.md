@@ -2,9 +2,9 @@
 
 **Contract status:** active delivery; ARK-S19-00 accepted
 
-**Active checkpoint:** ARK-S19-04 authorized; implementation not started
+**Active checkpoint:** ARK-S19-05 authorized; implementation not started
 
-**Implementation authority:** S19-04 only; S19-05 and later are not authorized
+**Implementation authority:** S19-05 only
 
 ## Product objective
 
@@ -338,4 +338,65 @@ Owner acceptance phrase:
 ```text
 DITERIMA — ARK-S19-03
 Lanjut ARK-S19-04.
+```
+
+## ARK-S19-04 implementation and validation evidence
+
+Implemented boundary:
+
+- migration `041_strategy_router_verification` adds immutable, fingerprinted
+  materialized verification of the exact decision and parameter artifacts;
+- `STRATEGY_ROUTER_VERIFIER_V1` checks decision identity/current exactness,
+  parameter fingerprint and lineage, NO_TRADE/BLOCKED/LONG semantics, exact
+  LONG arithmetic, explicit LONG broker/capital/execution assumptions, and the
+  no-deployment/no-MT5/no-order/no-trade boundary;
+- a changed/tampered chain produces a new preserved FAILED verifier rather than
+  rewriting earlier evidence. Exact retry reuses the same verifier;
+- POST/GET/by-ID verifier APIs are implemented;
+- `/current-decision` is linked from the application sidebar and exposes the
+  current decision, selected version, timestamp/freshness, fingerprint,
+  blockers, Entry/SL/TP/size state, full lineage, safety boundary, verifier
+  checks, and Owner acceptance readiness. The UI has no execution control.
+
+Automated evidence:
+
+- S19-04 verifier suite: **5 passed**, covering coherent real-shape NO_TRADE,
+  exact LONG arithmetic, immutable reuse, tamper/fail-closed preservation,
+  missing parameter rejection, API reads, and absence of deployment effects;
+- combined S19-03/verifier/migration suite: **18 passed**;
+- backend regression: **243 passed**;
+- web regression: **28 passed across 10 files**, including honest NO_TRADE and
+  exact LONG rendering; TypeScript, ESLint, and optimized Next.js production
+  build passed with `/current-decision` and all three proxy routes;
+- `git diff --check` passed.
+
+Docker/runtime OAT:
+
+- research and web images rebuilt and restarted; research health is `ok` and
+  migration 041 is recorded exactly once in PostgreSQL;
+- real verifier `992d2fd9-6741-4e43-b8aa-c0d5932146af`, fingerprint
+  `9362b3a8c1ac6111a83061397b530a7c1be0cf81eac5811ca047f9f59ddc070d`,
+  is `PASSED / READY_FOR_OWNER_ACCEPTANCE` with all five checks PASS;
+- its truthful outcome remains `NO_TRADE / NO_TRADE`; it does not fabricate a
+  strategy, broker/capital assumptions, or numeric parameters. API and UI retry
+  reuse the same verifier and PostgreSQL retains exactly one row;
+- browser OAT opened the production Docker `/current-decision`, visibly showed
+  all eight real blockers, no Entry/SL/TP/size, exact timestamp and fingerprint,
+  all verifier checks PASS, lineage disclosures, LIVE locked wording, and the
+  read-only safety warning. Clicking Materialize verifier succeeded; browser
+  console contained no warning or error;
+- deployment count remains five and no deployment, MT5 action, order, or trade
+  was created by verifier/API/UI OAT.
+
+**ARK-S19-04 status:** accepted with technical claim **VALIDATED**. This claim
+covers source, migration, verifier,
+API/UI regression, production build, Docker/runtime and browser OAT. It does not
+mean profitability, and does not authorize S19-05, DEMO/LIVE, deployment, MT5,
+order placement, or trade execution.
+
+Owner acceptance phrase:
+
+```text
+DITERIMA — ARK-S19-04
+Lanjut ARK-S19-05.
 ```

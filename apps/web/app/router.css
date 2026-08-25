@@ -1,0 +1,7 @@
+.router-outcome { border: 1px solid #2c8564; background: #0c2b25; color: #5de4a2; padding: 10px 15px; border-radius: 999px; font-weight: 800; }
+.router-outcome.blocked { border-color: #80504e; background: #2a191d; color: #ff8993; }
+.router-blockers ul { margin: 0; padding: 16px 36px; color: #ffb7bd; display: grid; gap: 8px; }
+.router-numbers, .router-checks { padding: 16px; }
+.router-checks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.current-decision details pre { max-height: 340px; overflow: auto; color: #a8edf7; font-size: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 750px) { .router-checks { grid-template-columns: 1fr; } }

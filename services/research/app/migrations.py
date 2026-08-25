@@ -40,6 +40,7 @@ MIGRATION_037 = "037_generic_validation_lifecycle_verification"
 MIGRATION_038 = "038_strategy_router_policy_eligibility"
 MIGRATION_039 = "039_strategy_router_decision"
 MIGRATION_040 = "040_strategy_router_decision_parameters"
+MIGRATION_041 = "041_strategy_router_verification"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -606,6 +607,18 @@ def _migration_040(connection) -> None:
         connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_strategy_router_decision_parameters_{column} ON strategy_router_decision_parameters({column})"))
 
 
+def _migration_041(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS strategy_router_verifications (
+        id VARCHAR(36) PRIMARY KEY, router_decision_id VARCHAR(36) NOT NULL,
+        decision_parameters_id VARCHAR(36) NOT NULL, fingerprint VARCHAR(64) NOT NULL UNIQUE,
+        verifier_version VARCHAR(64) NOT NULL, status VARCHAR(32) NOT NULL,
+        result JSON NOT NULL, created_at TIMESTAMP NOT NULL,
+        FOREIGN KEY(router_decision_id) REFERENCES strategy_router_decisions(id),
+        FOREIGN KEY(decision_parameters_id) REFERENCES strategy_router_decision_parameters(id))"""))
+    for column in ("router_decision_id", "decision_parameters_id", "fingerprint"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_strategy_router_verifications_{column} ON strategy_router_verifications({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -635,6 +648,7 @@ MIGRATIONS = (
     (MIGRATION_038, _migration_038),
     (MIGRATION_039, _migration_039),
     (MIGRATION_040, _migration_040),
+    (MIGRATION_041, _migration_041),
 )
 
 

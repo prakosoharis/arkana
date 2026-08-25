@@ -347,6 +347,20 @@ class StrategyRouterDecisionParameters(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class StrategyRouterVerification(Base):
+    """Materialized read-only verifier of a complete Router decision chain."""
+    __tablename__ = "strategy_router_verifications"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_strategy_router_verification_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    router_decision_id: Mapped[str] = mapped_column(ForeignKey("strategy_router_decisions.id"), nullable=False, index=True)
+    decision_parameters_id: Mapped[str] = mapped_column(ForeignKey("strategy_router_decision_parameters.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    verifier_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"
