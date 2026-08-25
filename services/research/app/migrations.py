@@ -42,6 +42,7 @@ MIGRATION_039 = "039_strategy_router_decision"
 MIGRATION_040 = "040_strategy_router_decision_parameters"
 MIGRATION_041 = "041_strategy_router_verification"
 MIGRATION_042 = "042_generic_demo_contract"
+MIGRATION_043 = "043_generic_mt5_compilation"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -637,6 +638,19 @@ def _migration_042(connection) -> None:
         connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_generic_demo_contracts_{column} ON generic_demo_contracts({column})"))
 
 
+def _migration_043(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS generic_mt5_compilations (
+        id VARCHAR(36) PRIMARY KEY, generic_demo_contract_id VARCHAR(36) NOT NULL,
+        fingerprint VARCHAR(64) NOT NULL UNIQUE, compiler_protocol_version VARCHAR(64) NOT NULL,
+        adapter_capability_id VARCHAR(96) NOT NULL, adapter_registry_fingerprint VARCHAR(64) NOT NULL,
+        config_checksum VARCHAR(64) NOT NULL, configuration JSON NOT NULL,
+        config_text TEXT NOT NULL, field_lineage JSON NOT NULL, validation JSON NOT NULL,
+        created_at TIMESTAMP NOT NULL,
+        FOREIGN KEY(generic_demo_contract_id) REFERENCES generic_demo_contracts(id))"""))
+    for column in ("generic_demo_contract_id", "fingerprint", "config_checksum"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_generic_mt5_compilations_{column} ON generic_mt5_compilations({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -668,6 +682,7 @@ MIGRATIONS = (
     (MIGRATION_040, _migration_040),
     (MIGRATION_041, _migration_041),
     (MIGRATION_042, _migration_042),
+    (MIGRATION_043, _migration_043),
 )
 
 

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericDemoContract, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericDemoContract, GenericMt5Compilation, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -29,6 +29,7 @@ from .strategy_router_parameters import materialize as materialize_router_parame
 from .strategy_router_verification import get_latest as get_latest_router_verification, materialize as materialize_router_verification, serialize as serialize_router_verification
 from .strategy_router_safety import audit as audit_router_safety
 from .generic_demo_contracts import create as create_generic_demo_contract, eligibility_overview as generic_demo_eligibility_overview, list_all as list_generic_demo_contracts, serialize as serialize_generic_demo_contract, validation_report as generic_demo_validation_report
+from .generic_mt5_compiler import adapter_registry as generic_mt5_adapter_registry, create as create_generic_mt5_compilation, list_all as list_generic_mt5_compilations, serialize as serialize_generic_mt5_compilation, validation_report as generic_mt5_compilation_report
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
@@ -740,6 +741,38 @@ def get_generic_demo_contract(contract_id: str, session: Session = Depends(get_s
     if not item:
         raise HTTPException(404, "generic DEMO contract not found")
     return serialize_generic_demo_contract(item)
+
+
+@app.get("/api/v1/generic-mt5-adapter-registry")
+def get_generic_mt5_adapter_registry() -> dict:
+    return generic_mt5_adapter_registry()
+
+
+@app.post("/api/v1/generic-demo-contracts/{contract_id}/compile/validate")
+def validate_generic_mt5_compilation(contract_id: str, session: Session = Depends(get_session)) -> dict:
+    return generic_mt5_compilation_report(session, contract_id)
+
+
+@app.post("/api/v1/generic-demo-contracts/{contract_id}/compile")
+def post_generic_mt5_compilation(contract_id: str, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = create_generic_mt5_compilation(session, contract_id)
+        return serialize_generic_mt5_compilation(item, reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/generic-mt5-compilations")
+def get_generic_mt5_compilations(session: Session = Depends(get_session)) -> dict:
+    return {"generic_mt5_compilations": [serialize_generic_mt5_compilation(item) for item in list_generic_mt5_compilations(session)]}
+
+
+@app.get("/api/v1/generic-mt5-compilations/{compilation_id}")
+def get_generic_mt5_compilation(compilation_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(GenericMt5Compilation, compilation_id)
+    if not item:
+        raise HTTPException(404, "generic MT5 compilation not found")
+    return serialize_generic_mt5_compilation(item)
 
 
 @app.post("/api/v1/capital-contracts/validate")

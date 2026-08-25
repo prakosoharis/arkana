@@ -2,11 +2,11 @@
 
 **Contract status:** accepted by Owner on 2026-08-25
 
-**Active checkpoint:** ARK-S20-02 — deterministic Strategy Contract → MT5 compiler
+**Active checkpoint:** ARK-S20-03 — authorized by Owner; implementation pending
 
-**Implementation authority:** ARK-S20-02 deterministic compiler and isolated
-parity evidence only; no FILE_COMMON publication, deployment, MT5 action,
-order, trade, DEMO activation, or LIVE authority
+**Implementation authority:** ARK-S20-03 bounded DEMO publication, generic EA
+adapter, and exact acknowledgement only; no order, trade, LIVE, or strategy
+quality authority
 
 ## Product objective
 
@@ -334,3 +334,28 @@ or LIVE authority was created.
 **Technical checkpoint claim:** `VALIDATED`, scoped only to the immutable
 pre-compilation contract foundation and never to strategy quality or trading
 authority.
+
+## ARK-S20-02 completion evidence
+
+ARK-S20-02 was accepted by the Owner on 2026-08-26. The
+concrete report is
+[`SPRINT_20_02_DETERMINISTIC_MT5_COMPILER.md`](SPRINT_20_02_DETERMINISTIC_MT5_COMPILER.md).
+
+Migration `043_generic_mt5_compilation`, one fingerprinted bounded adapter
+registry, immutable canonical compiler artifacts, complete field lineage,
+SHA-256 wire checksums, validation/create/read APIs, and same-origin BFF routes
+are implemented. The exact registry fingerprint is
+`868ff4dbdf190850a4f9308b23acd8d3871b2b88c28178367cc4f61ba3ce0cea`.
+Golden vectors prove completed-candle rule/timing, spread, Entry/SL/TP/size,
+and `STOP_FIRST` semantics for the one supported M1 slice.
+
+Focused regression is 33 passed, full backend regression is 280 passed, web
+regression is 28 passed, and lint/typecheck/local plus Docker production builds
+pass. Runtime remains zero generic DEMO contracts and zero compiler artifacts;
+five legacy deployments and zero demo trades are unchanged. Missing-source
+validation is honestly `INELIGIBLE`, creation returns HTTP 422, and restart
+preserves the registry fingerprint. No FILE_COMMON configuration, deployment,
+MT5 action, order, trade, DEMO activation, or LIVE authority was created.
+
+**Technical checkpoint claim:** `VALIDATED`, scoped only to deterministic inert
+compiler evidence and never to strategy quality or trading authority.

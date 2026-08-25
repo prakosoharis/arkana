@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -376,6 +376,24 @@ class GenericDemoContract(Base):
     protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(48), nullable=False)
     contract: Mapped[dict] = mapped_column(JSON, nullable=False)
+    validation: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class GenericMt5Compilation(Base):
+    """Immutable compiler output; storage grants no publication authority."""
+    __tablename__ = "generic_mt5_compilations"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_generic_mt5_compilation_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    generic_demo_contract_id: Mapped[str] = mapped_column(ForeignKey("generic_demo_contracts.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    compiler_protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    adapter_capability_id: Mapped[str] = mapped_column(String(96), nullable=False)
+    adapter_registry_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    config_checksum: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    configuration: Mapped[dict] = mapped_column(JSON, nullable=False)
+    config_text: Mapped[str] = mapped_column(Text, nullable=False)
+    field_lineage: Mapped[dict] = mapped_column(JSON, nullable=False)
     validation: Mapped[dict] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 

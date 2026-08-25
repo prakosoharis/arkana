@@ -296,6 +296,18 @@ zero generic DEMO contracts, five unchanged legacy deployments, and zero demo
 trades. No compiler output, FILE_COMMON publication, MT5 action, deployment,
 order, trade, DEMO activation, or LIVE authority exists.
 
+ARK-S20-02 was accepted by the Owner on 2026-08-26. Exact
+evidence is recorded in
+[`SPRINT_20_02_DETERMINISTIC_MT5_COMPILER.md`](SPRINT_20_02_DETERMINISTIC_MT5_COMPILER.md).
+Migration 043, the bounded M1 generic MT5 adapter registry, immutable canonical
+SHA-256 compiler artifacts, complete field lineage, API/BFF lifecycle, and
+golden completed-candle/risk semantics are implemented. Registry fingerprint
+`868ff4dbdf190850a4f9308b23acd8d3871b2b88c28178367cc4f61ba3ce0cea`
+survives restart. Full backend regression is 280 passed and web regression is
+28 passed. Runtime remains zero generic DEMO contracts and compilations, five
+legacy deployments, and zero demo trades; no FILE_COMMON publication, MT5
+action, deployment, order, trade, DEMO activation, or LIVE authority exists.
+
 ## QA protocol
 
 Before coding: inspect the current repository, `git status`, dirty diffs,
