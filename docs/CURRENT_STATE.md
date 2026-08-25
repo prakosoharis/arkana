@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-25 — Sprint 17 complete; Sprint 18 lifecycle contract accepted
-**Active milestone:** Sprint 18 — Generic Strategy Validation Lifecycle
-**Active card:** ARK-S17-01 — authorized; contract acceptance push pending
+**Updated:** 2026-08-25 — Sprint 18 complete; ARK-S19-00 accepted
+**Active milestone:** Sprint 19 — Deterministic Strategy Router and Current Decision
+**Active card:** none — ARK-S19-01 requires separate Owner authorization
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -23,13 +23,14 @@ path.
 
 The repository is being extended, not rewritten. Existing deterministic data,
 research, simulation, version/configuration, deployment, telemetry, and DEMO
-plumbing are reusable foundations. They do **not** yet implement the target
-Strategy Factory product loop:
+plumbing are reusable foundations. The bounded historical Strategy Factory
+loop is implemented; Router and generic execution remain missing:
 
 ```text
-Current: hard-coded BacktestRun → legacy StrategyVersion wrapper → manual APPROVED → DEMO
-Target:  StrategyCandidate → deterministic StrategyVersion → canonical Backtest V1
-         → OOS/robustness gate → VALIDATED → DEMO
+Legacy:  hard-coded BacktestRun → legacy StrategyVersion wrapper → manual APPROVED → DEMO
+Current: StrategyCandidate → deterministic StrategyVersion → canonical Backtest V1
+         → generic evidence → eligibility → explicit historical VALIDATED → RETIRED
+Next:    VALIDATED-only Router eligibility → LONG/SHORT/NO_TRADE decision contract
 ```
 
 ## Capability classification
@@ -41,13 +42,13 @@ Target:  StrategyCandidate → deterministic StrategyVersion → canonical Backt
 | AI research assistance | IMPLEMENTED for research; provider OAT pending | AI is optional, deterministic-first, and used for research draft/explanation paths. It does **not** draft Strategy Factory contracts and is prohibited from deterministic execution. |
 | Backtest V1 | CANONICAL COMPATIBILITY FOUNDATION | One stateful simulation kernel exists in `services/research/app/backtesting.py`, with next-bar entry, `STOP_FIRST`, cost semantics, chunk continuity, and golden legacy/contract parity evidence. It remains the only canonical simulation kernel. |
 | Generic strategy evaluation | BOUNDED COMPLETED-CANDLE EVALUATOR | The V2 registry accepts bounded M1/M5/M15/H1 completed-candle contracts. `COMPLETED_CANDLE_MULTI_TIMEFRAME_EVALUATOR_V1` evaluates SMA relation, candle direction, two-bar reversal, and boolean composition, then delegates all execution to Backtest V1. Exact asset/alignment and per-trade rule evidence are fingerprinted. Only XAUUSD M1 LONG remains executable; this is historical research, not a validated edge or routing product. |
-| Strategy Library | LEGACY PROTOTYPE, preserved | Legacy `StrategyVersion` records remain post-backtest wrappers with their original `backtest_run_id` and manual `CANDIDATE → APPROVED` flow. The separate Strategy Factory UI exposes the narrow target compatibility lifecycle without relabeling or changing historical records. |
-| Strategy Factory | PARTIAL — executable compatibility vertical slice | Candidate/version API lifecycle, contract validation, immutable confirmation/revision, canonical Backtest V1 execution, exact golden parity, auditable StrategyVersion → BacktestRun lineage, and a guarded Strategy Factory UI now exist for the legacy compatibility contract. Broader generic capability remains missing. |
+| Strategy Library | AUDITABLE DUAL LIFECYCLE | Legacy `StrategyVersion` records retain their post-backtest `CANDIDATE → APPROVED` history. Generic versions expose exact eligibility, explicit historical promotion, immutable retirement, revision lineage, and a materialized lifecycle verifier without relabeling legacy records. |
+| Strategy Factory | BOUNDED GENERIC HISTORICAL WORKFLOW | Candidate/version contracts, registry validation, immutable confirmation/revision, bounded completed-candle evaluation, canonical Backtest V1 execution, generic OOS/stability/decision evidence, eligibility, promotion, retirement, verifier APIs, and Owner UI exist. It remains XAUUSD LONG and historical-only; it is not a Router or execution product. |
 | OOS/robustness acceptance | IMPLEMENTED gate and Owner UI; full-history OAT completed with FAIL | Protocol V3 deterministically returns `PASS`, `FAIL`, or `INSUFFICIENT_EVIDENCE` from minimum trade count, positive nominal OOS PnL, strict PF, adverse final-OOS, and train-calibrated year/regime concentration checks. The Strategy Factory can run and reopen exact evidence. The registered 2,985,994-bar Owner dataset produced FAIL for the compatibility strategy, which correctly remains `CONTRACT_VALID`. Only PASS links evidence and sets historical-only `VALIDATED`. |
 | DEMO deployment and telemetry | IMPLEMENTED legacy foundation; MT5 OAT pending | DEMO-only versioned config, acknowledgement, rollback, journal ingestion, and forward-evidence scaffolding exist. The EA supports the legacy rule only and fixed `0.01` volume. |
 | Capital Simulation | BROKER-CONSTRAINED FIXED/FRACTIONAL HISTORY AND OWNER UI IMPLEMENTED | Immutable `CAPITAL_BROKER_CONTRACT_V1` and `BROKER_CONSTRAINED_CAPITAL_V1` evidence bind exact StrategyVersion, full-history validation, dataset, MT5 profit/margin parity, sizing, and broker assumptions. The Owner UI validates/confirms contracts, runs or reuses results, and explicitly materializes one fingerprint-bound full-replay verifier artifact; GET is lightweight and never reruns the kernel. The verifier compares every normalized point and recomputed metric, exact lineage, constraints, disclosures, and lifecycle safety. One frozen 2026 snapshot is applied to the full 2017–2026 ledger, not reconstructed historical broker terms. Acceptance readiness is not `VALIDATED`, DEMO/LIVE authorization, or a trade recommendation. |
 | Variant Explorer | OWNER WORKFLOW + MATERIALIZED ACCEPTANCE VERIFIER — ARK-S15-05 | `/variants` exposes bounded contract, train, holdout, lock, matrix, split ledger, explicit confirmation boundary, and persisted verifier evidence. Runtime truth is `NO_ELIGIBLE_VARIANT`; all ten verifier checks pass while final-OOS stays locked, with zero confirmation/revision and no lifecycle promotion. |
-| Strategy Router / Current or Live Decision | MISSING | No deterministic eligibility/router or current LONG/SHORT/NO-TRADE decision product exists. Existing UI/telemetry must not be interpreted as this capability. |
+| Strategy Router / Current or Live Decision | MISSING — S19 DESIGN BASELINE ONLY | No Router model, table, API, UI, or current LONG/SHORT/NO_TRADE decision contract exists. ARK-S19-00 authorizes documentation/baseline reconciliation only; existing Strategy Library and telemetry must not be interpreted as Router output. |
 
 ## Legacy Backtest and strategy classification
 
@@ -68,8 +69,10 @@ The current backtest contract is intentionally narrow:
 - ambiguity policy: `STOP_FIRST`;
 - one stateful kernel with chunk-boundary continuity.
 
-Multi-timeframe strategy semantics are not implemented. Derived M5/M15/M30/H1/H4
-assets do not mean they can be used by a generic executable strategy.
+Bounded completed-candle multi-timeframe semantics now exist for registered
+M1/M5/M15/H1 blocks and exact closed-bar alignment. This does not make every
+derived timeframe or arbitrary rule executable: only registry-declared blocks
+and assets are accepted, and all results remain historical research evidence.
 
 Historical full-history evidence remains visible and unchanged: the recorded
 `Bullish Reversal M1` validation documented in the historical handoff produced
@@ -84,12 +87,13 @@ an Owner approved a `CANDIDATE` record that was created from a recorded
 backtest. `APPROVED` is **not** OOS-validated, profitable, robustness-verified,
 DEMO-validated, or LIVE-ready.
 
-Historical `APPROVED` records must remain historically readable and must not be
-silently relabeled `VALIDATED`. There is no automatic DEMO or LIVE promotion.
-The backend now implements the historical `OOS_REVIEWED → VALIDATED` gate for
-contract StrategyVersions with exact evidence lineage. The later
-`VALIDATED → DEMO → LIVE_READY → RETIRED` stages remain future work, not current
-runtime behavior.
+Historical `APPROVED` records remain historically readable and are never
+silently relabeled `VALIDATED`. Generic promotion is a separate exact Owner
+authorization that atomically applies `CONTRACT_VALID → VALIDATED` only for a
+current `ELIGIBLE` PASS chain. `VALIDATED` means historical validation only.
+Reasoned `VALIDATED → RETIRED` governance is implemented and immutable; a
+revision creates a new StrategyVersion. No automatic DEMO/LIVE promotion,
+Router decision, capital authorization, order, or trade path exists.
 
 ## Locked safety and compatibility boundaries
 
@@ -143,16 +147,21 @@ complete at `deca4ee`. Its materialized verifier passed all nine chain-integrity
 checks while the evidence outcome remained `FAIL`; the StrategyVersion remains
 `CONTRACT_VALID`.
 
-Sprint 18 — Generic Strategy Validation Lifecycle is authorized and recorded in
-`docs/SPRINT_18_GENERIC_VALIDATION_LIFECYCLE.md`. ARK-S18-01 is accepted and
-pushed at `6df078e`. ARK-S18-02 atomic historical promotion implementation,
-regression, migration recovery, and negative runtime OAT are complete and
-awaiting Owner acceptance. The real `INELIGIBLE` chain rejects both an invalid
-phrase and the exact promotion phrase, persists zero promotions, and leaves the
-strategy `CONTRACT_VALID`. ARK-S18-03 has not started; no Router, DEMO/LIVE,
-capital, MT5, order, or trade scope is authorized.
+Sprint 18 — Generic Strategy Validation Lifecycle is accepted and complete in
+`docs/SPRINT_18_GENERIC_VALIDATION_LIFECYCLE.md`. ARK-S18-01 is pushed at
+`6df078e`; ARK-S18-02 at `9d7ddcb`; ARK-S18-03 at `25899dc`; and ARK-S18-04 at
+`82de833`. Eligibility, separate atomic historical promotion, immutable
+retirement, Strategy Library governance UI, and a materialized lifecycle
+verifier are implemented. Real runtime remains honestly `INELIGIBLE` and
+`CONTRACT_VALID` with one eligibility, zero promotions, zero retirements, and
+one PASSED lifecycle verifier whose claim is `NOT_VALIDATED`.
 
-The intended next technical direction is recorded in
+ARK-S19-00 is accepted and complete. It reconciles documentation and records
+the post-S18 baseline. No Router source, migration, API, UI, current decision,
+DEMO/LIVE, capital, MT5, order, or trade scope was authorized or created.
+ARK-S19-01 remains unauthorized.
+
+The historical evaluator compatibility seam is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:
 introduce a generic deterministic evaluator/adapter before the existing kernel,
 then prove exact golden parity for this legacy prototype. ARK-S12-07 implements
@@ -160,7 +169,7 @@ only the narrow legacy compatibility adapter and its evidence lineage; it
 creates no second kernel, generic evaluator, new acceptance status, or MT5
 behavior.
 
-ARK-S12-08 exposes this narrow flow in the Strategy Factory UI: create a
+ARK-S12-08 historically introduced this narrow flow in the Strategy Factory UI: create a
 provenanced draft candidate, validate the supported contract shape, confirm an
 immutable version, run canonical backtest evidence, inspect lineage, and create
 a revision draft. The UI makes no `VALIDATED`, approval, deployment, MT5, order,

@@ -79,8 +79,10 @@ ARKANA already has a reusable local foundation:
   Discovery, and Historical Similarity;
 - one stateful canonical Backtest V1 kernel with next-bar entry, `STOP_FIRST`,
   costs, fingerprints, and chunk-continuity regression evidence;
-- legacy post-backtest Strategy Library, DEMO-only config/deployment,
-  acknowledgement, rollback, telemetry, journal, and forward-evidence plumbing;
+- dual-lifecycle Strategy Library with preserved legacy records plus generic
+  eligibility/promotion/retirement verification; DEMO-only legacy config/
+  deployment, acknowledgement, rollback, telemetry, journal, and
+  forward-evidence plumbing;
 - optional provider-abstracted AI assistance for research only.
 
 Current runtime/OAT claims must be checked in `CURRENT_STATE.md` and the
@@ -88,19 +90,26 @@ repository before relying on them.
 
 ## Material capability gaps
 
-The target product loop is not implemented yet:
+The end-to-end target product loop remains incomplete:
 
 ```text
-Current: hard-coded BacktestRun → legacy StrategyVersion → manual APPROVED → DEMO
-Target:  StrategyCandidate → deterministic StrategyVersion → Backtest V1
-         → OOS/robustness gate → VALIDATED → DEMO
+Implemented historical path:
+StrategyCandidate → deterministic StrategyVersion → Backtest V1
+→ generic OOS/stability/decision → eligibility
+→ explicit historical VALIDATED → immutable RETIRED
+
+Next missing path:
+VALIDATED-only Router eligibility → LONG / SHORT / NO_TRADE decision contract
+→ future generic DEMO compiler and forward validation
 ```
 
-Missing or incomplete target capabilities include StrategyCandidate,
-pre-backtest immutable StrategyVersion, Strategy Contract/block registry,
-generic evaluator/adapter, target version-to-subsequent-backtest lineage,
-Strategy Factory UX, frozen train/holdout/final-OOS protocol, capital
-simulation, Variant Explorer, Strategy Router, and Current/Live Decision.
+StrategyCandidate, immutable StrategyVersion contracts, the block registry,
+generic evaluator/compiler seam, version-to-backtest lineage, Strategy Factory
+UX, frozen generic evidence gate, capital simulation, bounded Variant Explorer,
+historical promotion/retirement, and lifecycle verification are implemented in
+their accepted bounded scopes. Missing target capabilities begin at Strategy
+Router/current decision, then generic DEMO compilation/forward validation,
+LIVE-readiness governance, and later Dynamic Discovery enhancement.
 
 `BULLISH_REVERSAL_M1` is a **LEGACY_EXECUTION_PROTOTYPE**, useful for
 regression and DEMO plumbing but not a validated edge, Router candidate, or
@@ -191,7 +200,7 @@ recomputes every accepted Sprint 15 invariant. The real lock remains
 `NO_ELIGIBLE_VARIANT`, with all ten checks passing, final-OOS locked, and no
 revision or validation claim.
 
-## Active milestone — Sprint 16 generic deterministic evaluator
+## Completed milestone — Sprint 16 generic deterministic evaluator
 
 Sprint 16 is defined in
 [`SPRINT_16_GENERIC_EVALUATOR.md`](SPRINT_16_GENERIC_EVALUATOR.md). It expands
@@ -209,7 +218,7 @@ evaluator now supports M1/M5/M15/H1 context with closed-bar alignment. This is
 still historical research only: it creates no Router, `VALIDATED`, DEMO, LIVE,
 capital, or current-trade decision claim.
 
-## Active milestone — Sprint 17 generic strategy evidence gate
+## Completed milestone — Sprint 17 generic strategy evidence gate
 
 [`SPRINT_17_GENERIC_STRATEGY_EVIDENCE_GATE.md`](SPRINT_17_GENERIC_STRATEGY_EVIDENCE_GATE.md)
 defines four cards for generic train/holdout/final-OOS replay,
@@ -218,25 +227,31 @@ It is a prerequisite for considering any Router or DEMO direction. The Owner
 accepted the ARK-S17 contract and its contract commit was pushed at `eee8aec`.
 ARK-S17-01 implementation, regression, and full-history OAT are accepted.
 ARK-S17-02 implementation, regression, migration, and full-history OAT are
-accepted. ARK-S17-03 is accepted and pushed at `ae98995`. ARK-S17-04 Factory
-evidence UI, materialized acceptance verifier, regression, migration recovery,
-Docker OAT, and browser OAT are complete and awaiting Owner acceptance. Its
-real verifier passed every integrity check while preserving the honest `FAIL`
-evidence outcome and `CONTRACT_VALID` lifecycle state. Sprint 17 is accepted
-and complete at `deca4ee`.
+accepted. ARK-S17-03 is accepted and pushed at `ae98995`. ARK-S17-04 and
+Sprint 17 are accepted and complete at `deca4ee`. Its real verifier passed
+every integrity check while preserving the honest `FAIL` evidence outcome and
+`CONTRACT_VALID` lifecycle state.
 
-## Active milestone — Sprint 18 generic validation lifecycle
+## Completed milestone — Sprint 18 generic validation lifecycle
 
 [`SPRINT_18_GENERIC_VALIDATION_LIFECYCLE.md`](SPRINT_18_GENERIC_VALIDATION_LIFECYCLE.md)
 defines four cards for materialized eligibility, separate Owner-authorized
 historical promotion, retirement governance, and Strategy Library lifecycle
-verification/UI. The contract is accepted. ARK-S18-01 is accepted and pushed at
-`6df078e`. ARK-S18-02 atomic historical promotion, regression, PostgreSQL
-column-recovery migration, and negative runtime OAT are complete and awaiting
-Owner acceptance. The current real Sprint 17 `FAIL` decision remains
-`INELIGIBLE` and `CONTRACT_VALID` with zero promotions; ARK-S18-03 has not
-started. Sprint 18 does not authorize Router, DEMO/LIVE, MT5, capital, orders,
-or trading decisions.
+verification/UI. All four cards are accepted: ARK-S18-01 at `6df078e`,
+ARK-S18-02 at `9d7ddcb`, ARK-S18-03 at `25899dc`, and ARK-S18-04 at `82de833`.
+The real decision remains `INELIGIBLE` and `CONTRACT_VALID` with zero
+promotions and retirements. Its lifecycle verifier is PASSED while claiming
+only `NOT_VALIDATED`. Sprint 18 authorizes no Router, DEMO/LIVE, MT5, capital,
+order, or trading decision.
+
+## Active milestone — Sprint 19 deterministic Strategy Router
+
+[`SPRINT_19_DETERMINISTIC_STRATEGY_ROUTER.md`](SPRINT_19_DETERMINISTIC_STRATEGY_ROUTER.md)
+defines the proposed Router/current-decision delivery sequence. ARK-S19-00 is
+accepted and complete: canonical documentation and the post-S18 source/runtime/
+test baseline are reconciled. It created no Router source, migration, API, UI,
+decision, DEMO/LIVE, MT5, capital, order, or trade behavior. ARK-S19-01 and all
+later cards require separate explicit Owner authorization.
 
 ## QA protocol
 
