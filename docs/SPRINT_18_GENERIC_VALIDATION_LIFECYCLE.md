@@ -207,9 +207,8 @@ Verification evidence:
   and retirement ids. No validated state, retirement, reactivation, deployment,
   or trading side effect was fabricated for OAT.
 
-**Checkpoint status:** source, tests, migration, and negative production-shaped
-OAT are complete. Technical claim: **VALIDATED**. Awaiting explicit Owner
-acceptance; ARK-S18-04 has not started. ARK-S18-03 remains uncommitted/unpushed.
+**Checkpoint status:** accepted by the Owner and pushed to `origin/main` at
+`25899dc` before ARK-S18-04 began.
 
 ### ARK-S18-04 — Strategy Library lifecycle UI and verifier
 
@@ -217,6 +216,65 @@ Expose eligibility, promotion lineage, historical-only status, retirement, and
 safety boundaries in the Strategy Library. A materialized lifecycle verifier
 checks the complete transition chain. Include API/UI regression, migration
 recovery, production build, Docker OAT, and browser OAT.
+
+#### Completion report
+
+Implementation:
+
+- Added materialized `GENERIC_VALIDATION_LIFECYCLE_VERIFIER_V1`. Each immutable
+  lifecycle snapshot receives a fingerprinted verifier artifact; a changed
+  source produces a new result instead of overwriting prior evidence.
+- The verifier handles all three generic states. `CONTRACT_VALID` requires an
+  exact current eligibility snapshot and no transition. `VALIDATED` requires
+  exact eligible PASS decision, historical promotion, OOS evidence, timestamp,
+  and promotion fingerprint. `RETIRED` additionally requires exact reasoned
+  retirement fingerprint, retained evidence, ordered timestamps, and the
+  no-reactivation/new-version revision policy.
+- Seven materialized checks cover StrategyVersion identity, eligibility,
+  promotion, retirement, forward-only transition coherence, retirement
+  immutability, and safety boundaries. PASSED never claims profitability or
+  DEMO/LIVE, capital, Router, deployment, order, or trading authority.
+- Additive migration 037 creates lifecycle-verifier storage. POST materializes
+  or exactly reuses a snapshot; StrategyVersion GET and verifier-id GET are
+  read-only. There are no PATCH or DELETE verifier endpoints.
+- Strategy Library now exposes `NOT_VALIDATED`,
+  `HISTORICAL_VALIDATION_ONLY`, and `RETIRED_IMMUTABLE` distinctly. It renders
+  eligibility, promotion, retirement, verifier fingerprints/checks, mandatory
+  safety text, explicit historical promotion, reasoned retirement, immutable
+  retired badges, and revision-as-new-version guidance. Retired versions cannot
+  rerun the evidence pipeline; legacy cards keep their existing lifecycle.
+
+Verification evidence:
+
+- Backend regression: **206 passed**. Focused lifecycle/promotion/retirement/
+  migration suite: **16 passed**. Tests cover exact three-state snapshots,
+  INELIGIBLE no-transition validity, snapshot reuse, tamper detection producing
+  FAILED evidence, API read/materialize behavior, and absent mutation routes.
+- Web regression: **26 passed across 9 files**, including eight Strategy Library
+  tests and explicit UI fixtures for all three lifecycle states. TypeScript
+  typecheck and ESLint pass. The optimized Next.js build compiles all **43**
+  pages/routes successfully; Docker builds both research and web images.
+- Docker/PostgreSQL OAT applies migration 037 exactly once and materializes real
+  verifier `f5cc9062-068a-44d8-a383-50ab395d6eee`, fingerprint
+  `1dc012671b6b5627821385e2e7c9996f9d359f0bc9dd394d1f7960be6dc74318`.
+  All seven checks PASS, but the honest claim remains `NOT_VALIDATED`: real
+  eligibility is `INELIGIBLE`, promotion and retirement are null, and the
+  StrategyVersion remains `CONTRACT_VALID`. The web proxy exactly reuses it.
+- In-app browser OAT opens the production Docker Strategy Library, clicks
+  **Verify lifecycle governance**, and visibly confirms PASSED,
+  CONTRACT_VALID/NOT_VALIDATED, INELIGIBLE, no promotion/retirement, all seven
+  checks, and the complete execution safety warning. Full-page visual inspection
+  shows a readable panel and registry without overlap; browser console errors
+  are empty.
+- After research/web restart, migration and verifier counts remain one, the
+  fingerprint and `NOT_VALIDATED` claim persist, the StrategyVersion retains
+  null promotion/retirement ids, and browser interaction returns the same panel
+  with no console errors. No lifecycle or trading state was fabricated.
+
+**Checkpoint status:** accepted by the Owner. Source, backend/API/UI tests,
+production build, migration, Docker OAT, restart recovery, and browser OAT are
+complete with technical claim **VALIDATED**. This checkpoint closes all four
+ARK-S18 checkpoints and is committed/pushed as the final Sprint 18 delivery.
 
 ## QA and acceptance protocol
 

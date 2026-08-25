@@ -36,6 +36,7 @@ MIGRATION_033 = "033_generic_validation_eligibility"
 MIGRATION_034 = "034_generic_validation_promotion"
 MIGRATION_035 = "035_generic_validation_promotion_column_recovery"
 MIGRATION_036 = "036_generic_validation_retirement"
+MIGRATION_037 = "037_generic_validation_lifecycle_verification"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -541,6 +542,18 @@ def _migration_036(connection) -> None:
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_strategy_versions_generic_validation_retirement_id ON strategy_versions(generic_validation_retirement_id)"))
 
 
+def _migration_037(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS generic_validation_lifecycle_verifications (
+        id VARCHAR(36) PRIMARY KEY, strategy_version_id VARCHAR(36) NOT NULL,
+        eligibility_id VARCHAR(36), promotion_id VARCHAR(36), retirement_id VARCHAR(36),
+        fingerprint VARCHAR(64) NOT NULL UNIQUE, verifier_version VARCHAR(64) NOT NULL,
+        status VARCHAR(32) NOT NULL, result JSON NOT NULL, created_at TIMESTAMP NOT NULL)"""))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_generic_validation_lifecycle_verifications_strategy_version_id ON generic_validation_lifecycle_verifications(strategy_version_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_generic_validation_lifecycle_verifications_eligibility_id ON generic_validation_lifecycle_verifications(eligibility_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_generic_validation_lifecycle_verifications_promotion_id ON generic_validation_lifecycle_verifications(promotion_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_generic_validation_lifecycle_verifications_retirement_id ON generic_validation_lifecycle_verifications(retirement_id)"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -566,6 +579,7 @@ MIGRATIONS = (
     (MIGRATION_034, _migration_034),
     (MIGRATION_035, _migration_035),
     (MIGRATION_036, _migration_036),
+    (MIGRATION_037, _migration_037),
 )
 
 

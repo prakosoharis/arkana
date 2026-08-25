@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationPromotion, GenericValidationRetirement, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -22,6 +22,7 @@ from .generic_evidence_verification import get as get_generic_evidence_verificat
 from .generic_validation_eligibility import list_for_decision as list_generic_validation_eligibilities, materialize as materialize_generic_validation_eligibility, serialize as serialize_generic_validation_eligibility
 from .generic_validation_promotions import get_for_eligibility as get_generic_validation_promotion, promote as promote_generic_validation, serialize as serialize_generic_validation_promotion
 from .generic_validation_retirements import get_for_strategy as get_generic_validation_retirement, retire as retire_generic_validation, serialize as serialize_generic_validation_retirement
+from .generic_validation_lifecycle_verification import get_latest as get_generic_lifecycle_verification, materialize as materialize_generic_lifecycle_verification, serialize as serialize_generic_lifecycle_verification
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
@@ -537,6 +538,31 @@ def get_generic_validation_retirement_by_id(retirement_id: str, session: Session
     if not item:
         raise HTTPException(404, "generic validation retirement not found")
     return serialize_generic_validation_retirement(item)
+
+
+@app.post("/api/v1/strategy-versions/{strategy_version_id}/lifecycle-verification")
+def materialize_generic_validation_lifecycle_verification(strategy_version_id: str, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = materialize_generic_lifecycle_verification(session, strategy_version_id)
+        return serialize_generic_lifecycle_verification(item, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/strategy-versions/{strategy_version_id}/lifecycle-verification")
+def get_generic_validation_lifecycle_verification(strategy_version_id: str, session: Session = Depends(get_session)) -> dict:
+    item = get_generic_lifecycle_verification(session, strategy_version_id)
+    if not item:
+        raise HTTPException(404, "generic validation lifecycle verification has not been materialized")
+    return serialize_generic_lifecycle_verification(item)
+
+
+@app.get("/api/v1/generic-validation-lifecycle-verifications/{verification_id}")
+def get_generic_validation_lifecycle_verification_by_id(verification_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(GenericValidationLifecycleVerification, verification_id)
+    if not item:
+        raise HTTPException(404, "generic validation lifecycle verification not found")
+    return serialize_generic_lifecycle_verification(item)
 
 
 @app.post("/api/v1/capital-contracts/validate")

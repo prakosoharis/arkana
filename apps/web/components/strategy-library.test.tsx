@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { GenericDecision, GenericEvidenceChain, GenericEvidenceVerification, latestRenderableOosEvidence, OosEvidence, RobustnessEvidence, StrategyLibrary } from "./strategy-library";
+import { GenericDecision, GenericEvidenceChain, GenericEvidenceVerification, latestRenderableOosEvidence, LifecycleGovernance, LifecycleVerification, OosEvidence, RobustnessEvidence, StrategyLibrary } from "./strategy-library";
 
 const split = (trade_count: number, net_pnl_price: number, profit_factor: number) => ({ metrics: { trade_count, net_pnl_price, profit_factor } });
 
@@ -36,8 +36,8 @@ describe("StrategyLibrary", () => {
     expect(markup).toContain("Confirm immutable version");
     expect(markup).toContain("does not mark a version");
     expect(markup).toContain("NO LIVE ACTION");
-    expect(markup).toContain("never create VALIDATED");
-    expect(markup).toContain("future promotion requires a separate contract");
+    expect(markup).toContain("cannot promote by themselves");
+    expect(markup).toContain("VALIDATED always means historical validation only");
   });
 
   it("renders an inspectable PASS decision without implying deployment", () => {
@@ -64,7 +64,24 @@ describe("StrategyLibrary", () => {
     const markup = renderToStaticMarkup(<GenericEvidenceChain chain={{ strategyVersionId: "strategy-1", decision, verifier }} />);
     expect(markup).toContain(outcome);
     expect(markup).toContain("NOT VALIDATED");
-    expect(markup).toContain("separate future promotion contract");
+    expect(markup).toContain("separate explicit promotion authorization");
     expect(markup).toContain("No VALIDATED claim");
+  });
+
+  it.each([
+    ["CONTRACT_VALID", "NOT_VALIDATED", "INELIGIBLE", "NONE", "NONE"],
+    ["VALIDATED", "HISTORICAL_VALIDATION_ONLY", "ELIGIBLE", "HISTORICALLY_VALIDATED", "NONE"],
+    ["RETIRED", "RETIRED_IMMUTABLE", "ELIGIBLE", "HISTORICALLY_VALIDATED", "RETIRED"],
+  ])("renders %s lifecycle with exact artifacts and execution boundaries", (status, claim, eligibilityStatus, promotionStatus, retirementStatus) => {
+    const artifact = (id: string, artifactStatus: string) => ({ id, fingerprint: `${id}-fingerprint`, status: artifactStatus, result: {} });
+    const verification: LifecycleVerification = {
+      id: "lifecycle-1", strategy_version_id: "strategy-1", fingerprint: "lifecycle-fingerprint", verifier_version: "GENERIC_VALIDATION_LIFECYCLE_VERIFIER_V1", status: "PASSED", owner_acceptance_readiness: "READY_FOR_OWNER_ACCEPTANCE", lifecycle_status: status, lifecycle_claim: claim,
+      checks: { transition_coherence: { status: "PASS" }, safety_boundaries: { status: "PASS" } },
+      artifacts: { eligibility: artifact("eligibility", eligibilityStatus), promotion: promotionStatus === "NONE" ? null : artifact("promotion", promotionStatus), retirement: retirementStatus === "NONE" ? null : { ...artifact("retirement", retirementStatus), reason: "Owner retirement reason" } },
+      safety_boundary: { historical_only: true, demo_or_live_authorized: false, capital_authorized: false, router_or_trade_decision_created: false, deployment_created: false, profitability_proven: false }, warning: "Governance only; no trading authority.",
+    };
+    const markup = renderToStaticMarkup(<LifecycleGovernance verification={verification} />);
+    expect(markup).toContain(status); expect(markup).toContain(claim); expect(markup).toContain(eligibilityStatus);
+    expect(markup).toContain("profitability is not proven"); expect(markup).toContain("trade authority are all false");
   });
 });
