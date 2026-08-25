@@ -247,11 +247,13 @@ order, or trading decision.
 ## Active milestone — Sprint 19 deterministic Strategy Router
 
 [`SPRINT_19_DETERMINISTIC_STRATEGY_ROUTER.md`](SPRINT_19_DETERMINISTIC_STRATEGY_ROUTER.md)
-defines the proposed Router/current-decision delivery sequence. ARK-S19-00 is
-accepted and complete: canonical documentation and the post-S18 source/runtime/
-test baseline are reconciled. It created no Router source, migration, API, UI,
-decision, DEMO/LIVE, MT5, capital, order, or trade behavior. ARK-S19-01 and all
-later cards require separate explicit Owner authorization.
+defines the Router/current-decision delivery sequence. ARK-S19-00 is accepted.
+ARK-S19-01 is accepted and technically validated:
+immutable policy and read-only eligibility snapshots fail closed against exact
+lifecycle, capability, dataset, timezone, sync, and freshness evidence. Runtime
+truth is honestly `INELIGIBLE`; no LONG/SHORT/NO_TRADE decision, Entry/SL/TP/
+size, UI, DEMO/LIVE, MT5, capital, deployment, order, or trade behavior exists.
+ARK-S19-02 is authorized but has not started; later cards remain unauthorized.
 
 ## QA protocol
 

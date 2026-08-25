@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-25 — Sprint 18 complete; ARK-S19-00 accepted
+**Updated:** 2026-08-25 — ARK-S19-01 accepted; ARK-S19-02 authorized
 **Active milestone:** Sprint 19 — Deterministic Strategy Router and Current Decision
-**Active card:** none — ARK-S19-01 requires separate Owner authorization
+**Active card:** ARK-S19-02 — authorized; deterministic decision work has not started
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -48,7 +48,7 @@ Next:    VALIDATED-only Router eligibility → LONG/SHORT/NO_TRADE decision cont
 | DEMO deployment and telemetry | IMPLEMENTED legacy foundation; MT5 OAT pending | DEMO-only versioned config, acknowledgement, rollback, journal ingestion, and forward-evidence scaffolding exist. The EA supports the legacy rule only and fixed `0.01` volume. |
 | Capital Simulation | BROKER-CONSTRAINED FIXED/FRACTIONAL HISTORY AND OWNER UI IMPLEMENTED | Immutable `CAPITAL_BROKER_CONTRACT_V1` and `BROKER_CONSTRAINED_CAPITAL_V1` evidence bind exact StrategyVersion, full-history validation, dataset, MT5 profit/margin parity, sizing, and broker assumptions. The Owner UI validates/confirms contracts, runs or reuses results, and explicitly materializes one fingerprint-bound full-replay verifier artifact; GET is lightweight and never reruns the kernel. The verifier compares every normalized point and recomputed metric, exact lineage, constraints, disclosures, and lifecycle safety. One frozen 2026 snapshot is applied to the full 2017–2026 ledger, not reconstructed historical broker terms. Acceptance readiness is not `VALIDATED`, DEMO/LIVE authorization, or a trade recommendation. |
 | Variant Explorer | OWNER WORKFLOW + MATERIALIZED ACCEPTANCE VERIFIER — ARK-S15-05 | `/variants` exposes bounded contract, train, holdout, lock, matrix, split ledger, explicit confirmation boundary, and persisted verifier evidence. Runtime truth is `NO_ELIGIBLE_VARIANT`; all ten verifier checks pass while final-OOS stays locked, with zero confirmation/revision and no lifecycle promotion. |
-| Strategy Router / Current or Live Decision | MISSING — S19 DESIGN BASELINE ONLY | No Router model, table, API, UI, or current LONG/SHORT/NO_TRADE decision contract exists. ARK-S19-00 authorizes documentation/baseline reconciliation only; existing Strategy Library and telemetry must not be interpreted as Router output. |
+| Strategy Router / Current or Live Decision | POLICY + READ-ONLY ELIGIBILITY IMPLEMENTED — ARK-S19-01 | Immutable `STRATEGY_ROUTER_POLICY_V1` and deterministic `STRATEGY_ROUTER_ELIGIBILITY_V1` snapshots are materialized through API/migration 038. Eligibility fails closed on lifecycle, capability, dataset, timezone, sync, and freshness. No LONG/SHORT/NO_TRADE decision, Entry/SL/TP/size, UI, deployment, MT5, capital, order, or trade authority exists. |
 
 ## Legacy Backtest and strategy classification
 
@@ -156,10 +156,13 @@ verifier are implemented. Real runtime remains honestly `INELIGIBLE` and
 `CONTRACT_VALID` with one eligibility, zero promotions, zero retirements, and
 one PASSED lifecycle verifier whose claim is `NOT_VALIDATED`.
 
-ARK-S19-00 is accepted and complete. It reconciles documentation and records
-the post-S18 baseline. No Router source, migration, API, UI, current decision,
-DEMO/LIVE, capital, MT5, order, or trade scope was authorized or created.
-ARK-S19-01 remains unauthorized.
+ARK-S19-00 and ARK-S19-01 are accepted and complete. ARK-S19-01 adds one immutable policy and
+one read-only eligibility snapshot type with exact retry/concurrency behavior.
+The real generic strategy correctly materializes `INELIGIBLE`: it is still
+`CONTRACT_VALID`, its evidence decision is `FAIL`, lifecycle claim is
+`NOT_VALIDATED`, dataset timezone is unverified, sync is unavailable, and data
+is stale. No current Router decision or execution-side artifact exists.
+ARK-S19-02 is authorized; its source work has not yet started.
 
 The historical evaluator compatibility seam is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:

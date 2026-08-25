@@ -282,6 +282,35 @@ class GenericValidationLifecycleVerification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class StrategyRouterPolicy(Base):
+    """Immutable, versioned Router eligibility policy; it carries no decision authority."""
+    __tablename__ = "strategy_router_policies"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_strategy_router_policy_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    policy: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class StrategyRouterEligibility(Base):
+    """Read-only eligibility snapshot; it never creates a Router decision or execution action."""
+    __tablename__ = "strategy_router_eligibilities"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_strategy_router_eligibility_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    strategy_version_id: Mapped[str] = mapped_column(ForeignKey("strategy_versions.id"), nullable=False, index=True)
+    router_policy_id: Mapped[str] = mapped_column(ForeignKey("strategy_router_policies.id"), nullable=False, index=True)
+    lifecycle_verification_id: Mapped[str | None] = mapped_column(ForeignKey("generic_validation_lifecycle_verifications.id"), nullable=True, index=True)
+    dataset_id: Mapped[str | None] = mapped_column(ForeignKey("datasets.id"), nullable=True, index=True)
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"

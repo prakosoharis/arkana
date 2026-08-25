@@ -1,10 +1,10 @@
 # Sprint 19 — Deterministic Strategy Router and Current Decision
 
-**Contract status:** proposed; ARK-S19-00 accepted
+**Contract status:** active delivery; ARK-S19-00 accepted
 
-**Active checkpoint:** none; ARK-S19-01 is not authorized
+**Active checkpoint:** ARK-S19-02 authorized; implementation not started
 
-**Implementation authority:** no Router source work is authorized
+**Implementation authority:** S19-02 only; S19-03 and later are not authorized
 
 ## Product objective
 
@@ -139,12 +139,74 @@ and absence proof are complete. No Router implementation has started.
 
 ## Acceptance protocol
 
-ARK-S19-00 does not authorize ARK-S19-01. After its concrete report, the Owner
-may accept it with:
+Each checkpoint requires separate acceptance. ARK-S19-01 is now implemented;
+its acceptance does not itself authorize S19-02 unless the Owner explicitly
+includes the continuation instruction shown in the S19-01 report below.
 
 ```text
-DITERIMA — ARK-S19-00
+DITERIMA — ARK-S19-01
 ```
 
-A separate explicit instruction is required to accept the overall Sprint 19
-contract and begin ARK-S19-01.
+A separate explicit instruction is required before S19-02 begins.
+
+## ARK-S19-01 implementation and validation evidence
+
+Implemented boundary:
+
+- migration `038_strategy_router_policy_eligibility` creates immutable
+  `strategy_router_policies` and `strategy_router_eligibilities` tables with
+  unique fingerprints and exact lineage foreign keys;
+- `STRATEGY_ROUTER_POLICY_V1` locks non-retired `VALIDATED`, exact current
+  PASSED / `HISTORICAL_VALIDATION_ONLY`, XAUUSD LONG generic capability,
+  completed-candle assets, `VERIFIED_UTC`, `UP_TO_DATE`, and 300-second market
+  and sync freshness requirements;
+- `STRATEGY_ROUTER_ELIGIBILITY_V1` requires an explicit UTC `evaluated_at`, so
+  freshness and exact retry are deterministic rather than hidden wall-clock
+  behavior;
+- eligibility fingerprints bind policy, evaluation time, StrategyVersion,
+  capability assessment, lifecycle verifier, passing evidence/dataset/assets,
+  and sync state;
+- APIs expose current/materialized policies plus create/list/read eligibility;
+  missing or non-UTC evaluation time returns 422;
+- failed checks materialize an auditable `INELIGIBLE` snapshot with reason
+  codes. They do not silently pick a strategy or manufacture eligibility.
+
+Automated evidence:
+
+- S19-01 suite: **11 passed** covering policy reuse, positive eligibility,
+  exact retry, stale data, unverified timezone, unavailable sync, retirement,
+  lifecycle tamper, legacy isolation, concurrency, API validation, and absence
+  of deployment side effects;
+- backend regression: **217 passed**;
+- web regression: **26 passed across 9 files**; typecheck, ESLint, and optimized
+  Next.js production build passed;
+- migration preservation tests passed and `git diff --check` passed.
+
+Docker/runtime OAT:
+
+- research image rebuilt and restarted; service health is `ok` and migration
+  038 is recorded in PostgreSQL;
+- policy fingerprint is
+  `90a8b1a59dc9427562bf52bcb610956b75b16c76cf00b7a821d3b8e33c76727b`;
+  first materialization created one row and exact retry reused the same ID;
+- real strategy `37abb545-958d-4d14-a3b5-0b6f2321d8cf` produced one exact
+  reusable `INELIGIBLE` snapshot. Honest blockers are
+  `STRATEGY_NOT_VALIDATED`, `LIFECYCLE_NOT_EXACT`,
+  `DATASET_LINEAGE_INVALID`, `TIMEZONE_UNVERIFIED`, `SYNC_NOT_EXACT`,
+  `MARKET_DATA_STALE_OR_FUTURE`, and `SYNC_STALE_OR_FUTURE`;
+- positive fixture proof produces `ELIGIBLE` only when all eleven checks pass;
+- PostgreSQL has one policy and one real eligibility snapshot, while zero table
+  names match a Router decision artifact. Existing deployment count remained
+  outside this workflow and no deployment/order/trade mutation is called.
+
+**ARK-S19-01 status:** accepted with technical claim **VALIDATED**, meaning source, migration, tests,
+Docker OAT, truthful fail-closed runtime evidence, and documentation are
+complete. It does not mean the real strategy is eligible or profitable, and it
+does not authorize S19-02 or any current/trading decision.
+
+Owner acceptance phrase:
+
+```text
+DITERIMA — ARK-S19-01
+Lanjut ARK-S19-02.
+```
