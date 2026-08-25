@@ -145,10 +145,13 @@ while the evidence outcome remained `FAIL`; the StrategyVersion remains
 `CONTRACT_VALID`. Sprint 17 is accepted and complete at `deca4ee`.
 
 Sprint 18 — Generic Strategy Validation Lifecycle is authorized and recorded in
-`docs/SPRINT_18_GENERIC_VALIDATION_LIFECYCLE.md`. ARK-S18-01 is authorized but
-has not yet produced an eligibility artifact. It must classify the real Sprint
-17 `FAIL` chain as `INELIGIBLE` without changing `CONTRACT_VALID`; no Router,
-DEMO/LIVE, capital, MT5, order, or trade scope is authorized.
+`docs/SPRINT_18_GENERIC_VALIDATION_LIFECYCLE.md`. ARK-S18-01 source, tests,
+migration recovery, and runtime OAT are complete and awaiting Owner acceptance.
+The materialized real eligibility snapshot classifies the Sprint 17 `FAIL`
+chain as `INELIGIBLE`, reuses its exact fingerprint, and leaves the strategy
+`CONTRACT_VALID`. No real acknowledgement or promotion was fabricated.
+ARK-S18-02 has not started; no Router, DEMO/LIVE, capital, MT5, order, or trade
+scope is authorized.
 
 The intended next technical direction is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:

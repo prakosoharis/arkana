@@ -2,7 +2,7 @@
 
 ## Status
 
-**AUTHORIZED — contract accepted; ARK-S18-01 may begin.**
+**ACTIVE — ARK-S18-01 is technically complete and awaiting Owner acceptance.**
 
 Sprint 17 provides immutable split evidence, bounded parameter-stability
 evidence, a combined Owner-gated decision, and a materialized chain verifier.
@@ -54,6 +54,51 @@ transition.
 Acceptance requires source, forward migration, API, PASS/FAIL/INSUFFICIENT and
 tamper tests, migration recovery, full regression, Docker OAT, exact reuse, and
 proof that the real `FAIL` chain remains `CONTRACT_VALID` and `INELIGIBLE`.
+
+#### Completion report
+
+Implementation:
+
+- Added immutable `GENERIC_VALIDATION_ELIGIBILITY_V1` snapshots. Each snapshot
+  binds the StrategyVersion lifecycle state, exact Sprint 17 decision and
+  source fingerprints, optional Owner acknowledgement, and materialized chain
+  verifier. Identical inputs reuse one fingerprint; later acknowledgement or
+  verifier state produces a new immutable snapshot without rewriting history.
+- Eligibility requires all five checks: exact decision lineage, combined
+  decision `PASS`, exact non-promoting Owner acknowledgement, exact `PASSED`
+  evidence verifier with every check `PASS`, and untouched `CONTRACT_VALID`
+  lifecycle state. There is no override for `FAIL` or
+  `INSUFFICIENT_EVIDENCE`.
+- Added additive migration `033_generic_validation_eligibility`, POST/list/detail
+  API endpoints, and explicit promotion/lifecycle boundaries. GET reads only
+  persisted eligibility rows and never replays historical evaluation.
+- Assessment never changes StrategyVersion, creates authorization, or touches
+  deployment, capital, Router, MT5, order, or trade state.
+
+Verification evidence:
+
+- Backend regression: **191 passed**. Focused API/migration/eligibility suite:
+  **36 passed**. Dedicated tests prove exact `PASS → ELIGIBLE`,
+  `FAIL → INELIGIBLE`, `INSUFFICIENT_EVIDENCE → INELIGIBLE`, missing-source
+  snapshots, immutable state evolution, exact reuse, confirmation/verifier/
+  decision tamper rejection, and lifecycle neutrality.
+- Python compile and `git diff --check` pass. Migration recovery is covered by
+  automated legacy-schema tests and a Docker restart.
+- Docker/PostgreSQL OAT applied migration 033 exactly once and materialized the
+  real assessment `7a19352e-a829-43d7-abfd-34f5c91360b8`, fingerprint
+  `064fb5672b456cc4b3ca3a41dd19b6505d5a3b753159f1f2b34e1fd4608582a9`.
+  It honestly returned `INELIGIBLE`: exact decision lineage, verifier, and
+  lifecycle checks passed; passing-evidence and missing-acknowledgement checks
+  failed. Exact retry returned `reused=true`; list/detail GET returned the same
+  persisted row after service restart.
+- PostgreSQL still records one migration row and one real eligibility row.
+  The StrategyVersion remains `CONTRACT_VALID`, `validation_evidence_id` and
+  `validated_at` remain null, and real Owner acknowledgement rows remain zero.
+  No acknowledgement or promotion was fabricated.
+
+**Checkpoint status:** source, tests, migration recovery, and runtime OAT are
+complete; awaiting explicit Owner acceptance. ARK-S18-02 has not started and
+ARK-S18-01 is uncommitted/unpushed.
 
 ### ARK-S18-02 — Owner-authorized atomic promotion
 

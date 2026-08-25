@@ -652,11 +652,24 @@ def test_s16_capability_registry_assessment_and_confirmation_api_are_fail_closed
         assert all(check["status"] == "PASS" for check in verifier_body["checks"].values())
         assert client.post(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/verification").json()["reused"] is True
         assert client.get(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/verification").json()["id"] == verifier_body["id"]
+        pre_ack_eligibility = client.post(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/validation-eligibilities")
+        assert pre_ack_eligibility.status_code == 200 and pre_ack_eligibility.json()["status"] == "INELIGIBLE"
+        assert pre_ack_eligibility.json()["result"]["checks"]["owner_acknowledgement"]["status"] == "FAIL"
         assert client.post(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/owner-confirmations", json={"acknowledgement": "PROMOTE"}).status_code == 422
         confirmation = client.post(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/owner-confirmations", json={"acknowledgement": "ACKNOWLEDGE_GENERIC_EVIDENCE_DECISION_V1"})
         assert confirmation.status_code == 200 and confirmation.json()["result"]["promotion"]["authorized"] is False
         assert client.post(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/owner-confirmations", json={"acknowledgement": "ACKNOWLEDGE_GENERIC_EVIDENCE_DECISION_V1"}).json()["reused"] is True
         assert client.get(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/owner-confirmation").json()["id"] == confirmation.json()["id"]
+        post_ack_eligibility = client.post(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/validation-eligibilities")
+        post_ack_body = post_ack_eligibility.json()
+        assert post_ack_eligibility.status_code == 200 and post_ack_body["status"] == "INELIGIBLE"
+        assert post_ack_body["fingerprint"] != pre_ack_eligibility.json()["fingerprint"]
+        assert post_ack_body["result"]["checks"]["owner_acknowledgement"]["status"] == "PASS"
+        assert post_ack_body["result"]["checks"]["passing_evidence"]["status"] == "FAIL"
+        assert client.post(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/validation-eligibilities").json()["reused"] is True
+        eligibility_list = client.get(f"/api/v1/generic-evidence-decisions/{decision_body['id']}/validation-eligibilities").json()["eligibilities"]
+        assert len(eligibility_list) == 2
+        assert client.get(f"/api/v1/generic-validation-eligibilities/{post_ack_body['id']}").json()["fingerprint"] == post_ack_body["fingerprint"]
         current = next(item for item in client.get("/api/v1/strategy-versions").json()["strategy_versions"] if item["id"] == generic_version.json()["id"])
         assert current["status"] == "CONTRACT_VALID" and current["validation_evidence_id"] is None
 

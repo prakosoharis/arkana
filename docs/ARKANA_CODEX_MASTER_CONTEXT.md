@@ -230,10 +230,12 @@ and complete at `deca4ee`.
 [`SPRINT_18_GENERIC_VALIDATION_LIFECYCLE.md`](SPRINT_18_GENERIC_VALIDATION_LIFECYCLE.md)
 defines four cards for materialized eligibility, separate Owner-authorized
 historical promotion, retirement governance, and Strategy Library lifecycle
-verification/UI. The contract is accepted and only ARK-S18-01 is authorized.
-The current real Sprint 17 decision is `FAIL`; it must remain `INELIGIBLE` and
-`CONTRACT_VALID`. Sprint 18 does not authorize Router, DEMO/LIVE, MT5, capital,
-orders, or trading decisions.
+verification/UI. The contract is accepted. ARK-S18-01 implementation,
+regression, migration recovery, and runtime OAT are complete and awaiting Owner
+acceptance. The current real Sprint 17 `FAIL` decision materializes as
+`INELIGIBLE` and remains `CONTRACT_VALID`; ARK-S18-02 has not started. Sprint 18
+does not authorize Router, DEMO/LIVE, MT5, capital, orders, or trading
+decisions.
 
 ## QA protocol
 
