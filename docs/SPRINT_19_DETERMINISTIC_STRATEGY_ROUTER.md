@@ -2,9 +2,9 @@
 
 **Contract status:** active delivery; ARK-S19-00 accepted
 
-**Active checkpoint:** ARK-S19-03 authorized; implementation not started
+**Active checkpoint:** ARK-S19-04 authorized; implementation not started
 
-**Implementation authority:** S19-03 only; S19-04 and later are not authorized
+**Implementation authority:** S19-04 only; S19-05 and later are not authorized
 
 ## Product objective
 
@@ -273,4 +273,69 @@ Owner acceptance phrase:
 ```text
 DITERIMA — ARK-S19-02
 Lanjut ARK-S19-03.
+```
+
+## ARK-S19-03 implementation and validation evidence
+
+Implemented boundary:
+
+- migration `040_strategy_router_decision_parameters` adds one immutable
+  parameter artifact per Router decision, with exact decision, strategy,
+  broker-metadata, capital-contract, and calculation lineage;
+- `STRATEGY_ROUTER_PARAMETERS_V1` defines Entry as the explicit next completed
+  Router interval's M1 opening ask; LONG SL and TP use the selected immutable
+  Strategy Contract's declared price distances; size uses an exact ready
+  fixed-lot capital contract and must equal the Strategy Contract volume;
+- broker symbol, metadata fingerprint, collection time, maximum 300-second age,
+  digits, tick alignment, and volume range/step are checked. No hidden default
+  supplies any missing money, broker, time, quote, or sizing input;
+- a LONG request missing required IDs or execution snapshot is rejected before
+  materialization. Present but stale, mismatched, or invalid evidence
+  materializes `BLOCKED` with `parameters: null` and typed reason codes;
+- a Router `NO_TRADE` materializes explicit `NO_TRADE` parameter evidence with
+  Entry, SL, TP, and size all absent. Exact retry reuses the same artifact;
+- the API exposes the fingerprinted parameter contract and create/read routes.
+  Every result states that it is calculation evidence only, with no deployment,
+  MT5, order, or trade authority.
+
+Automated evidence:
+
+- S19-03 suite: **11 passed**, covering exact LONG calculations, exact retry,
+  NO_TRADE/null values, missing input rejection, stale broker metadata, broker
+  symbol mismatch, non-tick-aligned quotes, time mismatch, size mismatch,
+  immutable changed-retry rejection, concurrency, APIs, and no deployment side
+  effect;
+- backend regression: **238 passed**;
+- web regression: **26 passed across 9 files**; TypeScript, ESLint, and optimized
+  Next.js production build passed;
+- migration preservation and `git diff --check` passed.
+
+Docker/runtime OAT:
+
+- the research image rebuilt and restarted successfully; `/health` is `ok` and
+  migration 040 is recorded exactly once in PostgreSQL;
+- parameter-contract fingerprint is
+  `d095aa19900b2d1d11fa9d4bdb1a3a2e4faf681e8ee7d5d735f77617f14ef614`;
+- the truthful real Router decision
+  `28bb2131-b0a1-4ea8-bd33-7e9eec0d27fe` remains `NO_TRADE` and produced exact
+  parameter artifact `e83e4952-02be-4e16-a735-675d5f9b8576`, fingerprint
+  `58b32368e3c1f00cae202dbdd3b5a0bbf4aa1e113f756e92eb6663cd488af4c3`;
+- that real artifact has no selected strategy, broker snapshot, capital
+  contract, Entry, SL, TP, or size. A repeated POST reused the same ID and
+  fingerprint; PostgreSQL contains one row for that decision;
+- runtime OAT created no deployment, MT5 action, order, or trade. Positive LONG
+  arithmetic is proven in isolated automated fixtures because the real current
+  decision is honestly NO_TRADE and must not be upgraded for demonstration.
+
+**ARK-S19-03 status:** accepted with technical claim **VALIDATED**. `VALIDATED`
+is limited to deterministic parameter
+source, migration, positive/fail-closed regression, Docker OAT, exact reuse,
+and documented lineage. It does not mean strategy profitability and does not
+authorize S19-04, UI, DEMO/LIVE, deployment, MT5, order, or trade behavior.
+
+Owner acceptance phrase:
+
+```text
+DITERIMA — ARK-S19-03
+Lanjut ARK-S19-04.
 ```

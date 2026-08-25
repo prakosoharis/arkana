@@ -257,7 +257,13 @@ ARK-S19-02 is accepted and technically validated.
 Its immutable decision contract requires an explicit exact eligibility cohort,
 one dataset snapshot, and exactly one completed-candle signal; otherwise it
 materializes NO_TRADE. SHORT and all execution authority remain unavailable.
-ARK-S19-03 is authorized but has not started; later cards remain unauthorized.
+ARK-S19-03 is accepted and technically `VALIDATED`. Its immutable parameter
+evidence binds LONG Entry/SL/TP/size to the
+exact Router decision, Strategy Contract, fresh broker metadata, ready capital
+contract, and explicit next-M1-open quote. Missing inputs reject; stale or
+mismatched inputs block with null parameters; the real NO_TRADE artifact has no
+numeric parameters. S19-04 is authorized but has not started; S19-05 remains
+unauthorized.
 
 ## QA protocol
 

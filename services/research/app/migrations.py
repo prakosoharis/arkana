@@ -39,6 +39,7 @@ MIGRATION_036 = "036_generic_validation_retirement"
 MIGRATION_037 = "037_generic_validation_lifecycle_verification"
 MIGRATION_038 = "038_strategy_router_policy_eligibility"
 MIGRATION_039 = "039_strategy_router_decision"
+MIGRATION_040 = "040_strategy_router_decision_parameters"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -591,6 +592,20 @@ def _migration_039(connection) -> None:
         connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_strategy_router_decisions_{column} ON strategy_router_decisions({column})"))
 
 
+def _migration_040(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS strategy_router_decision_parameters (
+        id VARCHAR(36) PRIMARY KEY, router_decision_id VARCHAR(36) NOT NULL UNIQUE,
+        strategy_version_id VARCHAR(36), broker_metadata_snapshot_id VARCHAR(36), capital_contract_id VARCHAR(36),
+        fingerprint VARCHAR(64) NOT NULL UNIQUE, protocol_version VARCHAR(64) NOT NULL,
+        status VARCHAR(48) NOT NULL, result JSON NOT NULL, created_at TIMESTAMP NOT NULL,
+        FOREIGN KEY(router_decision_id) REFERENCES strategy_router_decisions(id),
+        FOREIGN KEY(strategy_version_id) REFERENCES strategy_versions(id),
+        FOREIGN KEY(broker_metadata_snapshot_id) REFERENCES broker_metadata_snapshots(id),
+        FOREIGN KEY(capital_contract_id) REFERENCES capital_broker_contracts(id))"""))
+    for column in ("router_decision_id", "strategy_version_id", "broker_metadata_snapshot_id", "capital_contract_id", "fingerprint"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_strategy_router_decision_parameters_{column} ON strategy_router_decision_parameters({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -619,6 +634,7 @@ MIGRATIONS = (
     (MIGRATION_037, _migration_037),
     (MIGRATION_038, _migration_038),
     (MIGRATION_039, _migration_039),
+    (MIGRATION_040, _migration_040),
 )
 
 

@@ -328,6 +328,25 @@ class StrategyRouterDecision(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class StrategyRouterDecisionParameters(Base):
+    """Entry/SL/TP/size calculation evidence; never an executable order."""
+    __tablename__ = "strategy_router_decision_parameters"
+    __table_args__ = (
+        UniqueConstraint("router_decision_id", name="uq_strategy_router_parameters_decision"),
+        UniqueConstraint("fingerprint", name="uq_strategy_router_parameters_fingerprint"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    router_decision_id: Mapped[str] = mapped_column(ForeignKey("strategy_router_decisions.id"), nullable=False, index=True)
+    strategy_version_id: Mapped[str | None] = mapped_column(ForeignKey("strategy_versions.id"), nullable=True, index=True)
+    broker_metadata_snapshot_id: Mapped[str | None] = mapped_column(ForeignKey("broker_metadata_snapshots.id"), nullable=True, index=True)
+    capital_contract_id: Mapped[str | None] = mapped_column(ForeignKey("capital_broker_contracts.id"), nullable=True, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(48), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"
