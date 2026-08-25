@@ -2,11 +2,11 @@
 
 **Contract status:** accepted by Owner on 2026-08-25
 
-**Active checkpoint:** ARK-S20-00 — post-S19 canonical baseline and prerequisite audit
+**Active checkpoint:** ARK-S20-02 — deterministic Strategy Contract → MT5 compiler
 
-**Implementation authority:** ARK-S20-00 documentation and read-only audit only;
-no ARK-S20 model, migration, API, UI, EA, configuration, deployment, order,
-trade, or runtime mutation is authorized
+**Implementation authority:** ARK-S20-02 deterministic compiler and isolated
+parity evidence only; no FILE_COMMON publication, deployment, MT5 action,
+order, trade, DEMO activation, or LIVE authority
 
 ## Product objective
 
@@ -306,7 +306,31 @@ TypeScript, ESLint, optimized production build, Docker/API checks, and HTTP
 checks pass. No S20 source, migration, runtime, deployment, MT5, order, or trade
 mutation was introduced.
 
-**ARK-S20-00 implementation status:** complete; awaiting Owner acceptance.
+**ARK-S20-00 implementation status:** accepted and committed as `5932206`.
 
 **Technical checkpoint claim:** `VALIDATED`, scoped only to this baseline audit
 and never to strategy quality or trading authority.
+
+## ARK-S20-01 completion evidence
+
+ARK-S20-01 was accepted by the Owner on 2026-08-25. The
+concrete report is
+[`SPRINT_20_01_GENERIC_DEMO_CONTRACT.md`](SPRINT_20_01_GENERIC_DEMO_CONTRACT.md).
+
+Migration `042_generic_demo_contract`, the immutable
+`GENERIC_DEMO_CONTRACT_V1` artifact, exact eligibility/validation/create/read
+APIs, and same-origin BFF routes are implemented. Exact retry and concurrency
+reuse one artifact; all required negative boundaries fail closed; migration
+recovery preserves legacy deployment/config records. Focused tests are 22
+passed, full backend regression is 264 passed, web regression is 28 passed,
+and lint/typecheck/local plus Docker production builds pass.
+
+Runtime remains honestly `NO_VALIDATED_STRATEGY`: zero generic DEMO contracts,
+five unchanged legacy deployments, and zero demo trades. A real-lineage create
+attempt returned HTTP 422 and changed none of those counts. No configuration,
+FILE_COMMON publication, deployment, MT5 action, order, trade, DEMO activation,
+or LIVE authority was created.
+
+**Technical checkpoint claim:** `VALIDATED`, scoped only to the immutable
+pre-compilation contract foundation and never to strategy quality or trading
+authority.

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericDemoContract, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -28,6 +28,7 @@ from .strategy_router_decisions import decision_contract as router_decision_cont
 from .strategy_router_parameters import materialize as materialize_router_parameters, parameter_contract as router_parameter_contract, serialize as serialize_router_parameters
 from .strategy_router_verification import get_latest as get_latest_router_verification, materialize as materialize_router_verification, serialize as serialize_router_verification
 from .strategy_router_safety import audit as audit_router_safety
+from .generic_demo_contracts import create as create_generic_demo_contract, eligibility_overview as generic_demo_eligibility_overview, list_all as list_generic_demo_contracts, serialize as serialize_generic_demo_contract, validation_report as generic_demo_validation_report
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
@@ -704,6 +705,41 @@ def get_strategy_router_verification_by_id(verification_id: str, session: Sessio
 @app.get("/api/v1/strategy-router/safety-report")
 def get_strategy_router_safety_report(session: Session = Depends(get_session)) -> dict:
     return audit_router_safety(session)
+
+
+@app.get("/api/v1/generic-demo/eligibility")
+def get_generic_demo_eligibility(session: Session = Depends(get_session)) -> dict:
+    return generic_demo_eligibility_overview(session)
+
+
+@app.post("/api/v1/generic-demo-contracts/validate")
+def validate_generic_demo_contract(payload: dict, session: Session = Depends(get_session)) -> dict:
+    try:
+        return generic_demo_validation_report(session, payload)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.post("/api/v1/generic-demo-contracts")
+def post_generic_demo_contract(payload: dict, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = create_generic_demo_contract(session, payload)
+        return serialize_generic_demo_contract(item, reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/generic-demo-contracts")
+def get_generic_demo_contracts(session: Session = Depends(get_session)) -> dict:
+    return {"generic_demo_contracts": [serialize_generic_demo_contract(item) for item in list_generic_demo_contracts(session)]}
+
+
+@app.get("/api/v1/generic-demo-contracts/{contract_id}")
+def get_generic_demo_contract(contract_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(GenericDemoContract, contract_id)
+    if not item:
+        raise HTTPException(404, "generic DEMO contract not found")
+    return serialize_generic_demo_contract(item)
 
 
 @app.post("/api/v1/capital-contracts/validate")

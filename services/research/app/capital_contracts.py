@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from .broker_metadata import REQUIRED as BROKER_REQUIRED, import_order_calc_validation, validate_volume
 from .models import BrokerMetadataSnapshot, CapitalBrokerContract, StrategyVersion
+from .strategy_capabilities import assess as assess_strategy_capability
 from .strategy_contracts import validate as validate_strategy_contract
 
 
@@ -87,12 +88,18 @@ def assess(strategy: StrategyVersion | None, metadata: BrokerMetadataSnapshot | 
     if not strategy:
         issues.append("StrategyVersion is unavailable")
     else:
-        strategy_report = validate_strategy_contract(strategy.strategy_contract)
+        capability_report = assess_strategy_capability(strategy.strategy_contract)
+        legacy_report = validate_strategy_contract(strategy.strategy_contract)
+        strategy_report = capability_report if capability_report["ready"] else {
+            **legacy_report,
+            "strategy_contract_fingerprint": legacy_report["fingerprint"],
+        }
         if not strategy_report["ready"]:
             issues.append("Capital contracts require a valid confirmed Strategy Contract")
         if strategy.status not in {"CONTRACT_VALID", "VALIDATED"}:
             issues.append(f"StrategyVersion status {strategy.status} is not eligible for a capital contract")
-        if strategy.checksum != strategy_report["fingerprint"] or strategy.configuration.get("strategy_contract_fingerprint") != strategy_report["fingerprint"]:
+        contract_fingerprint = strategy_report["strategy_contract_fingerprint"]
+        if strategy.checksum != contract_fingerprint or strategy.configuration.get("strategy_contract_fingerprint") != contract_fingerprint:
             issues.append("StrategyVersion checksum/fingerprint does not match its Strategy Contract")
     if not metadata:
         issues.append("Broker metadata snapshot is unavailable")

@@ -40,17 +40,19 @@ GENERIC_CONTRACT = {
 EVALUATED_AT = datetime(2026, 8, 25, 10, 0)
 
 
-def _router_ready(session):
+def _router_ready(session, *, exact_contract_checksum=False):
     suffix = uuid4().hex
     report = assess_capability(deepcopy(GENERIC_CONTRACT)); assert report["status"] == "CONTRACT_VALID"
     capability = session.query(StrategyContractAssessment).filter_by(fingerprint=report["fingerprint"]).one_or_none()
     if not capability:
         capability = StrategyContractAssessment(fingerprint=report["fingerprint"], registry_version=report["registry"]["version"], registry_fingerprint=report["registry"]["fingerprint"], evaluator_capability_id=report["evaluator_capability_id"], status=report["status"], normalized_contract=report["normalized_contract"], assessment=report)
         session.add(capability); session.flush()
-    strategy = StrategyVersion(strategy_key=f"router-ready-{suffix}", version=1, name="Router ready", status="CONTRACT_VALID", strategy_contract=deepcopy(GENERIC_CONTRACT), configuration={}, checksum=f"router-ready-checksum-{suffix}")
+    strategy_checksum = report["strategy_contract_fingerprint"] if exact_contract_checksum else f"router-ready-checksum-{suffix}"
+    strategy_contract_value = deepcopy(report["normalized_contract"] if exact_contract_checksum else GENERIC_CONTRACT)
+    strategy = StrategyVersion(strategy_key=f"router-ready-{suffix}", version=1, name="Router ready", status="CONTRACT_VALID", strategy_contract=strategy_contract_value, configuration={}, checksum=strategy_checksum)
     dataset = Dataset(fingerprint=f"router-ready-dataset-{suffix}", symbol="XAUUSD", source="TEST", timezone_status="VERIFIED_UTC")
     session.add_all([strategy, dataset]); session.flush()
-    strategy.configuration = {"strategy_capability_assessment": {"id": capability.id, "fingerprint": capability.fingerprint, "registry_version": capability.registry_version, "registry_fingerprint": capability.registry_fingerprint, "evaluator_capability_id": capability.evaluator_capability_id}}
+    strategy.configuration = {"strategy_contract_fingerprint": strategy_checksum, "strategy_capability_assessment": {"id": capability.id, "fingerprint": capability.fingerprint, "registry_version": capability.registry_version, "registry_fingerprint": capability.registry_fingerprint, "evaluator_capability_id": capability.evaluator_capability_id}}
     market_at = EVALUATED_AT - timedelta(seconds=60)
     session.add(DatasetBarAsset(dataset_id=dataset.id, timeframe="M1", path="immutable/test-m1.csv", row_count=100, range_start=market_at - timedelta(days=1), range_end=market_at))
     sync = session.get(HistoricalSyncState, "XAUUSD")

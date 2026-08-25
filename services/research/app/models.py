@@ -361,6 +361,25 @@ class StrategyRouterVerification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class GenericDemoContract(Base):
+    """Immutable pre-compilation contract; it has no publication authority."""
+    __tablename__ = "generic_demo_contracts"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_generic_demo_contract_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    strategy_version_id: Mapped[str] = mapped_column(ForeignKey("strategy_versions.id"), nullable=False, index=True)
+    lifecycle_verification_id: Mapped[str] = mapped_column(ForeignKey("generic_validation_lifecycle_verifications.id"), nullable=False, index=True)
+    capability_assessment_id: Mapped[str] = mapped_column(ForeignKey("strategy_contract_assessments.id"), nullable=False, index=True)
+    broker_metadata_snapshot_id: Mapped[str] = mapped_column(ForeignKey("broker_metadata_snapshots.id"), nullable=False, index=True)
+    capital_contract_id: Mapped[str] = mapped_column(ForeignKey("capital_broker_contracts.id"), nullable=False, index=True)
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(48), nullable=False)
+    contract: Mapped[dict] = mapped_column(JSON, nullable=False)
+    validation: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"

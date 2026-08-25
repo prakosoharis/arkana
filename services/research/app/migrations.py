@@ -41,6 +41,7 @@ MIGRATION_038 = "038_strategy_router_policy_eligibility"
 MIGRATION_039 = "039_strategy_router_decision"
 MIGRATION_040 = "040_strategy_router_decision_parameters"
 MIGRATION_041 = "041_strategy_router_verification"
+MIGRATION_042 = "042_generic_demo_contract"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -619,6 +620,23 @@ def _migration_041(connection) -> None:
         connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_strategy_router_verifications_{column} ON strategy_router_verifications({column})"))
 
 
+def _migration_042(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS generic_demo_contracts (
+        id VARCHAR(36) PRIMARY KEY, strategy_version_id VARCHAR(36) NOT NULL,
+        lifecycle_verification_id VARCHAR(36) NOT NULL, capability_assessment_id VARCHAR(36) NOT NULL,
+        broker_metadata_snapshot_id VARCHAR(36) NOT NULL, capital_contract_id VARCHAR(36) NOT NULL,
+        evaluated_at TIMESTAMP NOT NULL, fingerprint VARCHAR(64) NOT NULL UNIQUE,
+        protocol_version VARCHAR(64) NOT NULL, status VARCHAR(48) NOT NULL,
+        contract JSON NOT NULL, validation JSON NOT NULL, created_at TIMESTAMP NOT NULL,
+        FOREIGN KEY(strategy_version_id) REFERENCES strategy_versions(id),
+        FOREIGN KEY(lifecycle_verification_id) REFERENCES generic_validation_lifecycle_verifications(id),
+        FOREIGN KEY(capability_assessment_id) REFERENCES strategy_contract_assessments(id),
+        FOREIGN KEY(broker_metadata_snapshot_id) REFERENCES broker_metadata_snapshots(id),
+        FOREIGN KEY(capital_contract_id) REFERENCES capital_broker_contracts(id))"""))
+    for column in ("strategy_version_id", "lifecycle_verification_id", "capability_assessment_id", "broker_metadata_snapshot_id", "capital_contract_id", "fingerprint"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_generic_demo_contracts_{column} ON generic_demo_contracts({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -649,6 +667,7 @@ MIGRATIONS = (
     (MIGRATION_039, _migration_039),
     (MIGRATION_040, _migration_040),
     (MIGRATION_041, _migration_041),
+    (MIGRATION_042, _migration_042),
 )
 
 
