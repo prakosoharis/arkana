@@ -287,3 +287,26 @@ Mulai ARK-S20-00.
 After acceptance, the contract documentation is committed and pushed before
 ARK-S20-00 begins. No later checkpoint is authorized until its predecessor is
 accepted.
+
+## ARK-S20-00 completion evidence
+
+ARK-S20-00 completed its documentation-only, read-only baseline audit on
+2026-08-25. The concrete report is
+[`SPRINT_20_00_BASELINE_AUDIT.md`](SPRINT_20_00_BASELINE_AUDIT.md).
+
+The runtime contains zero historically `VALIDATED` StrategyVersions. The real
+generic version remains `CONTRACT_VALID / FAIL / INELIGIBLE / NOT_VALIDATED`.
+The S19 Router safety fingerprint remains exactly
+`5a393e82923e66ec27a571ded95b3aa6b2c107aa806e5ba3aab04427a6b7c9c5`,
+all six checks PASS, and its exact counts remain policy 1, eligibility 2,
+decision 2, parameter 1, verifier 1, and five observed legacy deployments.
+
+Backend regression is 249 passed; web regression is 28 passed across 10 files;
+TypeScript, ESLint, optimized production build, Docker/API checks, and HTTP
+checks pass. No S20 source, migration, runtime, deployment, MT5, order, or trade
+mutation was introduced.
+
+**ARK-S20-00 implementation status:** complete; awaiting Owner acceptance.
+
+**Technical checkpoint claim:** `VALIDATED`, scoped only to this baseline audit
+and never to strategy quality or trading authority.

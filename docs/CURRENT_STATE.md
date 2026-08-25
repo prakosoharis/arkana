@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-25 — Sprint 20 contract accepted; ARK-S20-00 active
+**Updated:** 2026-08-25 — ARK-S20-00 baseline audit ready for Owner acceptance
 **Active milestone:** Sprint 20 — Generic DEMO Compiler and Forward Validation
-**Active card:** ARK-S20-00 — post-S19 canonical baseline and prerequisite audit
+**Active card:** ARK-S20-00 — implementation complete; awaiting Owner acceptance
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -163,7 +163,8 @@ one read-only eligibility snapshot type with exact retry/concurrency behavior.
 The real generic strategy correctly materializes `INELIGIBLE`: it is still
 `CONTRACT_VALID`, its evidence decision is `FAIL`, lifecycle claim is
 `NOT_VALIDATED`, dataset timezone is unverified, sync is unavailable, and data
-is stale. No current Router decision or execution-side artifact exists.
+is stale. At ARK-S19-01 no current Router decision existed; subsequent accepted
+S19 checkpoints materialized the exact `NO_TRADE` chain described below.
 ARK-S19-02 is accepted and technically validated.
 The positive fixture produces exact `LONG`; no-signal and every blocker produce
 `NO_TRADE` without least-bad selection. Real runtime truth is `NO_TRADE` with
@@ -173,7 +174,17 @@ acceptance regression, 43-test Router regression, final 249-test backend
 regression, web verification, production build, Docker restart recovery, and
 post-restart browser OAT are accepted with technical claim `VALIDATED`. Audit
 fingerprint is `5a393e82923e66ec27a571ded95b3aa6b2c107aa806e5ba3aab04427a6b7c9c5`.
-Sprint 19 is accepted and closed; no next milestone is implicitly authorized.
+Sprint 19 is accepted and closed. Sprint 20 was subsequently authorized by an
+explicit Owner-accepted contract; no authorization was inferred from S19.
+
+ARK-S20-00 is implementation-complete and awaiting Owner acceptance. Its
+read-only baseline audit is recorded in
+`docs/SPRINT_20_00_BASELINE_AUDIT.md`. Runtime contains zero historically
+`VALIDATED` StrategyVersions. The real generic version remains
+`CONTRACT_VALID / FAIL / INELIGIBLE / NOT_VALIDATED`; deployment and EA support
+remain legacy-only, and no current Owner MT5 config/telemetry/trade file exists
+in the Docker shared folder. Backend 249-test and web 28-test regressions pass.
+No S20 source, migration, runtime, deployment, order, or trade mutation exists.
 
 The historical evaluator compatibility seam is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:

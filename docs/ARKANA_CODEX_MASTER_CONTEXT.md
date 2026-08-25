@@ -286,6 +286,15 @@ closure. The real generic strategy is not historically VALIDATED, so runtime
 must remain blocked unless genuine evidence and Owner MT5 DEMO acknowledgement
 become available.
 
+ARK-S20-00 is implementation-complete and awaiting Owner acceptance. Its exact
+read-only inventory and test evidence are recorded in
+[`SPRINT_20_00_BASELINE_AUDIT.md`](SPRINT_20_00_BASELINE_AUDIT.md). There are
+zero historically VALIDATED StrategyVersions. The real generic chain remains
+`CONTRACT_VALID / FAIL / INELIGIBLE / NOT_VALIDATED`; the current compiler,
+deployment config, and EA execution remain legacy-only. The accepted S19 safety
+fingerprint and counts are unchanged, backend 249-test and web 28-test
+regressions pass, and ARK-S20-00 introduces no source or runtime mutation.
+
 ## QA protocol
 
 Before coding: inspect the current repository, `git status`, dirty diffs,
