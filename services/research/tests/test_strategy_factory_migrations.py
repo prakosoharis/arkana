@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
 import app.migrations as migrations
-from app.migrations import MIGRATION_013, MIGRATION_014, MIGRATION_015, MIGRATION_016, MIGRATION_017, MIGRATION_021, MIGRATION_022, MIGRATION_023, MIGRATION_024, MIGRATION_025, MIGRATION_026, MIGRATION_027, MIGRATION_028, MIGRATION_029, MIGRATION_030, MIGRATION_031, MIGRATION_032, MIGRATION_033, MIGRATION_034, MIGRATION_035, run_migrations
+from app.migrations import MIGRATION_013, MIGRATION_014, MIGRATION_015, MIGRATION_016, MIGRATION_017, MIGRATION_021, MIGRATION_022, MIGRATION_023, MIGRATION_024, MIGRATION_025, MIGRATION_026, MIGRATION_027, MIGRATION_028, MIGRATION_029, MIGRATION_030, MIGRATION_031, MIGRATION_032, MIGRATION_033, MIGRATION_034, MIGRATION_035, MIGRATION_036, run_migrations
 from app.models import BacktestRun, StrategyCandidate, StrategyVersion
 
 
@@ -79,9 +79,11 @@ def test_strategy_factory_migration_preserves_legacy_and_supports_pre_backtest_l
     assert "generic_evidence_verifications" in metadata.get_table_names()
     assert "generic_validation_eligibilities" in metadata.get_table_names()
     assert "generic_validation_promotions" in metadata.get_table_names()
+    assert "generic_validation_retirements" in metadata.get_table_names()
     assert {"strategy_candidate_id", "strategy_contract"}.issubset({column["name"] for column in metadata.get_columns("strategy_versions")})
     assert {"validation_evidence_id", "validated_at"}.issubset({column["name"] for column in metadata.get_columns("strategy_versions")})
     assert {"generic_validation_promotion_id"}.issubset({column["name"] for column in metadata.get_columns("strategy_versions")})
+    assert {"generic_validation_retirement_id", "retired_at"}.issubset({column["name"] for column in metadata.get_columns("strategy_versions")})
     assert {"strategy_version_id"}.issubset({column["name"] for column in metadata.get_columns("backtest_runs")})
     assert next(column for column in metadata.get_columns("strategy_versions") if column["name"] == "backtest_run_id")["nullable"] is True
 
@@ -126,6 +128,7 @@ def test_strategy_factory_migration_preserves_legacy_and_supports_pre_backtest_l
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_033}).scalar_one() == 1
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_034}).scalar_one() == 1
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_035}).scalar_one() == 1
+        assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_036}).scalar_one() == 1
 
 
 def test_generic_promotion_recovery_renames_partial_postgres_style_column(tmp_path):

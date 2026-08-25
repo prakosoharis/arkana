@@ -27,8 +27,13 @@ def confirm_strategy_version(session: Session, payload: dict, *, validation_repo
     if not candidate: raise ValueError("strategy candidate not found")
     report=validation_report or validate(contract)
     if not report["ready"]: raise ValueError("Strategy Contract is invalid: "+" ".join(report["issues"]))
-    key=_slug(str(payload.get("strategy_key") or candidate.name)); version=(session.scalar(select(func.max(StrategyVersion.version)).where(StrategyVersion.strategy_key==key)) or 0)+1
-    item=StrategyVersion(strategy_key=key,version=version,name=candidate.name,profile="SCALPING",status="CONTRACT_VALID",backtest_run_id=None,strategy_candidate_id=candidate.id,strategy_contract=contract,configuration={"strategy_contract_fingerprint":report["fingerprint"]},checksum=fingerprint(contract))
+    revision_of = candidate.provenance.get("revision_of")
+    prior = session.get(StrategyVersion, str(revision_of)) if revision_of else None
+    if revision_of and not prior:
+        raise ValueError("revision source StrategyVersion not found")
+    key = prior.strategy_key if prior and not payload.get("strategy_key") else _slug(str(payload.get("strategy_key") or candidate.name))
+    version=(session.scalar(select(func.max(StrategyVersion.version)).where(StrategyVersion.strategy_key==key)) or 0)+1
+    item=StrategyVersion(strategy_key=key,version=version,name=candidate.name,profile="SCALPING",status="CONTRACT_VALID",backtest_run_id=None,strategy_candidate_id=candidate.id,strategy_contract=contract,configuration={"strategy_contract_fingerprint":report["fingerprint"]},checksum=fingerprint(contract),supersedes_strategy_version_id=prior.id if prior else None)
     session.add(item); session.commit(); session.refresh(item); return item
 
 def revision(session: Session, item: StrategyVersion) -> StrategyCandidate:
@@ -79,4 +84,4 @@ def serialize_strategy(item: StrategyVersion) -> dict:
         report = assess(item.strategy_contract)
     else:
         report=validate(item.strategy_contract) if item.strategy_contract else None
-    return {"id": item.id, "strategy_key": item.strategy_key, "version": item.version, "name": item.name, "profile": item.profile, "status": item.status, "backtest_run_id": item.backtest_run_id, "strategy_candidate_id":item.strategy_candidate_id,"strategy_contract":item.strategy_contract,"validation":report,"configuration": item.configuration, "checksum": item.checksum, "supersedes_strategy_version_id": item.supersedes_strategy_version_id, "validation_evidence_id": item.validation_evidence_id, "generic_validation_promotion_id": item.generic_validation_promotion_id, "validated_at": item.validated_at.isoformat() + "Z" if item.validated_at else None, "approved_at": item.approved_at.isoformat() + "Z" if item.approved_at else None, "created_at": item.created_at.isoformat() + "Z"}
+    return {"id": item.id, "strategy_key": item.strategy_key, "version": item.version, "name": item.name, "profile": item.profile, "status": item.status, "backtest_run_id": item.backtest_run_id, "strategy_candidate_id":item.strategy_candidate_id,"strategy_contract":item.strategy_contract,"validation":report,"configuration": item.configuration, "checksum": item.checksum, "supersedes_strategy_version_id": item.supersedes_strategy_version_id, "validation_evidence_id": item.validation_evidence_id, "generic_validation_promotion_id": item.generic_validation_promotion_id, "generic_validation_retirement_id": item.generic_validation_retirement_id, "validated_at": item.validated_at.isoformat() + "Z" if item.validated_at else None, "retired_at": item.retired_at.isoformat() + "Z" if item.retired_at else None, "approved_at": item.approved_at.isoformat() + "Z" if item.approved_at else None, "created_at": item.created_at.isoformat() + "Z"}

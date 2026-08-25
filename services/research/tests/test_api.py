@@ -674,8 +674,12 @@ def test_s16_capability_registry_assessment_and_confirmation_api_are_fail_closed
         blocked_promotion = client.post(f"/api/v1/generic-validation-eligibilities/{post_ack_body['id']}/promotions", json={"authorization": "AUTHORIZE_GENERIC_HISTORICAL_VALIDATION_V1"})
         assert blocked_promotion.status_code == 422 and "ELIGIBLE" in blocked_promotion.json()["detail"]
         assert client.get(f"/api/v1/generic-validation-eligibilities/{post_ack_body['id']}/promotion").status_code == 404
+        assert client.post(f"/api/v1/strategy-versions/{generic_version.json()['id']}/retirement", json={"authorization": "AUTHORIZE_GENERIC_STRATEGY_RETIREMENT_V1", "reason": "Negative evidence cannot be retired as validated."}).status_code == 422
+        assert client.get(f"/api/v1/strategy-versions/{generic_version.json()['id']}/retirement").status_code == 404
+        assert client.get("/api/v1/generic-validation-retirements/missing").status_code == 404
         current = next(item for item in client.get("/api/v1/strategy-versions").json()["strategy_versions"] if item["id"] == generic_version.json()["id"])
         assert current["status"] == "CONTRACT_VALID" and current["validation_evidence_id"] is None and current["generic_validation_promotion_id"] is None
+        assert current["generic_validation_retirement_id"] is None and current["retired_at"] is None
 
 
 def test_demo_deployment_requires_approval_acknowledges_exact_checksum_and_rolls_back(tmp_path, monkeypatch):

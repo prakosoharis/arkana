@@ -35,6 +35,7 @@ MIGRATION_032 = "032_generic_evidence_verification"
 MIGRATION_033 = "033_generic_validation_eligibility"
 MIGRATION_034 = "034_generic_validation_promotion"
 MIGRATION_035 = "035_generic_validation_promotion_column_recovery"
+MIGRATION_036 = "036_generic_validation_retirement"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -523,6 +524,23 @@ def _migration_035(connection) -> None:
         connection.execute(text('ALTER TABLE generic_validation_promotions RENAME COLUMN "authorization" TO authorization_phrase'))
 
 
+def _migration_036(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS generic_validation_retirements (
+        id VARCHAR(36) PRIMARY KEY, strategy_version_id VARCHAR(36) NOT NULL UNIQUE,
+        promotion_id VARCHAR(36) NOT NULL UNIQUE, fingerprint VARCHAR(64) NOT NULL UNIQUE,
+        protocol_version VARCHAR(64) NOT NULL, authorization_phrase VARCHAR(96) NOT NULL,
+        reason VARCHAR(500) NOT NULL, status VARCHAR(48) NOT NULL,
+        result JSON NOT NULL, created_at TIMESTAMP NOT NULL)"""))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_generic_validation_retirements_strategy_version_id ON generic_validation_retirements(strategy_version_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_generic_validation_retirements_promotion_id ON generic_validation_retirements(promotion_id)"))
+    columns = _columns(connection, "strategy_versions")
+    if "generic_validation_retirement_id" not in columns:
+        connection.execute(text("ALTER TABLE strategy_versions ADD COLUMN generic_validation_retirement_id VARCHAR(36) REFERENCES generic_validation_retirements(id)"))
+    if "retired_at" not in columns:
+        connection.execute(text("ALTER TABLE strategy_versions ADD COLUMN retired_at TIMESTAMP"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_strategy_versions_generic_validation_retirement_id ON strategy_versions(generic_validation_retirement_id)"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -547,6 +565,7 @@ MIGRATIONS = (
     (MIGRATION_033, _migration_033),
     (MIGRATION_034, _migration_034),
     (MIGRATION_035, _migration_035),
+    (MIGRATION_036, _migration_036),
 )
 
 

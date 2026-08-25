@@ -151,15 +151,65 @@ Verification evidence:
   `generic_validation_promotion_id` remain null. No accepted authorization,
   promotion, deployment, or trading side effect was fabricated.
 
-**Checkpoint status:** source, tests, migration recovery, and negative runtime
-OAT are complete; awaiting explicit Owner acceptance. ARK-S18-03 has not
-started and ARK-S18-02 is uncommitted/unpushed.
+**Checkpoint status:** accepted by the Owner and pushed to `origin/main` at
+`9d7ddcb` before ARK-S18-03 began.
 
 ### ARK-S18-03 — Retirement and lifecycle governance
 
 Add explicit, reasoned, immutable `VALIDATED → RETIRED` governance. Retirement
 does not delete evidence, cannot silently reactivate a version, and revisions
 create new StrategyVersions. Preserve legacy lifecycle behavior.
+
+#### Completion report
+
+Implementation:
+
+- Added explicit `GENERIC_STRATEGY_RETIREMENT_V1` with the distinct exact
+  authorization `AUTHORIZE_GENERIC_STRATEGY_RETIREMENT_V1`. A normalized
+  reason of 10–500 characters is mandatory; promotion or acknowledgement
+  phrases cannot authorize retirement.
+- Retirement accepts only a `VALIDATED` StrategyVersion whose exact generic
+  promotion, eligibility, PASS decision, OOS evidence, fingerprint, protocol,
+  authorization, and historical-only result remain mutually consistent.
+  Legacy `APPROVED`, non-promoted, missing, or tampered lineage fails closed.
+- One database transaction inserts the immutable retirement record and applies
+  a compare-and-set `VALIDATED → RETIRED`. Exact retry/concurrent requests reuse
+  the single record; a different reason or inconsistent retry is rejected.
+  Validation evidence, promotion lineage, and `validated_at` are retained, and
+  `generic_validation_retirement_id` plus `retired_at` provide explicit lineage.
+- There is no delete, update, or reactivation endpoint. A revision creates a
+  new DRAFT candidate and, after contract confirmation, a new `CONTRACT_VALID`
+  StrategyVersion linked through `supersedes_strategy_version_id`; the retired
+  version remains unchanged and the new version inherits no validation or
+  retirement authority.
+- Retirement creates no deployment, DEMO/LIVE authority, capital authority,
+  Router/current decision, order, or trade action. Additive migration 036
+  creates retirement storage and the StrategyVersion retirement columns.
+
+Verification evidence:
+
+- Backend regression: **203 passed**. Focused API/promotion/retirement/migration
+  suite: **41 passed**. Dedicated coverage proves required reason and exact
+  phrase, atomic transition, exact reuse, conflicting-reason rejection,
+  tampered/legacy rejection, retained evidence, lifecycle neutrality, revision
+  versioning, and two synchronized writers producing one record/transition.
+- Python compilation and `git diff --check` pass. Migration tests preserve the
+  legacy lifecycle, expose both retirement columns, and prove migration 036 is
+  recorded exactly once.
+- Docker/PostgreSQL OAT applied migration 036 exactly once. The real strategy
+  `37abb545-958d-4d14-a3b5-0b6f2321d8cf` remains honestly `CONTRACT_VALID` with
+  no promotion or retirement lineage. The promotion phrase is rejected as the
+  wrong retirement authorization; the exact retirement phrase is then rejected
+  because the strategy has no exact generic historical promotion. GET returns
+  404 and the retirement table remains empty.
+- After service restart, migration 036 remains one row, retirement count remains
+  zero, and the real StrategyVersion remains `CONTRACT_VALID` with null promotion
+  and retirement ids. No validated state, retirement, reactivation, deployment,
+  or trading side effect was fabricated for OAT.
+
+**Checkpoint status:** source, tests, migration, and negative production-shaped
+OAT are complete. Technical claim: **VALIDATED**. Awaiting explicit Owner
+acceptance; ARK-S18-04 has not started. ARK-S18-03 remains uncommitted/unpushed.
 
 ### ARK-S18-04 — Strategy Library lifecycle UI and verifier
 
