@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-26 — ARK-S20-02 accepted; ARK-S20-03 authorized
+**Updated:** 2026-08-26 — ARK-S20-03 accepted; ARK-S20-04 authorized
 **Active milestone:** Sprint 20 — Generic DEMO Compiler and Forward Validation
-**Active card:** ARK-S20-03 — DEMO publication, generic EA adapter, and acknowledgement
+**Active card:** ARK-S20-04 — generic DEMO telemetry and forward-evidence ledger
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -49,6 +49,7 @@ Next:    historically VALIDATED generic strategy → DEMO compiler → forward e
 | OOS/robustness acceptance | IMPLEMENTED gate and Owner UI; full-history OAT completed with FAIL | Protocol V3 deterministically returns `PASS`, `FAIL`, or `INSUFFICIENT_EVIDENCE` from minimum trade count, positive nominal OOS PnL, strict PF, adverse final-OOS, and train-calibrated year/regime concentration checks. The Strategy Factory can run and reopen exact evidence. The registered 2,985,994-bar Owner dataset produced FAIL for the compatibility strategy, which correctly remains `CONTRACT_VALID`. Only PASS links evidence and sets historical-only `VALIDATED`. |
 | Generic DEMO contract | ARK-S20-01 ACCEPTED | Migration 042, immutable exact-lineage pre-compilation contract, read-only eligibility/validation, create/read API, and BFF routes exist. Runtime is correctly `NO_VALIDATED_STRATEGY` with zero artifacts. It creates no config, deployment, MT5 action, order, trade, or authority. |
 | Generic MT5 compiler | ARK-S20-02 ACCEPTED | Migration 043, bounded M1 generic adapter registry, canonical SHA-256 wire output, complete field lineage, immutable compiler evidence, API/BFF lifecycle, and golden completed-candle/risk parity exist. Runtime has zero source contracts and zero compilations. No publication, deployment, MT5 action, order, trade, or authority exists. |
+| Generic MT5 DEMO publication | ARK-S20-03 ACCEPTED | Migration 044, fresh exact Owner authorization, checksum-addressed immutable config, atomic manifest activation, bounded generic EA adapter, exact MT5 acknowledgement, and API/BFF lifecycle exist. MetaEditor compile is 0 errors/0 warnings. Runtime has zero publications because it has zero eligible source compilations; no acknowledgement is fabricated. |
 | DEMO deployment and telemetry | IMPLEMENTED legacy foundation; MT5 OAT pending | DEMO-only versioned config, acknowledgement, rollback, journal ingestion, and forward-evidence scaffolding exist. The EA supports the legacy rule only and fixed `0.01` volume. |
 | Capital Simulation | BROKER-CONSTRAINED FIXED/FRACTIONAL HISTORY AND OWNER UI IMPLEMENTED | Immutable `CAPITAL_BROKER_CONTRACT_V1` and `BROKER_CONSTRAINED_CAPITAL_V1` evidence bind exact StrategyVersion, full-history validation, dataset, MT5 profit/margin parity, sizing, and broker assumptions. The Owner UI validates/confirms contracts, runs or reuses results, and explicitly materializes one fingerprint-bound full-replay verifier artifact; GET is lightweight and never reruns the kernel. The verifier compares every normalized point and recomputed metric, exact lineage, constraints, disclosures, and lifecycle safety. One frozen 2026 snapshot is applied to the full 2017–2026 ledger, not reconstructed historical broker terms. Acceptance readiness is not `VALIDATED`, DEMO/LIVE authorization, or a trade recommendation. |
 | Variant Explorer | OWNER WORKFLOW + MATERIALIZED ACCEPTANCE VERIFIER — ARK-S15-05 | `/variants` exposes bounded contract, train, holdout, lock, matrix, split ledger, explicit confirmation boundary, and persisted verifier evidence. Runtime truth is `NO_ELIGIBLE_VARIANT`; all ten verifier checks pass while final-OOS stays locked, with zero confirmation/revision and no lifecycle promotion. |
@@ -195,6 +196,14 @@ fingerprint `868ff4dbdf190850a4f9308b23acd8d3871b2b88c28178367cc4f61ba3ce0cea`
 survives restart exactly. Focused tests are 33 passed, full backend is 280
 passed, and web is 28 passed. Runtime correctly retains zero source contracts,
 zero generic compilations, five legacy deployments, and zero demo trades.
+
+ARK-S20-03 was accepted by the Owner on 2026-08-26. Evidence
+is in `docs/SPRINT_20_03_DEMO_PUBLICATION_AND_ACKNOWLEDGEMENT.md`. Migration 044,
+atomic FILE_COMMON publication, bounded generic EA parsing/execution, and exact
+DEMO acknowledgement are implemented. Backend regression is 286 passed, web
+regression is 28 passed, and MetaEditor reports 0 errors/0 warnings. Runtime
+remains zero publications and preserves five legacy deployments, zero trades,
+and the exact pre-checkpoint FILE_COMMON hash.
 
 The historical evaluator compatibility seam is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:

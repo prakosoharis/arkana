@@ -308,6 +308,17 @@ survives restart. Full backend regression is 280 passed and web regression is
 legacy deployments, and zero demo trades; no FILE_COMMON publication, MT5
 action, deployment, order, trade, DEMO activation, or LIVE authority exists.
 
+ARK-S20-03 was accepted by the Owner on 2026-08-26. Exact
+evidence is recorded in
+[`SPRINT_20_03_DEMO_PUBLICATION_AND_ACKNOWLEDGEMENT.md`](SPRINT_20_03_DEMO_PUBLICATION_AND_ACKNOWLEDGEMENT.md).
+Migration 044, exact fresh Owner authorization, checksum-addressed immutable
+compiler bytes, atomic publication manifest, bounded generic EA adapter, and
+account/server/symbol/version/protocol/checksum-bound MT5 acknowledgement are
+implemented. Full backend regression is 286 passed, web regression is 28
+passed, and MetaEditor compiles the EA with 0 errors/0 warnings. Runtime remains
+zero generic publications because there is no source compilation; five legacy
+deployments, zero demo trades, and FILE_COMMON remain unchanged.
+
 ## QA protocol
 
 Before coding: inspect the current repository, `git status`, dirty diffs,

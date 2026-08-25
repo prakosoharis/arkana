@@ -398,6 +398,32 @@ class GenericMt5Compilation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class GenericMt5Publication(Base):
+    """Owner-authorized DEMO publication; acknowledgement remains MT5-owned."""
+    __tablename__ = "generic_mt5_publications"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_generic_mt5_publication_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    compilation_id: Mapped[str] = mapped_column(ForeignKey("generic_mt5_compilations.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    authorization_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_account_login: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_account_server: Mapped[str] = mapped_column(String(128), nullable=False)
+    target_reference: Mapped[str] = mapped_column(String(160), nullable=False)
+    target_environment: Mapped[str] = mapped_column(String(16), nullable=False)
+    broker_symbol: Mapped[str] = mapped_column(String(64), nullable=False)
+    config_checksum: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    publication_checksum: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    config_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    manifest_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    manifest: Mapped[dict] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(48), nullable=False)
+    acknowledgement: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"

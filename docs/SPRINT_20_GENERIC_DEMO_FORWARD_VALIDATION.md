@@ -2,11 +2,10 @@
 
 **Contract status:** accepted by Owner on 2026-08-25
 
-**Active checkpoint:** ARK-S20-03 — authorized by Owner; implementation pending
+**Active checkpoint:** ARK-S20-04 — authorized by Owner; implementation pending
 
-**Implementation authority:** ARK-S20-03 bounded DEMO publication, generic EA
-adapter, and exact acknowledgement only; no order, trade, LIVE, or strategy
-quality authority
+**Implementation authority:** ARK-S20-04 immutable generic DEMO telemetry and
+forward-evidence ledger only; no LIVE or strategy-quality authority
 
 ## Product objective
 
@@ -359,3 +358,27 @@ MT5 action, order, trade, DEMO activation, or LIVE authority was created.
 
 **Technical checkpoint claim:** `VALIDATED`, scoped only to deterministic inert
 compiler evidence and never to strategy quality or trading authority.
+
+## ARK-S20-03 completion evidence
+
+ARK-S20-03 was accepted by the Owner on 2026-08-26. Exact
+evidence is recorded in
+[`SPRINT_20_03_DEMO_PUBLICATION_AND_ACKNOWLEDGEMENT.md`](SPRINT_20_03_DEMO_PUBLICATION_AND_ACKNOWLEDGEMENT.md).
+
+Migration `044_generic_mt5_publication`, fresh exact Owner authorization,
+checksum-addressed compiler bytes, atomic publication manifest, bounded generic
+EA adapter, exact DEMO account/server/symbol/protocol/checksum acknowledgement,
+API lifecycle, and same-origin BFF routes are implemented. Exact retry and
+concurrent publication have one winner; malformed or mismatched input fails
+closed. MetaEditor64 compiles the EA with zero errors and zero warnings.
+
+Focused regression is 28 passed, full backend regression is 286 passed, and
+web regression is 28 passed; lint, typecheck, local/Docker production builds,
+and restart OAT pass. Runtime truth remains zero contracts, compilations, and
+publications because no historically eligible generic source exists. Five
+legacy deployments and zero demo trades are unchanged; FILE_COMMON hash is
+unchanged and no acknowledgement was fabricated.
+
+**Technical checkpoint claim:** `VALIDATED`, scoped only to bounded DEMO
+publication and exact acknowledgement evidence. It grants no LIVE authority
+and makes no profitability or forward-performance claim.

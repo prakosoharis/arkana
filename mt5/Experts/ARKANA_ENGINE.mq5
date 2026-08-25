@@ -1,11 +1,13 @@
 // ARKANA generic DEMO-only execution prototype. No web/API/LLM dependency in OnTick.
 #property strict
-#property version   "001.000"
+#property version   "2.000"
 #include <Trade/Trade.mqh>
 
 input string InpConfigFile="ARKANA/strategy.ini";
 input string InpTelemetryFile="ARKANA/telemetry.csv";
 input string InpTradeTelemetryFile="ARKANA/trades.csv";
+input string InpGenericPublicationFile="ARKANA/generic/publication.ini";
+input string InpGenericAcknowledgementFile="ARKANA/generic/acknowledgement.csv";
 input long   InpMagicNumber=260806;
 input int    InpReloadSeconds=10;
 
@@ -20,6 +22,32 @@ struct StrategyConfig {
 };
 StrategyConfig active;
 bool has_config=false;
+struct GenericPublication {
+  string publication_protocol_version; string publication_id; string target_environment;
+  string target_account_login; string target_account_server; string target_reference;
+  string broker_symbol; string strategy_version_id; string compiler_protocol_version;
+  string adapter_capability_id; string config_checksum; string config_file;
+  string published_at; string publication_checksum;
+};
+struct GenericConfig {
+  string schema_version; string compiler_protocol_version; string adapter_capability_id;
+  string generic_demo_contract_id; string generic_demo_contract_fingerprint;
+  string strategy_version_id; string strategy_checksum; string canonical_instrument;
+  string broker_symbol; string enabled; string allowed_environment; string direction;
+  string execution_timeframe; string context_rule; string context_timeframe;
+  string sma_fast_period; string sma_slow_period; string sma_relation; string setup_rule;
+  string setup_timeframe; string setup_direction; string trigger_rule;
+  string trigger_timeframe; string trigger_direction; string entry_rule;
+  string entry_price_source; string uses_completed_candles; string uses_future_ohlc;
+  string invalidation_rule; string volume; string stop_rule; string stop_distance;
+  string target_rule; string target_distance; string spread_guard; string max_spread_price;
+  string max_open_positions; string ambiguity_policy; string emergency_stop_source;
+  string emergency_stop_variable; string emergency_stop_condition;
+  string emergency_stop_action; string force_close_positions; string checksum;
+};
+GenericPublication active_publication;
+GenericConfig active_generic;
+bool has_generic_config=false;
 datetime last_bar=0;
 
 string Trim(const string value) { string output=value; StringTrimLeft(output); StringTrimRight(output); return output; }
@@ -28,6 +56,112 @@ bool IsDecimalDigits(const string value) {
   if(value=="") return false;
   for(int index=0;index<StringLen(value);index++) { int character=(int)StringGetCharacter(value,index); if(character<'0' || character>'9') return false; }
   return true;
+}
+string Sha256Hex(const string payload) {
+  uchar source[],key[],digest[];
+  int length=StringToCharArray(payload,source,0,WHOLE_ARRAY,CP_UTF8);
+  if(length<=1) return "";
+  ArrayResize(source,length-1); ArrayResize(key,0);
+  if(CryptEncode(CRYPT_HASH_SHA256,source,key,digest)!=32) return "";
+  string output="";
+  for(int index=0;index<ArraySize(digest);index++) output+=StringFormat("%02x",(int)digest[index]);
+  return output;
+}
+bool ReadLineField(const int handle,string &seen,string &key,string &value) {
+  string line=Trim(FileReadString(handle));
+  if(line=="" || StringGetCharacter(line,0)=='#' || StringGetCharacter(line,0)==';') return false;
+  int separator=StringFind(line,"=");
+  if(separator<1 || StringFind(line,"=",separator+1)>=0) { key="!INVALID!"; return true; }
+  key=Trim(StringSubstr(line,0,separator)); value=StringSubstr(line,separator+1);
+  if(value=="" || StringFind(seen,"|"+key+"|")>=0) { key="!INVALID!"; return true; }
+  seen+=key+"|"; return true;
+}
+bool HasFields(const string seen,const string &required[]) {
+  for(int index=0;index<ArraySize(required);index++) if(StringFind(seen,"|"+required[index]+"|")<0) return false;
+  return true;
+}
+string PublicationPayload(const GenericPublication &item) {
+  return "publication_protocol_version="+item.publication_protocol_version+"\npublication_id="+item.publication_id+"\ntarget_environment="+item.target_environment+"\ntarget_account_login="+item.target_account_login+"\ntarget_account_server="+item.target_account_server+"\ntarget_reference="+item.target_reference+"\nbroker_symbol="+item.broker_symbol+"\nstrategy_version_id="+item.strategy_version_id+"\ncompiler_protocol_version="+item.compiler_protocol_version+"\nadapter_capability_id="+item.adapter_capability_id+"\nconfig_checksum="+item.config_checksum+"\nconfig_file="+item.config_file+"\npublished_at="+item.published_at+"\n";
+}
+bool ReadGenericPublication(GenericPublication &item) {
+  ZeroMemory(item);
+  int handle=FileOpen(InpGenericPublicationFile,FILE_READ|FILE_TXT|FILE_COMMON|FILE_ANSI);
+  if(handle==INVALID_HANDLE) return false;
+  string seen="|";
+  while(!FileIsEnding(handle)) {
+    string key="",value=""; if(!ReadLineField(handle,seen,key,value)) continue;
+    if(key=="publication_protocol_version") item.publication_protocol_version=value;
+    else if(key=="publication_id") item.publication_id=value;
+    else if(key=="target_environment") item.target_environment=value;
+    else if(key=="target_account_login") item.target_account_login=value;
+    else if(key=="target_account_server") item.target_account_server=value;
+    else if(key=="target_reference") item.target_reference=value;
+    else if(key=="broker_symbol") item.broker_symbol=value;
+    else if(key=="strategy_version_id") item.strategy_version_id=value;
+    else if(key=="compiler_protocol_version") item.compiler_protocol_version=value;
+    else if(key=="adapter_capability_id") item.adapter_capability_id=value;
+    else if(key=="config_checksum") item.config_checksum=value;
+    else if(key=="config_file") item.config_file=value;
+    else if(key=="published_at") item.published_at=value;
+    else if(key=="publication_checksum") item.publication_checksum=value;
+    else { FileClose(handle); return false; }
+  }
+  FileClose(handle);
+  string required[]={"publication_protocol_version","publication_id","target_environment","target_account_login","target_account_server","target_reference","broker_symbol","strategy_version_id","compiler_protocol_version","adapter_capability_id","config_checksum","config_file","published_at","publication_checksum"};
+  if(!HasFields(seen,required)) return false;
+  if(item.publication_protocol_version!="GENERIC_MT5_DEMO_PUBLICATION_V1" || item.target_environment!="DEMO") return false;
+  if(item.compiler_protocol_version!="GENERIC_STRATEGY_MT5_COMPILER_V1" || item.adapter_capability_id!="GENERIC_SMA_REVERSAL_LONG_M1_V1") return false;
+  if(item.broker_symbol!=_Symbol || item.target_account_login!=IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN))) return false;
+  if(item.target_account_server!=AccountInfoString(ACCOUNT_SERVER) || !IsDemoAccount()) return false;
+  if(item.config_file!="ARKANA/generic/config-"+item.config_checksum+".ini") return false;
+  if(Sha256Hex(PublicationPayload(item))!=item.publication_checksum) return false;
+  return true;
+}
+string GenericConfigPayload(const GenericConfig &cfg) {
+  return "schema_version="+cfg.schema_version+"\ncompiler_protocol_version="+cfg.compiler_protocol_version+"\nadapter_capability_id="+cfg.adapter_capability_id+"\ngeneric_demo_contract_id="+cfg.generic_demo_contract_id+"\ngeneric_demo_contract_fingerprint="+cfg.generic_demo_contract_fingerprint+"\nstrategy_version_id="+cfg.strategy_version_id+"\nstrategy_checksum="+cfg.strategy_checksum+"\ncanonical_instrument="+cfg.canonical_instrument+"\nbroker_symbol="+cfg.broker_symbol+"\nenabled="+cfg.enabled+"\nallowed_environment="+cfg.allowed_environment+"\ndirection="+cfg.direction+"\nexecution_timeframe="+cfg.execution_timeframe+"\ncontext_rule="+cfg.context_rule+"\ncontext_timeframe="+cfg.context_timeframe+"\nsma_fast_period="+cfg.sma_fast_period+"\nsma_slow_period="+cfg.sma_slow_period+"\nsma_relation="+cfg.sma_relation+"\nsetup_rule="+cfg.setup_rule+"\nsetup_timeframe="+cfg.setup_timeframe+"\nsetup_direction="+cfg.setup_direction+"\ntrigger_rule="+cfg.trigger_rule+"\ntrigger_timeframe="+cfg.trigger_timeframe+"\ntrigger_direction="+cfg.trigger_direction+"\nentry_rule="+cfg.entry_rule+"\nentry_price_source="+cfg.entry_price_source+"\nuses_completed_candles="+cfg.uses_completed_candles+"\nuses_future_ohlc="+cfg.uses_future_ohlc+"\ninvalidation_rule="+cfg.invalidation_rule+"\nvolume="+cfg.volume+"\nstop_rule="+cfg.stop_rule+"\nstop_distance="+cfg.stop_distance+"\ntarget_rule="+cfg.target_rule+"\ntarget_distance="+cfg.target_distance+"\nspread_guard="+cfg.spread_guard+"\nmax_spread_price="+cfg.max_spread_price+"\nmax_open_positions="+cfg.max_open_positions+"\nambiguity_policy="+cfg.ambiguity_policy+"\nemergency_stop_source="+cfg.emergency_stop_source+"\nemergency_stop_variable="+cfg.emergency_stop_variable+"\nemergency_stop_condition="+cfg.emergency_stop_condition+"\nemergency_stop_action="+cfg.emergency_stop_action+"\nforce_close_positions="+cfg.force_close_positions+"\n";
+}
+bool AssignGenericField(GenericConfig &cfg,const string key,const string value) {
+  if(key=="schema_version") cfg.schema_version=value; else if(key=="compiler_protocol_version") cfg.compiler_protocol_version=value;
+  else if(key=="adapter_capability_id") cfg.adapter_capability_id=value; else if(key=="generic_demo_contract_id") cfg.generic_demo_contract_id=value;
+  else if(key=="generic_demo_contract_fingerprint") cfg.generic_demo_contract_fingerprint=value; else if(key=="strategy_version_id") cfg.strategy_version_id=value;
+  else if(key=="strategy_checksum") cfg.strategy_checksum=value; else if(key=="canonical_instrument") cfg.canonical_instrument=value;
+  else if(key=="broker_symbol") cfg.broker_symbol=value; else if(key=="enabled") cfg.enabled=value; else if(key=="allowed_environment") cfg.allowed_environment=value;
+  else if(key=="direction") cfg.direction=value; else if(key=="execution_timeframe") cfg.execution_timeframe=value; else if(key=="context_rule") cfg.context_rule=value;
+  else if(key=="context_timeframe") cfg.context_timeframe=value; else if(key=="sma_fast_period") cfg.sma_fast_period=value; else if(key=="sma_slow_period") cfg.sma_slow_period=value;
+  else if(key=="sma_relation") cfg.sma_relation=value; else if(key=="setup_rule") cfg.setup_rule=value; else if(key=="setup_timeframe") cfg.setup_timeframe=value;
+  else if(key=="setup_direction") cfg.setup_direction=value; else if(key=="trigger_rule") cfg.trigger_rule=value; else if(key=="trigger_timeframe") cfg.trigger_timeframe=value;
+  else if(key=="trigger_direction") cfg.trigger_direction=value; else if(key=="entry_rule") cfg.entry_rule=value; else if(key=="entry_price_source") cfg.entry_price_source=value;
+  else if(key=="uses_completed_candles") cfg.uses_completed_candles=value; else if(key=="uses_future_ohlc") cfg.uses_future_ohlc=value; else if(key=="invalidation_rule") cfg.invalidation_rule=value;
+  else if(key=="volume") cfg.volume=value; else if(key=="stop_rule") cfg.stop_rule=value; else if(key=="stop_distance") cfg.stop_distance=value;
+  else if(key=="target_rule") cfg.target_rule=value; else if(key=="target_distance") cfg.target_distance=value; else if(key=="spread_guard") cfg.spread_guard=value;
+  else if(key=="max_spread_price") cfg.max_spread_price=value; else if(key=="max_open_positions") cfg.max_open_positions=value; else if(key=="ambiguity_policy") cfg.ambiguity_policy=value;
+  else if(key=="emergency_stop_source") cfg.emergency_stop_source=value; else if(key=="emergency_stop_variable") cfg.emergency_stop_variable=value; else if(key=="emergency_stop_condition") cfg.emergency_stop_condition=value;
+  else if(key=="emergency_stop_action") cfg.emergency_stop_action=value; else if(key=="force_close_positions") cfg.force_close_positions=value; else if(key=="checksum") cfg.checksum=value;
+  else return false; return true;
+}
+bool ReadGenericConfig(const string file,GenericConfig &cfg) {
+  ZeroMemory(cfg); int handle=FileOpen(file,FILE_READ|FILE_TXT|FILE_COMMON|FILE_ANSI); if(handle==INVALID_HANDLE) return false;
+  string seen="|";
+  while(!FileIsEnding(handle)) { string key="",value=""; if(!ReadLineField(handle,seen,key,value)) continue; if(!AssignGenericField(cfg,key,value)) { FileClose(handle); return false; } }
+  FileClose(handle);
+  string required[]={"schema_version","compiler_protocol_version","adapter_capability_id","generic_demo_contract_id","generic_demo_contract_fingerprint","strategy_version_id","strategy_checksum","canonical_instrument","broker_symbol","enabled","allowed_environment","direction","execution_timeframe","context_rule","context_timeframe","sma_fast_period","sma_slow_period","sma_relation","setup_rule","setup_timeframe","setup_direction","trigger_rule","trigger_timeframe","trigger_direction","entry_rule","entry_price_source","uses_completed_candles","uses_future_ohlc","invalidation_rule","volume","stop_rule","stop_distance","target_rule","target_distance","spread_guard","max_spread_price","max_open_positions","ambiguity_policy","emergency_stop_source","emergency_stop_variable","emergency_stop_condition","emergency_stop_action","force_close_positions","checksum"};
+  if(!HasFields(seen,required) || Sha256Hex(GenericConfigPayload(cfg))!=cfg.checksum) return false;
+  if(cfg.schema_version!="2" || cfg.compiler_protocol_version!="GENERIC_STRATEGY_MT5_COMPILER_V1" || cfg.adapter_capability_id!="GENERIC_SMA_REVERSAL_LONG_M1_V1") return false;
+  if(cfg.canonical_instrument!="XAUUSD" || cfg.broker_symbol!=_Symbol || cfg.enabled!="true" || cfg.allowed_environment!="DEMO" || cfg.direction!="LONG" || cfg.execution_timeframe!="M1") return false;
+  if(cfg.context_rule!="SMA_RELATION" || cfg.context_timeframe!="M1" || cfg.sma_relation!="ABOVE" || cfg.setup_rule!="TWO_BAR_REVERSAL" || cfg.setup_timeframe!="M1" || cfg.setup_direction!="BULLISH") return false;
+  if(cfg.trigger_rule!="CANDLE_DIRECTION" || cfg.trigger_timeframe!="M1" || cfg.trigger_direction!="BULLISH" || cfg.entry_rule!="NEXT_BAR_OPEN" || cfg.entry_price_source!="MT5_ASK_FIRST_TICK_NEXT_M1") return false;
+  if(cfg.uses_completed_candles!="true" || cfg.uses_future_ohlc!="false" || cfg.invalidation_rule!="ALWAYS" || cfg.stop_rule!="FIXED_PRICE_DISTANCE_SL" || cfg.target_rule!="FIXED_PRICE_DISTANCE_TP") return false;
+  if(cfg.spread_guard!="FIXED_SPREAD_GUARD" || cfg.max_open_positions!="1" || cfg.ambiguity_policy!="STOP_FIRST" || cfg.emergency_stop_variable!="ARKANA_EMERGENCY_STOP" || cfg.force_close_positions!="false") return false;
+  int fast=(int)StringToInteger(cfg.sma_fast_period),slow=(int)StringToInteger(cfg.sma_slow_period);
+  if(fast<=0 || slow<=fast || slow>1000 || DoubleToString(StringToDouble(cfg.volume),8)!=cfg.volume || DoubleToString(StringToDouble(cfg.stop_distance),8)!=cfg.stop_distance || DoubleToString(StringToDouble(cfg.target_distance),8)!=cfg.target_distance || DoubleToString(StringToDouble(cfg.max_spread_price),8)!=cfg.max_spread_price) return false;
+  return StringToDouble(cfg.volume)>0 && StringToDouble(cfg.stop_distance)>0 && StringToDouble(cfg.target_distance)>0 && StringToDouble(cfg.max_spread_price)>0;
+}
+void WriteGenericAcknowledgement(const GenericPublication &publication,const GenericConfig &cfg) {
+  int handle=FileOpen(InpGenericAcknowledgementFile,FILE_READ|FILE_WRITE|FILE_CSV|FILE_COMMON|FILE_ANSI,','); if(handle==INVALID_HANDLE) return;
+  if(FileSize(handle)==0) FileWrite(handle,"timestamp","publication_id","environment","account_login","account_server","broker_symbol","strategy_version_id","compiler_protocol_version","adapter_capability_id","config_checksum","publication_checksum","decision");
+  FileSeek(handle,0,SEEK_END);
+  FileWrite(handle,TimeToString(TimeCurrent(),TIME_DATE|TIME_SECONDS),publication.publication_id,"DEMO",IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)),AccountInfoString(ACCOUNT_SERVER),_Symbol,cfg.strategy_version_id,cfg.compiler_protocol_version,cfg.adapter_capability_id,cfg.checksum,publication.publication_checksum,"GENERIC_CONFIG_LOADED");
+  FileClose(handle);
 }
 string CommonConfigPath() {
   string relative=InpConfigFile; StringReplace(relative,"/","\\");
@@ -142,7 +276,29 @@ void WriteTradeTelemetry(const ulong deal_ticket) {
 bool IsNewM1Bar() {
   datetime time=iTime(_Symbol,PERIOD_M1,0); if(time==0 || time==last_bar) return false; last_bar=time; return true;
 }
+void GenericOnNewBar() {
+  if(!IsDemoAccount() || EmergencyStop() || active_generic.enabled!="true") return;
+  if(HasOurPosition(_Symbol)) return;
+  MqlTick tick; if(!SymbolInfoTick(_Symbol,tick) || (tick.ask-tick.bid)>StringToDouble(active_generic.max_spread_price)) return;
+  int fast=(int)StringToInteger(active_generic.sma_fast_period),slow=(int)StringToInteger(active_generic.sma_slow_period);
+  MqlRates rates[]; ArraySetAsSeries(rates,true); if(CopyRates(_Symbol,PERIOD_M1,0,slow+2,rates)<slow+2) return;
+  double fast_sum=0.0,slow_sum=0.0;
+  for(int index=1;index<=slow;index++) { slow_sum+=rates[index].close; if(index<=fast) fast_sum+=rates[index].close; }
+  bool context=(fast_sum/(double)fast)>(slow_sum/(double)slow);
+  bool setup=rates[2].close<rates[2].open && rates[1].close>rates[1].open;
+  bool trigger=rates[1].close>rates[1].open;
+  if(!context || !setup || !trigger) return;
+  // NEXT_BAR_OPEN means the first available ASK tick after the completed M1 signal.
+  double ask=tick.ask,sl=NormalizeDouble(ask-StringToDouble(active_generic.stop_distance),_Digits),tp=NormalizeDouble(ask+StringToDouble(active_generic.target_distance),_Digits);
+  trade.Buy(StringToDouble(active_generic.volume),_Symbol,ask,sl,tp,"ARKANA generic "+active_generic.strategy_version_id);
+}
 void ReloadConfig() {
+  GenericPublication publication; GenericConfig generic_candidate;
+  if(ReadGenericPublication(publication) && ReadGenericConfig(publication.config_file,generic_candidate) && generic_candidate.checksum==publication.config_checksum && generic_candidate.strategy_version_id==publication.strategy_version_id && generic_candidate.broker_symbol==publication.broker_symbol && generic_candidate.compiler_protocol_version==publication.compiler_protocol_version && generic_candidate.adapter_capability_id==publication.adapter_capability_id) {
+    active_publication=publication; active_generic=generic_candidate; has_generic_config=true; has_config=false;
+    WriteGenericAcknowledgement(active_publication,active_generic); Print("ARKANA GENERIC_CONFIG_LOADED ",active_generic.checksum); return;
+  }
+  if(has_generic_config) { Print("ARKANA generic reload rejected; using last exact valid checksum ",active_generic.checksum); return; }
   StrategyConfig candidate;
   if(ReadConfig(candidate)) { active=candidate; has_config=true; WriteTelemetry("CONFIG_LOADED",active.checksum); }
   else if(has_config) WriteTelemetry("CONFIG_RELOAD_REJECTED","Using last valid cached configuration");
@@ -155,12 +311,13 @@ int OnInit() {
   ReloadConfig(); EventSetTimer(MathMax(InpReloadSeconds,5)); WriteTelemetry("HEARTBEAT","EA initialized"); return INIT_SUCCEEDED;
 }
 void OnDeinit(const int reason) { EventKillTimer(); WriteTelemetry("HEARTBEAT_STOP",IntegerToString(reason)); }
-void OnTimer() { ReloadConfig(); WriteTelemetry("HEARTBEAT",has_config?"cached config active":"no valid config"); }
+void OnTimer() { ReloadConfig(); if(!has_generic_config) WriteTelemetry("HEARTBEAT",has_config?"cached config active":"no valid config"); }
 void OnTradeTransaction(const MqlTradeTransaction &transaction,const MqlTradeRequest &request,const MqlTradeResult &result) {
   if(transaction.type==TRADE_TRANSACTION_DEAL_ADD && transaction.deal>0 && has_config) WriteTradeTelemetry(transaction.deal);
 }
 void OnTick() {
   if(!IsNewM1Bar()) return;
+  if(has_generic_config) { GenericOnNewBar(); return; }
   if(!IsDemoAccount() || EmergencyStop() || !has_config || !active.enabled) { WriteTelemetry("NO_TRADE","guard: demo/emergency/config/enabled"); return; }
   if(HasOurPosition(_Symbol)) { WriteTelemetry("NO_TRADE","existing ARKANA position"); return; }
   MqlTick tick; if(!SymbolInfoTick(_Symbol,tick)) return;

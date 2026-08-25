@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericDemoContract, GenericMt5Compilation, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericDemoContract, GenericMt5Compilation, GenericMt5Publication, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -30,6 +30,7 @@ from .strategy_router_verification import get_latest as get_latest_router_verifi
 from .strategy_router_safety import audit as audit_router_safety
 from .generic_demo_contracts import create as create_generic_demo_contract, eligibility_overview as generic_demo_eligibility_overview, list_all as list_generic_demo_contracts, serialize as serialize_generic_demo_contract, validation_report as generic_demo_validation_report
 from .generic_mt5_compiler import adapter_registry as generic_mt5_adapter_registry, create as create_generic_mt5_compilation, list_all as list_generic_mt5_compilations, serialize as serialize_generic_mt5_compilation, validation_report as generic_mt5_compilation_report
+from .generic_mt5_publications import list_all as list_generic_mt5_publications, poll_ack as poll_generic_mt5_ack, preflight as generic_mt5_publication_preflight, publish as publish_generic_mt5_compilation, serialize as serialize_generic_mt5_publication
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
@@ -773,6 +774,44 @@ def get_generic_mt5_compilation(compilation_id: str, session: Session = Depends(
     if not item:
         raise HTTPException(404, "generic MT5 compilation not found")
     return serialize_generic_mt5_compilation(item)
+
+
+@app.post("/api/v1/generic-mt5-compilations/{compilation_id}/publication/preflight")
+def preflight_generic_mt5_publication(compilation_id: str, payload: dict, session: Session = Depends(get_session)) -> dict:
+    return generic_mt5_publication_preflight(session, compilation_id, payload)
+
+
+@app.post("/api/v1/generic-mt5-compilations/{compilation_id}/publication")
+def post_generic_mt5_publication(compilation_id: str, payload: dict, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = publish_generic_mt5_compilation(session, compilation_id, payload)
+        return {**serialize_generic_mt5_publication(item), "reused": reused}
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/generic-mt5-publications")
+def get_generic_mt5_publications(session: Session = Depends(get_session)) -> dict:
+    return {"generic_mt5_publications": [serialize_generic_mt5_publication(item) for item in list_generic_mt5_publications(session)]}
+
+
+@app.get("/api/v1/generic-mt5-publications/{publication_id}")
+def get_generic_mt5_publication(publication_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(GenericMt5Publication, publication_id)
+    if not item:
+        raise HTTPException(404, "generic MT5 publication not found")
+    return serialize_generic_mt5_publication(item)
+
+
+@app.post("/api/v1/generic-mt5-publications/{publication_id}/poll-ack")
+def post_generic_mt5_publication_poll_ack(publication_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(GenericMt5Publication, publication_id)
+    if not item:
+        raise HTTPException(404, "generic MT5 publication not found")
+    try:
+        return serialize_generic_mt5_publication(poll_generic_mt5_ack(session, item))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
 
 
 @app.post("/api/v1/capital-contracts/validate")

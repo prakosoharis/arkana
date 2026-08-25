@@ -43,6 +43,7 @@ MIGRATION_040 = "040_strategy_router_decision_parameters"
 MIGRATION_041 = "041_strategy_router_verification"
 MIGRATION_042 = "042_generic_demo_contract"
 MIGRATION_043 = "043_generic_mt5_compilation"
+MIGRATION_044 = "044_generic_mt5_publication"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -651,6 +652,22 @@ def _migration_043(connection) -> None:
         connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_generic_mt5_compilations_{column} ON generic_mt5_compilations({column})"))
 
 
+def _migration_044(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS generic_mt5_publications (
+        id VARCHAR(36) PRIMARY KEY, compilation_id VARCHAR(36) NOT NULL,
+        fingerprint VARCHAR(64) NOT NULL UNIQUE, protocol_version VARCHAR(64) NOT NULL,
+        authorization_fingerprint VARCHAR(64) NOT NULL, target_account_login VARCHAR(32) NOT NULL,
+        target_account_server VARCHAR(128) NOT NULL, target_reference VARCHAR(160) NOT NULL,
+        target_environment VARCHAR(16) NOT NULL, broker_symbol VARCHAR(64) NOT NULL,
+        config_checksum VARCHAR(64) NOT NULL, publication_checksum VARCHAR(64) NOT NULL,
+        config_path VARCHAR(1024) NOT NULL, manifest_path VARCHAR(1024) NOT NULL,
+        manifest JSON NOT NULL, status VARCHAR(48) NOT NULL, acknowledgement JSON,
+        published_at TIMESTAMP, acknowledged_at TIMESTAMP, created_at TIMESTAMP NOT NULL,
+        FOREIGN KEY(compilation_id) REFERENCES generic_mt5_compilations(id))"""))
+    for column in ("compilation_id", "fingerprint", "config_checksum", "publication_checksum"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_generic_mt5_publications_{column} ON generic_mt5_publications({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -683,6 +700,7 @@ MIGRATIONS = (
     (MIGRATION_041, _migration_041),
     (MIGRATION_042, _migration_042),
     (MIGRATION_043, _migration_043),
+    (MIGRATION_044, _migration_044),
 )
 
 
