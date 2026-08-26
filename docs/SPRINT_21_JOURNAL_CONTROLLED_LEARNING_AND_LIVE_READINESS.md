@@ -1,11 +1,11 @@
 # Sprint 21 — Journal, Controlled Learning, and LIVE-Readiness Governance
 
-**Contract status:** proposed; awaiting explicit Owner acceptance
+**Contract status:** accepted by the Owner on 2026-08-26
 
-**Active checkpoint:** none
+**Active checkpoint:** ARK-S21-00 complete; awaiting Owner acceptance
 
-**Implementation authority:** contract documentation only until accepted; no
-ARK-S21 source, migration, runtime mutation, DEMO action, or LIVE authority
+**Implementation authority:** ARK-S21-00 documentation/read-only audit only;
+no S21 source, migration, runtime mutation, DEMO action, or LIVE authority
 
 ## Product objective
 
@@ -385,3 +385,28 @@ begins. Every subsequent checkpoint requires its own explicit acceptance and
 must be committed/pushed before the next checkpoint starts. Saying `lanjut`
 after accepting a completed checkpoint authorizes full implementation of only
 the named next checkpoint, not later checkpoints or LIVE behavior.
+
+## ARK-S21-00 completion evidence
+
+The Sprint 21 contract was accepted and pushed as `34fdd77` before work began.
+ARK-S21-00 completed its documentation-only, read-only audit on 2026-08-26.
+The concrete report is
+[`SPRINT_21_00_BASELINE_SOURCE_MAP_AND_POLICY_FREEZE.md`](SPRINT_21_00_BASELINE_SOURCE_MAP_AND_POLICY_FREEZE.md).
+
+The runtime remains `BLOCKED_EXTERNAL_EVIDENCE / NO_VALIDATED_STRATEGY` with
+zero generic contracts, compilations, publications, acknowledgements,
+telemetry events, forward evidence, or complete-chain verifiers. Six database
+rows have status `VALIDATED`, but all are ineligible for the exact generic DEMO
+chain and five are explicit `router-ready-*` fixtures. The current Router
+safety audit also fails closed with `NO_TRADE_DECISION_NOT_EXACT` and
+fingerprint
+`db18ecca4d2d75ad4311e6f0972344fe489c18dbacfad5823b98dbb08098d2f4`.
+
+The journal source map; fixture/real separation; incident severity,
+acknowledgement and recovery semantics; retention/privacy policy; controlled-
+learning schema; and readiness schema are frozen. No model, migration, API,
+UI, EA, database row, FILE_COMMON payload, config, deployment, order, trade, or
+LIVE action was changed.
+
+**ARK-S21-00 technical claim:** `VALIDATED`, scoped only to the baseline audit
+and policy freeze. Owner acceptance remains pending.

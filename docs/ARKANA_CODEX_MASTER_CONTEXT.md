@@ -345,14 +345,23 @@ Sprint 20 technical delivery is complete. The external Owner-terminal evidence
 track remains pending, and no Sprint 21 checkpoint is authorized until its
 contract is explicitly accepted.
 
-## Proposed milestone — Sprint 21 journal and LIVE-readiness governance
+## Active milestone — Sprint 21 journal and LIVE-readiness governance
 
 [`SPRINT_21_JOURNAL_CONTROLLED_LEARNING_AND_LIVE_READINESS.md`](SPRINT_21_JOURNAL_CONTROLLED_LEARNING_AND_LIVE_READINESS.md)
-is proposed and awaits explicit Owner acceptance. Its six-checkpoint sequence
+was accepted by the Owner and pushed as `34fdd77`. Its six-checkpoint sequence
 covers post-S20 policy freeze, an immutable lineage-preserving journal index,
 incident/acknowledgement/recovery governance, evidence-bound controlled-
 learning proposals, a fail-closed LIVE-readiness assessment, and Owner UI plus
 complete-chain verification.
+
+ARK-S21-00 is complete and awaits Owner acceptance; its exact read-only baseline and policy
+freeze are recorded in
+[`SPRINT_21_00_BASELINE_SOURCE_MAP_AND_POLICY_FREEZE.md`](SPRINT_21_00_BASELINE_SOURCE_MAP_AND_POLICY_FREEZE.md).
+Runtime remains `BLOCKED_EXTERNAL_EVIDENCE / NO_VALIDATED_STRATEGY` with zero
+generic S20 chain artifacts. Six database rows carry `VALIDATED`, but all are
+ineligible for generic DEMO and five are explicit Router fixtures. The latest
+Router safety audit fails closed with `NO_TRADE_DECISION_NOT_EXACT`; the audit
+does not clean or mutate these records.
 
 Sprint 21 explicitly implements no LIVE endpoint, config, credential,
 deployment, order, or trade. A possible `READY_FOR_OWNER_LIVE_REVIEW` result is
@@ -360,7 +369,7 @@ not LIVE authorization and must always retain
 `LIVE_AUTHORIZATION_NOT_IMPLEMENTED`. The current real runtime is expected to
 remain `NOT_READY_FOR_LIVE / BLOCKED_EXTERNAL_EVIDENCE` until an eligible
 generic strategy and genuine Owner MT5 DEMO evidence exist. No ARK-S21 source
-or checkpoint is authorized before contract acceptance.
+or checkpoint after ARK-S21-00 is authorized before checkpoint acceptance.
 
 ## QA protocol
 
