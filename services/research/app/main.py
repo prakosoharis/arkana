@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericDemoChainVerification, GenericDemoContract, GenericForwardEvidence, GenericMt5Compilation, GenericMt5Publication, GenericMt5TelemetryEvent, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, GovernanceJournalItem, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericDemoChainVerification, GenericDemoContract, GenericForwardEvidence, GenericMt5Compilation, GenericMt5Publication, GenericMt5TelemetryEvent, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, GovernanceIncident, GovernanceJournalItem, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -35,6 +35,7 @@ from .generic_forward_telemetry import list_evidence as list_generic_forward_evi
 from .generic_demo_chain_verification import get_latest as get_latest_generic_demo_verification, materialize as materialize_generic_demo_verification, serialize as serialize_generic_demo_verification
 from .generic_demo_owner_overview import build as build_generic_demo_owner_overview
 from .governance_journal import list_items as list_governance_journal_items, materialize as materialize_governance_journal_item, serialize as serialize_governance_journal_item, source_contract as governance_journal_source_contract, verify as verify_governance_journal_item
+from .governance_incidents import acknowledge as acknowledge_governance_incident, list_all as list_governance_incidents, materialize as materialize_governance_incident, policy_contract as governance_incident_policy_contract, resolve as resolve_governance_incident, serialize as serialize_governance_incident, serialize_ack as serialize_governance_incident_ack, serialize_resolution as serialize_governance_incident_resolution, verify as verify_governance_incident
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
@@ -780,6 +781,75 @@ def get_governance_journal_item_verification(item_id: str, session: Session = De
     if not item:
         raise HTTPException(404, "governance journal item not found")
     return verify_governance_journal_item(session, item)
+
+
+@app.get("/api/v1/governance-incidents/policy-contract")
+def get_governance_incident_policy_contract() -> dict:
+    return governance_incident_policy_contract()
+
+
+@app.post("/api/v1/governance-incidents")
+def create_governance_incident(payload: dict, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = materialize_governance_incident(session, payload)
+        return serialize_governance_incident(session, item, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/governance-incidents")
+def get_governance_incidents(
+    limit: int = Query(100, ge=1, le=500),
+    severity: str | None = Query(None),
+    state: str | None = Query(None),
+    session: Session = Depends(get_session),
+) -> dict:
+    try:
+        return list_governance_incidents(session, limit=limit, severity=severity, state=state)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/governance-incidents/{incident_id}")
+def get_governance_incident(incident_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(GovernanceIncident, incident_id)
+    if not item:
+        raise HTTPException(404, "governance incident not found")
+    return serialize_governance_incident(session, item)
+
+
+@app.post("/api/v1/governance-incidents/{incident_id}/acknowledgements")
+def post_governance_incident_acknowledgement(incident_id: str, payload: dict, session: Session = Depends(get_session)) -> dict:
+    item = session.get(GovernanceIncident, incident_id)
+    if not item:
+        raise HTTPException(404, "governance incident not found")
+    if set(payload) != {"acknowledgement"}:
+        raise HTTPException(422, "acknowledgement request requires exactly acknowledgement")
+    try:
+        acknowledgement, reused = acknowledge_governance_incident(session, item, payload["acknowledgement"])
+        return serialize_governance_incident_ack(acknowledgement, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.post("/api/v1/governance-incidents/{incident_id}/resolutions")
+def post_governance_incident_resolution(incident_id: str, payload: dict, session: Session = Depends(get_session)) -> dict:
+    item = session.get(GovernanceIncident, incident_id)
+    if not item:
+        raise HTTPException(404, "governance incident not found")
+    try:
+        resolution, reused = resolve_governance_incident(session, item, payload)
+        return serialize_governance_incident_resolution(resolution, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/governance-incidents/{incident_id}/verification")
+def get_governance_incident_verification(incident_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(GovernanceIncident, incident_id)
+    if not item:
+        raise HTTPException(404, "governance incident not found")
+    return verify_governance_incident(session, item)
 
 
 @app.post("/api/v1/generic-demo-contracts/validate")

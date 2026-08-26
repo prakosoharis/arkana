@@ -2,11 +2,11 @@
 
 **Contract status:** accepted by the Owner on 2026-08-26
 
-**Active checkpoint:** ARK-S21-01 complete; awaiting Owner acceptance
+**Active checkpoint:** ARK-S21-02 complete; awaiting Owner acceptance
 
-**Implementation authority:** ARK-S21-01 immutable journal source/API scope
-only; no incident workflow, learning proposal, readiness assessment, DEMO
-action, or LIVE authority
+**Implementation authority:** ARK-S21-02 incident, acknowledgement, recovery,
+and fail-safe entry-block scope only; no learning proposal, readiness
+assessment, automatic unblocking, DEMO activation, or LIVE authority
 
 ## Product objective
 
@@ -430,4 +430,27 @@ has zero journal items because startup/GET performs no implicit backfill.
 Existing runtime counts and FILE_COMMON hashes are unchanged.
 
 **ARK-S21-01 technical claim:** `VALIDATED`, scoped only to immutable journal
-indexing and read verification. Owner acceptance remains pending.
+indexing and read verification. Accepted by the Owner and pushed as `301f311`.
+
+## ARK-S21-02 completion evidence
+
+ARK-S21-02 completed on 2026-08-26. The concrete report is
+[`SPRINT_21_02_INCIDENT_ACKNOWLEDGEMENT_RECOVERY.md`](SPRINT_21_02_INCIDENT_ACKNOWLEDGEMENT_RECOVERY.md).
+
+Migration 048 and `GOVERNANCE_INCIDENT_RECOVERY_V1` implement three append-only
+ledgers, a fingerprinted 19-reason deterministic severity policy, exact Owner
+acknowledgement that cannot resolve, current incident-specific recovery,
+complete-chain verification, and S20 fail-safe block installation/preservation
+without automatic unblock. FastAPI and BFF expose the bounded lifecycle with no
+DELETE, deployment, order, trade, or LIVE endpoint.
+
+Focused regression is 26 passed, full backend regression is 319 passed, web
+regression is 30 passed, TypeScript/lint/build pass, and Docker
+migration/restart/API/BFF OAT pass. PostgreSQL records migration 048 once and
+has zero real incidents, acknowledgements, or resolutions because OAT does not
+fabricate absent source observations. Existing runtime counts and FILE_COMMON
+hashes are unchanged.
+
+**ARK-S21-02 technical claim:** `VALIDATED`, scoped only to incident,
+acknowledgement, evidence-bound recovery, and fail-safe entry-block governance.
+Owner acceptance remains pending.

@@ -363,14 +363,27 @@ ineligible for generic DEMO and five are explicit Router fixtures. The latest
 Router safety audit fails closed with `NO_TRADE_DECISION_NOT_EXACT`; the audit
 does not clean or mutate these records.
 
-ARK-S21-01 is complete and awaits Owner acceptance. Its concrete evidence is
+ARK-S21-01 was accepted and pushed as `301f311`. Its concrete evidence is
 [`SPRINT_21_01_IMMUTABLE_UNIFIED_JOURNAL.md`](SPRINT_21_01_IMMUTABLE_UNIFIED_JOURNAL.md).
 Migration 047 and `GOVERNANCE_JOURNAL_INDEX_V1` provide a closed 23-type,
 append-only exact-reference journal, deterministic evidence origin/scope/time,
 source/lineage tamper verification, privacy-safe account references, cursor
 pagination, FastAPI, and BFF. Runtime journal count is zero because no implicit
-backfill occurs. Full backend is 304 passed and web is 30 passed; Docker
-migration/restart OAT passes without changing prior evidence or FILE_COMMON.
+backfill occurs. Its accepted full backend was 304 passed and web was 30
+passed; Docker migration/restart OAT passed without changing prior evidence or
+FILE_COMMON.
+
+ARK-S21-02 is complete and awaits Owner acceptance. Its concrete evidence is
+[`SPRINT_21_02_INCIDENT_ACKNOWLEDGEMENT_RECOVERY.md`](SPRINT_21_02_INCIDENT_ACKNOWLEDGEMENT_RECOVERY.md).
+Migration 048 and `GOVERNANCE_INCIDENT_RECOVERY_V1` add append-only incident,
+acknowledgement, and resolution ledgers; a fingerprinted 19-reason fixed
+severity policy; exact acknowledgement that never resolves; current
+incident-specific recovery; complete-chain tamper verification; and S20
+entry-block installation/preservation without automatic unblock. Focused is
+26 passed, full backend is 319 passed, web is 30 passed, and Docker
+migration/restart/API/BFF OAT passes. Runtime incident, acknowledgement, and
+resolution counts remain zero; existing counts and FILE_COMMON hashes remain
+unchanged.
 
 Sprint 21 explicitly implements no LIVE endpoint, config, credential,
 deployment, order, or trade. A possible `READY_FOR_OWNER_LIVE_REVIEW` result is
@@ -378,7 +391,7 @@ not LIVE authorization and must always retain
 `LIVE_AUTHORIZATION_NOT_IMPLEMENTED`. The current real runtime is expected to
 remain `NOT_READY_FOR_LIVE / BLOCKED_EXTERNAL_EVIDENCE` until an eligible
 generic strategy and genuine Owner MT5 DEMO evidence exist. No ARK-S21 source
-or checkpoint after ARK-S21-01 is authorized before checkpoint acceptance.
+or checkpoint after ARK-S21-02 is authorized before checkpoint acceptance.
 
 ## QA protocol
 

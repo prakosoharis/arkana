@@ -506,6 +506,73 @@ class GovernanceJournalItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class GovernanceIncident(Base):
+    """Immutable deterministic safety observation; status is derived from its chain."""
+    __tablename__ = "governance_incidents"
+    __table_args__ = (
+        UniqueConstraint("incident_key", name="uq_governance_incident_key"),
+        UniqueConstraint("fingerprint", name="uq_governance_incident_fingerprint"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    incident_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(96), nullable=False, index=True)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    trigger_journal_item_id: Mapped[str] = mapped_column(ForeignKey("governance_journal_items.id"), nullable=False, index=True)
+    trigger_journal_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    subject_type: Mapped[str] = mapped_column(String(48), nullable=False)
+    subject_id: Mapped[str] = mapped_column(String(96), nullable=False)
+    strategy_version_id: Mapped[str | None] = mapped_column(ForeignKey("strategy_versions.id"), nullable=True, index=True)
+    publication_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    detected_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    entry_block_required: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    entry_block_state: Mapped[str] = mapped_column(String(32), nullable=False)
+    readiness_blocked: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    signal: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class GovernanceIncidentAcknowledgement(Base):
+    """Owner review receipt; deliberately incapable of resolving an incident."""
+    __tablename__ = "governance_incident_acknowledgements"
+    __table_args__ = (
+        UniqueConstraint("incident_id", name="uq_governance_incident_ack_incident"),
+        UniqueConstraint("fingerprint", name="uq_governance_incident_ack_fingerprint"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    incident_id: Mapped[str] = mapped_column(ForeignKey("governance_incidents.id"), nullable=False, index=True)
+    incident_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    acknowledgement_phrase: Mapped[str] = mapped_column(String(192), nullable=False)
+    phrase_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    acknowledged_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class GovernanceIncidentResolution(Base):
+    """Immutable evidence-bound recovery; it never removes an entry block."""
+    __tablename__ = "governance_incident_resolutions"
+    __table_args__ = (
+        UniqueConstraint("incident_id", name="uq_governance_incident_resolution_incident"),
+        UniqueConstraint("fingerprint", name="uq_governance_incident_resolution_fingerprint"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    incident_id: Mapped[str] = mapped_column(ForeignKey("governance_incidents.id"), nullable=False, index=True)
+    incident_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    acknowledgement_id: Mapped[str | None] = mapped_column(ForeignKey("governance_incident_acknowledgements.id"), nullable=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_journal_item_ids: Mapped[list] = mapped_column(JSON, nullable=False)
+    evidence_fingerprints: Mapped[list] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(48), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    resolved_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"
