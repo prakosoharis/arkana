@@ -9,6 +9,7 @@ input string InpTradeTelemetryFile="ARKANA/trades.csv";
 input string InpGenericPublicationFile="ARKANA/generic/publication.ini";
 input string InpGenericAcknowledgementFile="ARKANA/generic/acknowledgement.csv";
 input string InpGenericTelemetryFile="ARKANA/generic/telemetry.csv";
+input string InpGenericControlFile="ARKANA/generic/control.ini";
 input long   InpMagicNumber=260806;
 input int    InpReloadSeconds=10;
 
@@ -46,9 +47,14 @@ struct GenericConfig {
   string emergency_stop_variable; string emergency_stop_condition;
   string emergency_stop_action; string force_close_positions; string checksum;
 };
+struct GenericControl {
+  string control_protocol_version; string publication_id; string config_checksum;
+  string action; string reason_code; string issued_at; string control_checksum;
+};
 GenericPublication active_publication;
 GenericConfig active_generic;
 bool has_generic_config=false;
+bool generic_entries_blocked=false;
 datetime last_bar=0;
 
 string Trim(const string value) { string output=value; StringTrimLeft(output); StringTrimRight(output); return output; }
@@ -156,6 +162,27 @@ bool ReadGenericConfig(const string file,GenericConfig &cfg) {
   int fast=(int)StringToInteger(cfg.sma_fast_period),slow=(int)StringToInteger(cfg.sma_slow_period);
   if(fast<=0 || slow<=fast || slow>1000 || DoubleToString(StringToDouble(cfg.volume),8)!=cfg.volume || DoubleToString(StringToDouble(cfg.stop_distance),8)!=cfg.stop_distance || DoubleToString(StringToDouble(cfg.target_distance),8)!=cfg.target_distance || DoubleToString(StringToDouble(cfg.max_spread_price),8)!=cfg.max_spread_price) return false;
   return StringToDouble(cfg.volume)>0 && StringToDouble(cfg.stop_distance)>0 && StringToDouble(cfg.target_distance)>0 && StringToDouble(cfg.max_spread_price)>0;
+}
+string GenericControlPayload(const GenericControl &control) {
+  return "control_protocol_version="+control.control_protocol_version+"\npublication_id="+control.publication_id+"\nconfig_checksum="+control.config_checksum+"\naction="+control.action+"\nreason_code="+control.reason_code+"\nissued_at="+control.issued_at+"\n";
+}
+int GenericControlState(const GenericPublication &publication,const GenericConfig &cfg) {
+  if(!FileIsExist(InpGenericControlFile,FILE_COMMON)) return 0;
+  GenericControl control; ZeroMemory(control);
+  int handle=FileOpen(InpGenericControlFile,FILE_READ|FILE_TXT|FILE_COMMON|FILE_ANSI); if(handle==INVALID_HANDLE) return -1;
+  string seen="|";
+  while(!FileIsEnding(handle)) {
+    string key="",value=""; if(!ReadLineField(handle,seen,key,value)) continue;
+    if(key=="control_protocol_version") control.control_protocol_version=value; else if(key=="publication_id") control.publication_id=value;
+    else if(key=="config_checksum") control.config_checksum=value; else if(key=="action") control.action=value;
+    else if(key=="reason_code") control.reason_code=value; else if(key=="issued_at") control.issued_at=value;
+    else if(key=="control_checksum") control.control_checksum=value; else { FileClose(handle); return -1; }
+  }
+  FileClose(handle);
+  string required[]={"control_protocol_version","publication_id","config_checksum","action","reason_code","issued_at","control_checksum"};
+  if(!HasFields(seen,required) || control.control_protocol_version!="GENERIC_MT5_DEMO_CONTROL_V1" || control.action!="BLOCK_NEW_ENTRIES" || Sha256Hex(GenericControlPayload(control))!=control.control_checksum) return -1;
+  if(control.publication_id!=publication.publication_id || control.config_checksum!=cfg.checksum) return 0;
+  return 1;
 }
 void WriteGenericAcknowledgement(const GenericPublication &publication,const GenericConfig &cfg) {
   int handle=FileOpen(InpGenericAcknowledgementFile,FILE_READ|FILE_WRITE|FILE_CSV|FILE_COMMON|FILE_ANSI,','); if(handle==INVALID_HANDLE) return;
@@ -300,6 +327,7 @@ bool IsNewM1Bar() {
   datetime time=iTime(_Symbol,PERIOD_M1,0); if(time==0 || time==last_bar) return false; last_bar=time; return true;
 }
 void GenericOnNewBar() {
+  if(generic_entries_blocked) { EmitGenericSimple("BLOCKER","ENTRY_CONTROL_BLOCKED"); return; }
   if(!IsDemoAccount() || active_generic.enabled!="true") { EmitGenericSimple("BLOCKER","DEMO_OR_CONFIG_GUARD"); return; }
   if(EmergencyStop()) { EmitGenericSimple("EMERGENCY","EMERGENCY_STOP_ACTIVE"); EmitGenericSimple("BLOCKER","EMERGENCY_STOP_BLOCKED_ENTRY"); return; }
   if(HasOurPosition(_Symbol)) { EmitGenericSimple("POSITION","OPEN_POSITION_PRESENT"); EmitGenericSimple("BLOCKER","MAX_OPEN_POSITIONS"); return; }
@@ -334,9 +362,10 @@ void ReloadConfig() {
   GenericPublication publication; GenericConfig generic_candidate;
   if(ReadGenericPublication(publication) && ReadGenericConfig(publication.config_file,generic_candidate) && generic_candidate.checksum==publication.config_checksum && generic_candidate.strategy_version_id==publication.strategy_version_id && generic_candidate.broker_symbol==publication.broker_symbol && generic_candidate.compiler_protocol_version==publication.compiler_protocol_version && generic_candidate.adapter_capability_id==publication.adapter_capability_id) {
     active_publication=publication; active_generic=generic_candidate; has_generic_config=true; has_config=false;
+    generic_entries_blocked=GenericControlState(active_publication,active_generic)!=0;
     WriteGenericAcknowledgement(active_publication,active_generic); Print("ARKANA GENERIC_CONFIG_LOADED ",active_generic.checksum); return;
   }
-  if(has_generic_config) { Print("ARKANA generic reload rejected; using last exact valid checksum ",active_generic.checksum); return; }
+  if(has_generic_config) { generic_entries_blocked=GenericControlState(active_publication,active_generic)!=0; Print("ARKANA generic reload rejected; using last exact valid checksum ",active_generic.checksum); return; }
   StrategyConfig candidate;
   if(ReadConfig(candidate)) { active=candidate; has_config=true; WriteTelemetry("CONFIG_LOADED",active.checksum); }
   else if(has_config) WriteTelemetry("CONFIG_RELOAD_REJECTED","Using last valid cached configuration");

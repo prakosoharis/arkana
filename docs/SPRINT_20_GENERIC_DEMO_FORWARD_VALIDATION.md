@@ -2,7 +2,7 @@
 
 **Contract status:** accepted by Owner on 2026-08-25
 
-**Active checkpoint:** ARK-S20-05 — authorized by Owner; implementation pending
+**Active checkpoint:** none — ARK-S20-00 through ARK-S20-05 accepted
 
 **Implementation authority:** ARK-S20-05 Owner DEMO UI, complete-chain verifier,
 restart recovery, browser OAT, and Sprint 20 closure only; no LIVE authority
@@ -405,3 +405,27 @@ demo trades, and the FILE_COMMON hash are unchanged.
 **Technical checkpoint claim:** `VALIDATED`, scoped only to immutable generic
 DEMO telemetry and frozen forward-evidence semantics. It grants no LIVE
 authority and makes no profitability or forward-performance claim.
+
+## ARK-S20-05 completion evidence
+
+ARK-S20-05 was accepted by the Owner on 2026-08-26. Exact evidence is recorded in
+[`SPRINT_20_05_OWNER_DEMO_UI_AND_VERIFIER.md`](SPRINT_20_05_OWNER_DEMO_UI_AND_VERIFIER.md).
+
+Migration `046_generic_demo_chain_verifier`, the Owner generic DEMO lifecycle
+UI, immutable complete-chain verifier, exact entry-block/reconciliation
+control, restart recovery, and API/BFF lifecycle are implemented. Focused
+regression is 50 passed, full backend regression is 297 passed, web regression
+is 30 passed, and MetaEditor64 is 0 errors/0 warnings. TypeScript, ESLint,
+optimized production/Docker builds, restart, and browser OAT pass.
+
+Runtime remains honestly `BLOCKED_EXTERNAL_EVIDENCE`: zero generic contracts,
+compilations, publications, events, forward evidence, and complete-chain
+verifiers. Five legacy deployments, 6,389 legacy journal rows, and FILE_COMMON
+aggregate `14c1c3c3627d8833c206305625ff389457386937fc8d14eebcec0af0c892e383`
+survive restart unchanged. No real Owner-terminal acknowledgement or generic
+forward telemetry was fabricated.
+
+**Accepted technical checkpoint claim:** `VALIDATED`, scoped only to S20-05 source,
+tests, recovery, and OAT. Sprint 20 real-activation closure remains
+`BLOCKED_EXTERNAL_EVIDENCE` until an eligible chain and Owner MT5 DEMO terminal
+produce genuine acknowledgement and forward evidence.

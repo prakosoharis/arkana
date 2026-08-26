@@ -1,0 +1,4 @@
+import { NextResponse } from "next/server";
+const base=(id:string)=>`${process.env.RESEARCH_API_URL??"http://localhost:8000"}/api/v1/generic-mt5-publications/${id}/verification`;
+export async function GET(_request:Request,context:{params:Promise<{id:string}>}){try{const{id}=await context.params;const response=await fetch(base(id),{cache:"no-store"});return NextResponse.json(await response.json(),{status:response.status})}catch{return NextResponse.json({detail:"Research service is unavailable"},{status:503})}}
+export async function POST(_request:Request,context:{params:Promise<{id:string}>}){try{const{id}=await context.params;const response=await fetch(base(id),{method:"POST",cache:"no-store"});return NextResponse.json(await response.json(),{status:response.status})}catch{return NextResponse.json({detail:"Research service is unavailable"},{status:503})}}

@@ -330,6 +330,21 @@ passed, and MetaEditor is 0 errors/0 warnings. Runtime remains zero generic
 events/evidence; five legacy deployments, 6,389 separate legacy journal rows,
 zero demo trades, and FILE_COMMON are unchanged.
 
+ARK-S20-05 was accepted by the Owner on 2026-08-26.
+Evidence is in `docs/SPRINT_20_05_OWNER_DEMO_UI_AND_VERIFIER.md`. Migration 046,
+the `/demo-forward` Owner UI, immutable complete-chain verifier, exact
+entry-block/lifecycle reconciliation, restart recovery, and API/BFF lifecycle
+are implemented. Backend regression is 297 passed, web regression is 30
+passed, and MetaEditor is 0 errors/0 warnings; Docker restart and browser OAT
+pass. The technical checkpoint claim is scoped `VALIDATED`, while real Sprint
+closure remains `BLOCKED_EXTERNAL_EVIDENCE`: runtime has zero generic
+publications/events/evidence and no Owner-terminal acknowledgement was
+fabricated. LIVE remains locked.
+
+Sprint 20 technical delivery is complete. The external Owner-terminal evidence
+track remains pending, and no Sprint 21 checkpoint is authorized until its
+contract is explicitly accepted.
+
 ## QA protocol
 
 Before coding: inspect the current repository, `git status`, dirty diffs,

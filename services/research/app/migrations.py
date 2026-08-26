@@ -45,6 +45,7 @@ MIGRATION_042 = "042_generic_demo_contract"
 MIGRATION_043 = "043_generic_mt5_compilation"
 MIGRATION_044 = "044_generic_mt5_publication"
 MIGRATION_045 = "045_generic_forward_telemetry"
+MIGRATION_046 = "046_generic_demo_chain_verifier"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -692,6 +693,18 @@ def _migration_045(connection) -> None:
         connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_generic_forward_evidence_{column} ON generic_forward_evidence({column})"))
 
 
+def _migration_046(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS generic_demo_chain_verifications (
+        id VARCHAR(36) PRIMARY KEY, publication_id VARCHAR(36) NOT NULL,
+        forward_evidence_id VARCHAR(36) NOT NULL, fingerprint VARCHAR(64) NOT NULL UNIQUE,
+        verifier_version VARCHAR(64) NOT NULL, status VARCHAR(32) NOT NULL,
+        result JSON NOT NULL, created_at TIMESTAMP NOT NULL,
+        FOREIGN KEY(publication_id) REFERENCES generic_mt5_publications(id),
+        FOREIGN KEY(forward_evidence_id) REFERENCES generic_forward_evidence(id))"""))
+    for column in ("publication_id", "forward_evidence_id", "fingerprint"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_generic_demo_chain_verifications_{column} ON generic_demo_chain_verifications({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -726,6 +739,7 @@ MIGRATIONS = (
     (MIGRATION_043, _migration_043),
     (MIGRATION_044, _migration_044),
     (MIGRATION_045, _migration_045),
+    (MIGRATION_046, _migration_046),
 )
 
 

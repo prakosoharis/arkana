@@ -32,17 +32,22 @@ from .strategy_contracts import canonical_json
 
 PROTOCOL_VERSION = "GENERIC_MT5_DEMO_PUBLICATION_V1"
 AUTHORIZATION_PHRASE = "AUTHORIZE_GENERIC_DEMO_PUBLICATION_V1"
+CONTROL_PROTOCOL_VERSION = "GENERIC_MT5_DEMO_CONTROL_V1"
+BLOCK_AUTHORIZATION_PHRASE = "BLOCK_GENERIC_DEMO_ENTRIES_V1"
 STATUS_WAITING = "DEMO_WAITING_FOR_MT5"
 STATUS_ACTIVE = "DEMO_ACKNOWLEDGED"
+STATUS_BLOCKED = "DEMO_ENTRIES_BLOCKED"
 AUTHORIZATION_MAX_AGE_SECONDS = 300
 MANIFEST_RELATIVE = Path("ARKANA") / "generic" / "publication.ini"
 ACK_RELATIVE = Path("ARKANA") / "generic" / "acknowledgement.csv"
+CONTROL_RELATIVE = Path("ARKANA") / "generic" / "control.ini"
 MANIFEST_FIELDS = (
     "publication_protocol_version", "publication_id", "target_environment",
     "target_account_login", "target_account_server", "target_reference",
     "broker_symbol", "strategy_version_id", "compiler_protocol_version",
     "adapter_capability_id", "config_checksum", "config_file", "published_at",
 )
+CONTROL_FIELDS = ("control_protocol_version", "publication_id", "config_checksum", "action", "reason_code", "issued_at")
 ACK_FIELDS = (
     "timestamp", "publication_id", "environment", "account_login",
     "account_server", "broker_symbol", "strategy_version_id",
@@ -184,6 +189,37 @@ def _manifest(values: dict[str, str]) -> tuple[str, str]:
     payload = "\n".join(f"{name}={values[name]}" for name in MANIFEST_FIELDS) + "\n"
     checksum = sha256(payload.encode()).hexdigest()
     return payload + f"publication_checksum={checksum}\n", checksum
+
+
+def _control(values: dict[str, str]) -> tuple[str, str]:
+    if set(values) != set(CONTROL_FIELDS) or any(not value or any(character in value for character in "\r\n=") for value in values.values()):
+        raise ValueError("generic DEMO control has missing, unsupported, or unsafe fields")
+    payload = "\n".join(f"{name}={values[name]}" for name in CONTROL_FIELDS) + "\n"
+    checksum = sha256(payload.encode()).hexdigest()
+    return payload + f"control_checksum={checksum}\n", checksum
+
+
+def parse_control(text: object) -> dict[str, str]:
+    if not isinstance(text, str):
+        raise ValueError("generic DEMO control text is required")
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        if not line or line.count("=") != 1:
+            raise ValueError("generic DEMO control serialization is invalid")
+        key, value = line.split("=", 1)
+        if key in values or key not in {*CONTROL_FIELDS, "control_checksum"} or not value:
+            raise ValueError("generic DEMO control contains unknown, duplicated, or empty fields")
+        values[key] = value
+    if set(values) != {*CONTROL_FIELDS, "control_checksum"}:
+        raise ValueError("generic DEMO control is missing mandatory fields")
+    expected, checksum = _control({key: values[key] for key in CONTROL_FIELDS})
+    if text != expected or values["control_checksum"] != checksum:
+        raise ValueError("generic DEMO control checksum or canonical serialization differs")
+    if values["control_protocol_version"] != CONTROL_PROTOCOL_VERSION or values["action"] != "BLOCK_NEW_ENTRIES":
+        raise ValueError("generic DEMO control protocol or action is unsupported")
+    if len(values["config_checksum"]) != 64:
+        raise ValueError("generic DEMO control config checksum is invalid")
+    return values
 
 
 def parse_manifest(text: object) -> dict[str, str]:
@@ -328,6 +364,56 @@ def poll_ack(session: Session, item: GenericMt5Publication) -> GenericMt5Publica
     return item
 
 
+def block_entries(session: Session, item: GenericMt5Publication, authorization: str, reason_code: str, *, now: datetime | None = None, system_safety_action: bool = False) -> tuple[GenericMt5Publication, bool]:
+    if not system_safety_action and authorization != BLOCK_AUTHORIZATION_PHRASE:
+        raise ValueError(f"authorization must equal {BLOCK_AUTHORIZATION_PHRASE}")
+    reason = reason_code.strip()
+    if not reason or len(reason) > 96 or any(not (character.isupper() or character.isdigit() or character == "_") for character in reason):
+        raise ValueError("reason_code must be 1 to 96 uppercase letters, digits, or underscores")
+    if item.status == STATUS_BLOCKED:
+        control = (item.acknowledgement or {}).get("entry_control", {})
+        if control.get("reason_code") != reason:
+            raise ValueError("publication is already blocked with a different immutable reason")
+        return item, True
+    if item.status not in {STATUS_WAITING, STATUS_ACTIVE}:
+        raise ValueError("only a waiting or acknowledged DEMO publication can block entries")
+    current = _utc(now)
+    values = {
+        "control_protocol_version": CONTROL_PROTOCOL_VERSION, "publication_id": item.id,
+        "config_checksum": item.config_checksum, "action": "BLOCK_NEW_ENTRIES",
+        "reason_code": reason, "issued_at": current.isoformat().replace("+00:00", "Z"),
+    }
+    text, checksum = _control(values)
+    path = adapter_root() / CONTROL_RELATIVE
+    try:
+        with _publication_lock:
+            _atomic_write(path, text, item.id)
+            observed = parse_control(path.read_text(encoding="utf-8"))
+            if observed["control_checksum"] != checksum:
+                raise OSError("generic DEMO control readback differs")
+    except (OSError, ValueError) as error:
+        raise ValueError(f"failed to install fail-safe generic DEMO entry block: {error}") from error
+    item.status = STATUS_BLOCKED
+    item.acknowledgement = {**(item.acknowledgement or {}), "entry_control": {**values, "control_checksum": checksum, "path": str(path), "system_safety_action": system_safety_action}}
+    session.commit(); session.refresh(item)
+    return item, False
+
+
+def reconcile_lifecycle(session: Session, item: GenericMt5Publication, *, now: datetime | None = None) -> tuple[GenericMt5Publication, bool]:
+    from .models import GenericDemoContract, GenericMt5Compilation, StrategyVersion
+    compilation = session.get(GenericMt5Compilation, item.compilation_id)
+    contract = session.get(GenericDemoContract, compilation.generic_demo_contract_id) if compilation else None
+    strategy = session.get(StrategyVersion, contract.strategy_version_id) if contract else None
+    valid = bool(strategy and strategy.status == "VALIDATED" and strategy.generic_validation_retirement_id is None and strategy.retired_at is None)
+    if valid:
+        return item, False
+    if item.status == STATUS_BLOCKED:
+        # An existing exact block already satisfies the fail-safe lifecycle
+        # boundary; its immutable Owner/system reason must never be rewritten.
+        return item, True
+    return block_entries(session, item, "", "LIFECYCLE_INVALID_OR_RETIRED", now=now, system_safety_action=True)
+
+
 def serialize(item: GenericMt5Publication) -> dict[str, Any]:
     return {
         "id": item.id, "compilation_id": item.compilation_id, "fingerprint": item.fingerprint,
@@ -340,7 +426,7 @@ def serialize(item: GenericMt5Publication) -> dict[str, Any]:
         "published_at": item.published_at.isoformat() + "Z" if item.published_at else None,
         "acknowledged_at": item.acknowledged_at.isoformat() + "Z" if item.acknowledged_at else None,
         "created_at": item.created_at.isoformat() + "Z",
-        "safety_boundary": {"demo_only": True, "mt5_owns_on_tick": True, "api_places_orders": False, "live_authorized": False},
+        "safety_boundary": {"demo_only": True, "entries_blocked": item.status == STATUS_BLOCKED, "mt5_owns_on_tick": True, "api_places_orders": False, "live_authorized": False},
         "warning": "Publication and exact acknowledgement authorize only this bounded DEMO configuration. They do not prove profitability or authorize LIVE.",
     }
 
