@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericDemoContract, GenericMt5Compilation, GenericMt5Publication, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericDemoContract, GenericForwardEvidence, GenericMt5Compilation, GenericMt5Publication, GenericMt5TelemetryEvent, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -31,6 +31,7 @@ from .strategy_router_safety import audit as audit_router_safety
 from .generic_demo_contracts import create as create_generic_demo_contract, eligibility_overview as generic_demo_eligibility_overview, list_all as list_generic_demo_contracts, serialize as serialize_generic_demo_contract, validation_report as generic_demo_validation_report
 from .generic_mt5_compiler import adapter_registry as generic_mt5_adapter_registry, create as create_generic_mt5_compilation, list_all as list_generic_mt5_compilations, serialize as serialize_generic_mt5_compilation, validation_report as generic_mt5_compilation_report
 from .generic_mt5_publications import list_all as list_generic_mt5_publications, poll_ack as poll_generic_mt5_ack, preflight as generic_mt5_publication_preflight, publish as publish_generic_mt5_compilation, serialize as serialize_generic_mt5_publication
+from .generic_forward_telemetry import list_evidence as list_generic_forward_evidence, list_events as list_generic_mt5_telemetry, materialize as materialize_generic_forward_evidence, serialize_evidence as serialize_generic_forward_evidence, serialize_event as serialize_generic_mt5_telemetry, sync as sync_generic_mt5_telemetry
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
@@ -812,6 +813,45 @@ def post_generic_mt5_publication_poll_ack(publication_id: str, session: Session 
         return serialize_generic_mt5_publication(poll_generic_mt5_ack(session, item))
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
+
+
+@app.post("/api/v1/generic-mt5-telemetry/sync")
+def post_generic_mt5_telemetry_sync(session: Session = Depends(get_session)) -> dict:
+    try:
+        return sync_generic_mt5_telemetry(session)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/generic-mt5-publications/{publication_id}/telemetry")
+def get_generic_mt5_telemetry(publication_id: str, session: Session = Depends(get_session)) -> dict:
+    if not session.get(GenericMt5Publication, publication_id):
+        raise HTTPException(404, "generic MT5 publication not found")
+    return {"events": [serialize_generic_mt5_telemetry(item) for item in list_generic_mt5_telemetry(session, publication_id)]}
+
+
+@app.post("/api/v1/generic-mt5-publications/{publication_id}/forward-evidence")
+def post_generic_forward_evidence(publication_id: str, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = materialize_generic_forward_evidence(session, publication_id)
+        return serialize_generic_forward_evidence(item, reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/generic-mt5-publications/{publication_id}/forward-evidence")
+def get_publication_generic_forward_evidence(publication_id: str, session: Session = Depends(get_session)) -> dict:
+    if not session.get(GenericMt5Publication, publication_id):
+        raise HTTPException(404, "generic MT5 publication not found")
+    return {"evidence": [serialize_generic_forward_evidence(item) for item in list_generic_forward_evidence(session, publication_id)]}
+
+
+@app.get("/api/v1/generic-forward-evidence/{evidence_id}")
+def get_generic_forward_evidence(evidence_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(GenericForwardEvidence, evidence_id)
+    if not item:
+        raise HTTPException(404, "generic forward evidence not found")
+    return serialize_generic_forward_evidence(item)
 
 
 @app.post("/api/v1/capital-contracts/validate")

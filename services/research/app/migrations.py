@@ -44,6 +44,7 @@ MIGRATION_041 = "041_strategy_router_verification"
 MIGRATION_042 = "042_generic_demo_contract"
 MIGRATION_043 = "043_generic_mt5_compilation"
 MIGRATION_044 = "044_generic_mt5_publication"
+MIGRATION_045 = "045_generic_forward_telemetry"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -668,6 +669,29 @@ def _migration_044(connection) -> None:
         connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_generic_mt5_publications_{column} ON generic_mt5_publications({column})"))
 
 
+def _migration_045(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS generic_mt5_telemetry_events (
+        id VARCHAR(36) PRIMARY KEY, publication_id VARCHAR(36) NOT NULL,
+        event_sequence INTEGER NOT NULL, fingerprint VARCHAR(64) NOT NULL UNIQUE,
+        payload_checksum VARCHAR(64) NOT NULL, event_timestamp VARCHAR(64) NOT NULL,
+        event_type VARCHAR(48) NOT NULL, event_code VARCHAR(96) NOT NULL,
+        strategy_version_id VARCHAR(36) NOT NULL, config_checksum VARCHAR(64) NOT NULL,
+        broker_symbol VARCHAR(64) NOT NULL, raw JSON NOT NULL, observed_at TIMESTAMP NOT NULL,
+        CONSTRAINT uq_generic_mt5_telemetry_publication_sequence UNIQUE(publication_id,event_sequence),
+        FOREIGN KEY(publication_id) REFERENCES generic_mt5_publications(id))"""))
+    for column in ("publication_id", "fingerprint", "event_type", "strategy_version_id", "config_checksum"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_generic_mt5_telemetry_events_{column} ON generic_mt5_telemetry_events({column})"))
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS generic_forward_evidence (
+        id VARCHAR(36) PRIMARY KEY, publication_id VARCHAR(36) NOT NULL,
+        fingerprint VARCHAR(64) NOT NULL UNIQUE, protocol_version VARCHAR(64) NOT NULL,
+        status VARCHAR(64) NOT NULL, policy JSON NOT NULL, event_fingerprints JSON NOT NULL,
+        result JSON NOT NULL, window_started_at VARCHAR(64), window_ended_at VARCHAR(64),
+        created_at TIMESTAMP NOT NULL,
+        FOREIGN KEY(publication_id) REFERENCES generic_mt5_publications(id))"""))
+    for column in ("publication_id", "fingerprint"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_generic_forward_evidence_{column} ON generic_forward_evidence({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -701,6 +725,7 @@ MIGRATIONS = (
     (MIGRATION_042, _migration_042),
     (MIGRATION_043, _migration_043),
     (MIGRATION_044, _migration_044),
+    (MIGRATION_045, _migration_045),
 )
 
 

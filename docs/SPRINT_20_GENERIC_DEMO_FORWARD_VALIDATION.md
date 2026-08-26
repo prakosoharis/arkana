@@ -2,10 +2,10 @@
 
 **Contract status:** accepted by Owner on 2026-08-25
 
-**Active checkpoint:** ARK-S20-04 — authorized by Owner; implementation pending
+**Active checkpoint:** ARK-S20-05 — authorized by Owner; implementation pending
 
-**Implementation authority:** ARK-S20-04 immutable generic DEMO telemetry and
-forward-evidence ledger only; no LIVE or strategy-quality authority
+**Implementation authority:** ARK-S20-05 Owner DEMO UI, complete-chain verifier,
+restart recovery, browser OAT, and Sprint 20 closure only; no LIVE authority
 
 ## Product objective
 
@@ -382,3 +382,26 @@ unchanged and no acknowledgement was fabricated.
 **Technical checkpoint claim:** `VALIDATED`, scoped only to bounded DEMO
 publication and exact acknowledgement evidence. It grants no LIVE authority
 and makes no profitability or forward-performance claim.
+
+## ARK-S20-04 completion evidence
+
+ARK-S20-04 was accepted by the Owner on 2026-08-26. Exact
+evidence is recorded in
+[`SPRINT_20_04_GENERIC_FORWARD_TELEMETRY.md`](SPRINT_20_04_GENERIC_FORWARD_TELEMETRY.md).
+
+Migration `045_generic_forward_telemetry`, checksum-bound generic MT5 event
+ingestion, publication/sequence conflict protection, first-class no-trade and
+blocker evidence, exact order/deal lineage, explicit cost/slippage availability,
+and immutable forward-evidence snapshots are implemented. The EA persists event
+sequence across restart and emits bounded local decision/order/deal/emergency
+events; MetaEditor64 compiles with zero errors and zero warnings.
+
+Focused regression is 34 passed, full backend regression is 292 passed, and
+web regression is 28 passed; lint, typecheck, local/Docker builds, and restart
+OAT pass. Runtime truth remains zero generic publications, events, and forward
+evidence. Five legacy deployments, 6,389 separate legacy journal rows, zero
+demo trades, and the FILE_COMMON hash are unchanged.
+
+**Technical checkpoint claim:** `VALIDATED`, scoped only to immutable generic
+DEMO telemetry and frozen forward-evidence semantics. It grants no LIVE
+authority and makes no profitability or forward-performance claim.

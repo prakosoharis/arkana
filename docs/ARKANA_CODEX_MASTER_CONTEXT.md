@@ -319,6 +319,17 @@ passed, and MetaEditor compiles the EA with 0 errors/0 warnings. Runtime remains
 zero generic publications because there is no source compilation; five legacy
 deployments, zero demo trades, and FILE_COMMON remain unchanged.
 
+ARK-S20-04 was accepted by the Owner on 2026-08-26. Exact
+evidence is recorded in
+[`SPRINT_20_04_GENERIC_FORWARD_TELEMETRY.md`](SPRINT_20_04_GENERIC_FORWARD_TELEMETRY.md).
+Migration 045, checksum-bound immutable generic MT5 event ingestion,
+duplicate/out-of-order/conflict semantics, exact order/deal lineage, explicit
+missing cost/slippage availability, and frozen forward-evidence snapshots are
+implemented. Full backend regression is 292 passed, web regression is 28
+passed, and MetaEditor is 0 errors/0 warnings. Runtime remains zero generic
+events/evidence; five legacy deployments, 6,389 separate legacy journal rows,
+zero demo trades, and FILE_COMMON are unchanged.
+
 ## QA protocol
 
 Before coding: inspect the current repository, `git status`, dirty diffs,

@@ -424,6 +424,45 @@ class GenericMt5Publication(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class GenericMt5TelemetryEvent(Base):
+    """Immutable checksum-bound MT5 event; duplicate sequence payloads conflict."""
+    __tablename__ = "generic_mt5_telemetry_events"
+    __table_args__ = (
+        UniqueConstraint("publication_id", "event_sequence", name="uq_generic_mt5_telemetry_publication_sequence"),
+        UniqueConstraint("fingerprint", name="uq_generic_mt5_telemetry_fingerprint"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    publication_id: Mapped[str] = mapped_column(ForeignKey("generic_mt5_publications.id"), nullable=False, index=True)
+    event_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    payload_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_timestamp: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    event_code: Mapped[str] = mapped_column(String(96), nullable=False)
+    strategy_version_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    config_checksum: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    broker_symbol: Mapped[str] = mapped_column(String(64), nullable=False)
+    raw: Mapped[dict] = mapped_column(JSON, nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class GenericForwardEvidence(Base):
+    """Frozen generic DEMO evidence snapshot, never historical or LIVE evidence."""
+    __tablename__ = "generic_forward_evidence"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_generic_forward_evidence_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    publication_id: Mapped[str] = mapped_column(ForeignKey("generic_mt5_publications.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy: Mapped[dict] = mapped_column(JSON, nullable=False)
+    event_fingerprints: Mapped[list] = mapped_column(JSON, nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    window_started_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    window_ended_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"

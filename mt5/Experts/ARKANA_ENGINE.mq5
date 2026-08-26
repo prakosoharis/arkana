@@ -8,6 +8,7 @@ input string InpTelemetryFile="ARKANA/telemetry.csv";
 input string InpTradeTelemetryFile="ARKANA/trades.csv";
 input string InpGenericPublicationFile="ARKANA/generic/publication.ini";
 input string InpGenericAcknowledgementFile="ARKANA/generic/acknowledgement.csv";
+input string InpGenericTelemetryFile="ARKANA/generic/telemetry.csv";
 input long   InpMagicNumber=260806;
 input int    InpReloadSeconds=10;
 
@@ -163,6 +164,28 @@ void WriteGenericAcknowledgement(const GenericPublication &publication,const Gen
   FileWrite(handle,TimeToString(TimeCurrent(),TIME_DATE|TIME_SECONDS),publication.publication_id,"DEMO",IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)),AccountInfoString(ACCOUNT_SERVER),_Symbol,cfg.strategy_version_id,cfg.compiler_protocol_version,cfg.adapter_capability_id,cfg.checksum,publication.publication_checksum,"GENERIC_CONFIG_LOADED");
   FileClose(handle);
 }
+long NextGenericEventSequence() {
+  string key="ARKANA_GENERIC_EVENT_SEQUENCE_"+StringSubstr(active_generic.checksum,0,16);
+  long value=GlobalVariableCheck(key)?(long)GlobalVariableGet(key):0;
+  value++; GlobalVariableSet(key,(double)value); return value;
+}
+string GenericEventPayload(const string &fields[]) {
+  string delimiter=ShortToString(31),payload="";
+  for(int index=0;index<ArraySize(fields);index++) { if(index>0) payload+=delimiter; payload+=fields[index]; }
+  return payload;
+}
+string ReportNumber(const double value,const int digits) { return MathIsValidNumber(value)?DoubleToString(value,digits):"NOT_REPORTED"; }
+void EmitGenericEvent(const string event_type,const string event_code,const string decision_context,const string decision_setup,const string decision_trigger,const string position_id,const string order_ticket,const string deal_ticket,const string side,const string requested_price,const string filled_price,const string stop_loss,const string take_profit,const string volume,const string spread_price,const string commission,const string swap,const string realized_pnl,const string slippage_price) {
+  if(!has_generic_config) return;
+  string fields[]={TimeToString(TimeCurrent(),TIME_DATE|TIME_SECONDS),active_publication.publication_id,IntegerToString(NextGenericEventSequence()),event_type,event_code,"DEMO",IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)),AccountInfoString(ACCOUNT_SERVER),_Symbol,active_generic.strategy_version_id,active_generic.compiler_protocol_version,active_generic.adapter_capability_id,active_generic.checksum,active_publication.publication_checksum,decision_context,decision_setup,decision_trigger,position_id,order_ticket,deal_ticket,side,requested_price,filled_price,stop_loss,take_profit,volume,spread_price,commission,swap,realized_pnl,slippage_price,IntegerToString(PositionsTotal()),EmergencyStop()?"true":"false"};
+  string checksum=Sha256Hex(GenericEventPayload(fields)); if(checksum=="") return;
+  int handle=FileOpen(InpGenericTelemetryFile,FILE_READ|FILE_WRITE|FILE_CSV|FILE_COMMON|FILE_ANSI,','); if(handle==INVALID_HANDLE) return;
+  if(FileSize(handle)==0) FileWrite(handle,"event_timestamp","publication_id","event_sequence","event_type","event_code","environment","account_login","account_server","broker_symbol","strategy_version_id","compiler_protocol_version","adapter_capability_id","config_checksum","publication_checksum","decision_context","decision_setup","decision_trigger","position_id","order_ticket","deal_ticket","side","requested_price","filled_price","stop_loss","take_profit","volume","spread_price","commission","swap","realized_pnl","slippage_price","positions","emergency_stop","payload_checksum");
+  FileSeek(handle,0,SEEK_END); FileWrite(handle,fields[0],fields[1],fields[2],fields[3],fields[4],fields[5],fields[6],fields[7],fields[8],fields[9],fields[10],fields[11],fields[12],fields[13],fields[14],fields[15],fields[16],fields[17],fields[18],fields[19],fields[20],fields[21],fields[22],fields[23],fields[24],fields[25],fields[26],fields[27],fields[28],fields[29],fields[30],fields[31],fields[32],checksum); FileClose(handle);
+}
+void EmitGenericSimple(const string event_type,const string event_code) {
+  EmitGenericEvent(event_type,event_code,"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED");
+}
 string CommonConfigPath() {
   string relative=InpConfigFile; StringReplace(relative,"/","\\");
   return TerminalInfoString(TERMINAL_COMMONDATA_PATH)+"\\Files\\"+relative;
@@ -277,20 +300,35 @@ bool IsNewM1Bar() {
   datetime time=iTime(_Symbol,PERIOD_M1,0); if(time==0 || time==last_bar) return false; last_bar=time; return true;
 }
 void GenericOnNewBar() {
-  if(!IsDemoAccount() || EmergencyStop() || active_generic.enabled!="true") return;
-  if(HasOurPosition(_Symbol)) return;
-  MqlTick tick; if(!SymbolInfoTick(_Symbol,tick) || (tick.ask-tick.bid)>StringToDouble(active_generic.max_spread_price)) return;
+  if(!IsDemoAccount() || active_generic.enabled!="true") { EmitGenericSimple("BLOCKER","DEMO_OR_CONFIG_GUARD"); return; }
+  if(EmergencyStop()) { EmitGenericSimple("EMERGENCY","EMERGENCY_STOP_ACTIVE"); EmitGenericSimple("BLOCKER","EMERGENCY_STOP_BLOCKED_ENTRY"); return; }
+  if(HasOurPosition(_Symbol)) { EmitGenericSimple("POSITION","OPEN_POSITION_PRESENT"); EmitGenericSimple("BLOCKER","MAX_OPEN_POSITIONS"); return; }
+  MqlTick tick; if(!SymbolInfoTick(_Symbol,tick)) { EmitGenericSimple("BLOCKER","BROKER_TICK_UNAVAILABLE"); return; }
+  double spread=tick.ask-tick.bid;
+  if(spread>StringToDouble(active_generic.max_spread_price)) { EmitGenericEvent("BLOCKER","SPREAD_GUARD","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",DoubleToString(spread,8),"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED"); return; }
   int fast=(int)StringToInteger(active_generic.sma_fast_period),slow=(int)StringToInteger(active_generic.sma_slow_period);
-  MqlRates rates[]; ArraySetAsSeries(rates,true); if(CopyRates(_Symbol,PERIOD_M1,0,slow+2,rates)<slow+2) return;
+  MqlRates rates[]; ArraySetAsSeries(rates,true); if(CopyRates(_Symbol,PERIOD_M1,0,slow+2,rates)<slow+2) { EmitGenericSimple("BLOCKER","COMPLETED_BARS_UNAVAILABLE"); return; }
   double fast_sum=0.0,slow_sum=0.0;
   for(int index=1;index<=slow;index++) { slow_sum+=rates[index].close; if(index<=fast) fast_sum+=rates[index].close; }
   bool context=(fast_sum/(double)fast)>(slow_sum/(double)slow);
   bool setup=rates[2].close<rates[2].open && rates[1].close>rates[1].open;
   bool trigger=rates[1].close>rates[1].open;
+  string context_text=context?"true":"false",setup_text=setup?"true":"false",trigger_text=trigger?"true":"false";
+  EmitGenericEvent("DECISION",context&&setup&&trigger?"SIGNAL_TRUE":"NO_TRADE",context_text,setup_text,trigger_text,"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",DoubleToString(spread,8),"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED");
   if(!context || !setup || !trigger) return;
+  EmitGenericEvent("SIGNAL","LONG_SIGNAL",context_text,setup_text,trigger_text,"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","LONG","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",active_generic.volume,DoubleToString(spread,8),"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED");
   // NEXT_BAR_OPEN means the first available ASK tick after the completed M1 signal.
   double ask=tick.ask,sl=NormalizeDouble(ask-StringToDouble(active_generic.stop_distance),_Digits),tp=NormalizeDouble(ask+StringToDouble(active_generic.target_distance),_Digits);
-  trade.Buy(StringToDouble(active_generic.volume),_Symbol,ask,sl,tp,"ARKANA generic "+active_generic.strategy_version_id);
+  string ask_text=DoubleToString(ask,_Digits),sl_text=DoubleToString(sl,_Digits),tp_text=DoubleToString(tp,_Digits);
+  EmitGenericEvent("ORDER_REQUEST","BUY_REQUEST","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","LONG",ask_text,"NOT_REPORTED",sl_text,tp_text,active_generic.volume,DoubleToString(spread,8),"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED");
+  bool accepted=trade.Buy(StringToDouble(active_generic.volume),_Symbol,ask,sl,tp,"ARKANA generic "+active_generic.strategy_version_id);
+  string order_ticket=trade.ResultOrder()>0?(string)trade.ResultOrder():"NOT_REPORTED";
+  string filled=trade.ResultPrice()>0?DoubleToString(trade.ResultPrice(),_Digits):"NOT_REPORTED";
+  string slippage=trade.ResultPrice()>0?DoubleToString(trade.ResultPrice()-ask,_Digits):"NOT_REPORTED";
+  // Rejected orders have no broker ticket, so use retcode as the exact result identity.
+  if(order_ticket=="NOT_REPORTED") order_ticket="RETCODE_"+IntegerToString((int)trade.ResultRetcode());
+  EmitGenericEvent("ORDER_RESULT",accepted?"ORDER_ACCEPTED":"ORDER_REJECTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",order_ticket,"NOT_REPORTED","LONG",ask_text,filled,sl_text,tp_text,active_generic.volume,DoubleToString(spread,8),"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",slippage);
+  EmitGenericEvent("COST_AVAILABILITY",slippage=="NOT_REPORTED"?"SLIPPAGE_NOT_REPORTED":"SLIPPAGE_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",order_ticket,"NOT_REPORTED","LONG",ask_text,filled,"NOT_REPORTED","NOT_REPORTED",active_generic.volume,DoubleToString(spread,8),"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",slippage);
 }
 void ReloadConfig() {
   GenericPublication publication; GenericConfig generic_candidate;
@@ -308,12 +346,22 @@ int OnInit() {
   PrepareCommonConfigFolder();
   if(!IsDemoAccount()) { Print("ARKANA refuses non-DEMO account"); return INIT_FAILED; }
   trade.SetExpertMagicNumber(InpMagicNumber); trade.SetTypeFillingBySymbol(_Symbol);
-  ReloadConfig(); EventSetTimer(MathMax(InpReloadSeconds,5)); WriteTelemetry("HEARTBEAT","EA initialized"); return INIT_SUCCEEDED;
+  ReloadConfig(); EventSetTimer(MathMax(InpReloadSeconds,5)); if(has_generic_config) EmitGenericSimple("HEARTBEAT","EA_INITIALIZED"); else WriteTelemetry("HEARTBEAT","EA initialized"); return INIT_SUCCEEDED;
 }
-void OnDeinit(const int reason) { EventKillTimer(); WriteTelemetry("HEARTBEAT_STOP",IntegerToString(reason)); }
-void OnTimer() { ReloadConfig(); if(!has_generic_config) WriteTelemetry("HEARTBEAT",has_config?"cached config active":"no valid config"); }
+void OnDeinit(const int reason) { EventKillTimer(); if(has_generic_config) EmitGenericSimple("HEARTBEAT","EA_STOPPED"); else WriteTelemetry("HEARTBEAT_STOP",IntegerToString(reason)); }
+void OnTimer() { ReloadConfig(); if(has_generic_config) EmitGenericSimple("HEARTBEAT","CACHED_CONFIG_ACTIVE"); else WriteTelemetry("HEARTBEAT",has_config?"cached config active":"no valid config"); }
 void OnTradeTransaction(const MqlTradeTransaction &transaction,const MqlTradeRequest &request,const MqlTradeResult &result) {
-  if(transaction.type==TRADE_TRANSACTION_DEAL_ADD && transaction.deal>0 && has_config) WriteTradeTelemetry(transaction.deal);
+  if(transaction.type!=TRADE_TRANSACTION_DEAL_ADD || transaction.deal<=0) return;
+  if(has_generic_config && HistoryDealSelect(transaction.deal) && (long)HistoryDealGetInteger(transaction.deal,DEAL_MAGIC)==InpMagicNumber && HistoryDealGetString(transaction.deal,DEAL_SYMBOL)==_Symbol) {
+    ENUM_DEAL_ENTRY entry=(ENUM_DEAL_ENTRY)HistoryDealGetInteger(transaction.deal,DEAL_ENTRY);
+    if(entry==DEAL_ENTRY_IN || entry==DEAL_ENTRY_OUT || entry==DEAL_ENTRY_OUT_BY) {
+      string code=entry==DEAL_ENTRY_IN?"DEAL_ENTRY":"DEAL_EXIT",position_id=(string)HistoryDealGetInteger(transaction.deal,DEAL_POSITION_ID),order_ticket=(string)HistoryDealGetInteger(transaction.deal,DEAL_ORDER),deal_ticket=(string)transaction.deal;
+      double commission=HistoryDealGetDouble(transaction.deal,DEAL_COMMISSION),swap=HistoryDealGetDouble(transaction.deal,DEAL_SWAP),profit=HistoryDealGetDouble(transaction.deal,DEAL_PROFIT);
+      string commission_text=DoubleToString(commission,2),swap_text=DoubleToString(swap,2),pnl_text=entry==DEAL_ENTRY_IN?"NOT_REPORTED":DoubleToString(profit+commission+swap,2);
+      EmitGenericEvent("DEAL",code,"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",position_id,order_ticket,deal_ticket,"LONG","NOT_REPORTED",DoubleToString(HistoryDealGetDouble(transaction.deal,DEAL_PRICE),_Digits),"NOT_REPORTED","NOT_REPORTED",DoubleToString(HistoryDealGetDouble(transaction.deal,DEAL_VOLUME),2),"NOT_REPORTED",commission_text,swap_text,pnl_text,"NOT_REPORTED");
+      EmitGenericEvent("COST_AVAILABILITY","DEAL_COSTS_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",position_id,order_ticket,deal_ticket,"LONG","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",DoubleToString(HistoryDealGetDouble(transaction.deal,DEAL_VOLUME),2),"NOT_REPORTED",commission_text,swap_text,pnl_text,"NOT_REPORTED");
+    }
+  } else if(has_config) WriteTradeTelemetry(transaction.deal);
 }
 void OnTick() {
   if(!IsNewM1Bar()) return;
