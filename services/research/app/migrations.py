@@ -46,6 +46,7 @@ MIGRATION_043 = "043_generic_mt5_compilation"
 MIGRATION_044 = "044_generic_mt5_publication"
 MIGRATION_045 = "045_generic_forward_telemetry"
 MIGRATION_046 = "046_generic_demo_chain_verifier"
+MIGRATION_047 = "047_governance_journal_index"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -705,6 +706,24 @@ def _migration_046(connection) -> None:
         connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_generic_demo_chain_verifications_{column} ON generic_demo_chain_verifications({column})"))
 
 
+def _migration_047(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS governance_journal_items (
+        id VARCHAR(36) PRIMARY KEY, fingerprint VARCHAR(64) NOT NULL UNIQUE,
+        source_type VARCHAR(64) NOT NULL, source_table VARCHAR(96) NOT NULL,
+        source_id VARCHAR(36) NOT NULL, source_fingerprint VARCHAR(64) NOT NULL,
+        evidence_origin VARCHAR(32) NOT NULL, evidence_scope VARCHAR(32) NOT NULL,
+        strategy_version_id VARCHAR(36), strategy_checksum VARCHAR(128),
+        config_checksum VARCHAR(64), publication_id VARCHAR(36),
+        account_reference_hash VARCHAR(64), broker_symbol VARCHAR(64),
+        event_time VARCHAR(64) NOT NULL, observed_time VARCHAR(64) NOT NULL,
+        time_semantics VARCHAR(48) NOT NULL, integrity_status VARCHAR(32) NOT NULL,
+        lineage JSON NOT NULL, created_at TIMESTAMP NOT NULL,
+        CONSTRAINT uq_governance_journal_source UNIQUE(source_type, source_id),
+        FOREIGN KEY(strategy_version_id) REFERENCES strategy_versions(id))"""))
+    for column in ("source_type", "source_fingerprint", "evidence_origin", "evidence_scope", "strategy_version_id", "publication_id", "created_at"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_governance_journal_items_{column} ON governance_journal_items({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -740,6 +759,7 @@ MIGRATIONS = (
     (MIGRATION_044, _migration_044),
     (MIGRATION_045, _migration_045),
     (MIGRATION_046, _migration_046),
+    (MIGRATION_047, _migration_047),
 )
 
 

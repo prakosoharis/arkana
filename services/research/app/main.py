@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericDemoChainVerification, GenericDemoContract, GenericForwardEvidence, GenericMt5Compilation, GenericMt5Publication, GenericMt5TelemetryEvent, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericDemoChainVerification, GenericDemoContract, GenericForwardEvidence, GenericMt5Compilation, GenericMt5Publication, GenericMt5TelemetryEvent, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, GovernanceJournalItem, JournalEvent, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -34,6 +34,7 @@ from .generic_mt5_publications import block_entries as block_generic_mt5_entries
 from .generic_forward_telemetry import list_evidence as list_generic_forward_evidence, list_events as list_generic_mt5_telemetry, materialize as materialize_generic_forward_evidence, serialize_evidence as serialize_generic_forward_evidence, serialize_event as serialize_generic_mt5_telemetry, sync as sync_generic_mt5_telemetry
 from .generic_demo_chain_verification import get_latest as get_latest_generic_demo_verification, materialize as materialize_generic_demo_verification, serialize as serialize_generic_demo_verification
 from .generic_demo_owner_overview import build as build_generic_demo_owner_overview
+from .governance_journal import list_items as list_governance_journal_items, materialize as materialize_governance_journal_item, serialize as serialize_governance_journal_item, source_contract as governance_journal_source_contract, verify as verify_governance_journal_item
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
@@ -725,6 +726,60 @@ def get_generic_demo_eligibility(session: Session = Depends(get_session)) -> dic
 @app.get("/api/v1/generic-demo/owner-overview")
 def get_generic_demo_owner_overview(session: Session = Depends(get_session)) -> dict:
     return build_generic_demo_owner_overview(session)
+
+
+@app.get("/api/v1/governance-journal/source-contract")
+def get_governance_journal_source_contract() -> dict:
+    return governance_journal_source_contract()
+
+
+@app.post("/api/v1/governance-journal/items")
+def create_governance_journal_item(payload: dict, session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = materialize_governance_journal_item(session, payload)
+        return serialize_governance_journal_item(item, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/governance-journal/items")
+def get_governance_journal_items(
+    limit: int = Query(100, ge=1, le=500),
+    cursor: str | None = Query(None),
+    source_type: str | None = Query(None),
+    evidence_scope: str | None = Query(None),
+    evidence_origin: str | None = Query(None),
+    strategy_version_id: str | None = Query(None),
+    session: Session = Depends(get_session),
+) -> dict:
+    try:
+        return list_governance_journal_items(
+            session,
+            limit=limit,
+            cursor=cursor,
+            source_type=source_type,
+            evidence_scope=evidence_scope,
+            evidence_origin=evidence_origin,
+            strategy_version_id=strategy_version_id,
+        )
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/governance-journal/items/{item_id}")
+def get_governance_journal_item(item_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(GovernanceJournalItem, item_id)
+    if not item:
+        raise HTTPException(404, "governance journal item not found")
+    return serialize_governance_journal_item(item)
+
+
+@app.get("/api/v1/governance-journal/items/{item_id}/verification")
+def get_governance_journal_item_verification(item_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(GovernanceJournalItem, item_id)
+    if not item:
+        raise HTTPException(404, "governance journal item not found")
+    return verify_governance_journal_item(session, item)
 
 
 @app.post("/api/v1/generic-demo-contracts/validate")

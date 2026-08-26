@@ -354,8 +354,8 @@ incident/acknowledgement/recovery governance, evidence-bound controlled-
 learning proposals, a fail-closed LIVE-readiness assessment, and Owner UI plus
 complete-chain verification.
 
-ARK-S21-00 is complete and awaits Owner acceptance; its exact read-only baseline and policy
-freeze are recorded in
+ARK-S21-00 was accepted and pushed as `20cb924`; its exact read-only baseline
+and policy freeze are recorded in
 [`SPRINT_21_00_BASELINE_SOURCE_MAP_AND_POLICY_FREEZE.md`](SPRINT_21_00_BASELINE_SOURCE_MAP_AND_POLICY_FREEZE.md).
 Runtime remains `BLOCKED_EXTERNAL_EVIDENCE / NO_VALIDATED_STRATEGY` with zero
 generic S20 chain artifacts. Six database rows carry `VALIDATED`, but all are
@@ -363,13 +363,22 @@ ineligible for generic DEMO and five are explicit Router fixtures. The latest
 Router safety audit fails closed with `NO_TRADE_DECISION_NOT_EXACT`; the audit
 does not clean or mutate these records.
 
+ARK-S21-01 is complete and awaits Owner acceptance. Its concrete evidence is
+[`SPRINT_21_01_IMMUTABLE_UNIFIED_JOURNAL.md`](SPRINT_21_01_IMMUTABLE_UNIFIED_JOURNAL.md).
+Migration 047 and `GOVERNANCE_JOURNAL_INDEX_V1` provide a closed 23-type,
+append-only exact-reference journal, deterministic evidence origin/scope/time,
+source/lineage tamper verification, privacy-safe account references, cursor
+pagination, FastAPI, and BFF. Runtime journal count is zero because no implicit
+backfill occurs. Full backend is 304 passed and web is 30 passed; Docker
+migration/restart OAT passes without changing prior evidence or FILE_COMMON.
+
 Sprint 21 explicitly implements no LIVE endpoint, config, credential,
 deployment, order, or trade. A possible `READY_FOR_OWNER_LIVE_REVIEW` result is
 not LIVE authorization and must always retain
 `LIVE_AUTHORIZATION_NOT_IMPLEMENTED`. The current real runtime is expected to
 remain `NOT_READY_FOR_LIVE / BLOCKED_EXTERNAL_EVIDENCE` until an eligible
 generic strategy and genuine Owner MT5 DEMO evidence exist. No ARK-S21 source
-or checkpoint after ARK-S21-00 is authorized before checkpoint acceptance.
+or checkpoint after ARK-S21-01 is authorized before checkpoint acceptance.
 
 ## QA protocol
 

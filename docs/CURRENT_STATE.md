@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-26 — ARK-S21-00 complete; Owner acceptance pending
+**Updated:** 2026-08-26 — ARK-S21-01 complete; Owner acceptance pending
 **Active milestone:** Sprint 21 — Journal, Controlled Learning, and LIVE-Readiness Governance
-**Active card:** ARK-S21-00 — Post-S20 baseline, source map, and policy freeze
+**Active card:** ARK-S21-01 — Immutable unified journal index and lineage
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -57,7 +57,7 @@ Next:    immutable journal → controlled research feedback → LIVE-readiness g
 | Capital Simulation | BROKER-CONSTRAINED FIXED/FRACTIONAL HISTORY AND OWNER UI IMPLEMENTED | Immutable `CAPITAL_BROKER_CONTRACT_V1` and `BROKER_CONSTRAINED_CAPITAL_V1` evidence bind exact StrategyVersion, full-history validation, dataset, MT5 profit/margin parity, sizing, and broker assumptions. The Owner UI validates/confirms contracts, runs or reuses results, and explicitly materializes one fingerprint-bound full-replay verifier artifact; GET is lightweight and never reruns the kernel. The verifier compares every normalized point and recomputed metric, exact lineage, constraints, disclosures, and lifecycle safety. One frozen 2026 snapshot is applied to the full 2017–2026 ledger, not reconstructed historical broker terms. Acceptance readiness is not `VALIDATED`, DEMO/LIVE authorization, or a trade recommendation. |
 | Variant Explorer | OWNER WORKFLOW + MATERIALIZED ACCEPTANCE VERIFIER — ARK-S15-05 | `/variants` exposes bounded contract, train, holdout, lock, matrix, split ledger, explicit confirmation boundary, and persisted verifier evidence. Runtime truth is `NO_ELIGIBLE_VARIANT`; all ten verifier checks pass while final-OOS stays locked, with zero confirmation/revision and no lifecycle promotion. |
 | Strategy Router / Current or Live Decision | SPRINT 19 ACCEPTED; CURRENT RUNTIME FAIL-CLOSED | Policy, eligibility, deterministic decision, exact parameter evidence, Current Decision UI, materialized verifier, and `STRATEGY_ROUTER_SAFETY_AUDITOR_V1` were accepted at Sprint 19. The latest runtime fixture chain now remains `NO_TRADE` but its current safety audit is `FAILED / NO_TRADE_DECISION_NOT_EXACT`; it cannot support DEMO or readiness. No Router path grants deployment, MT5, order, or trade authority. |
-| Journal / controlled learning / LIVE-readiness | ARK-S21-00 COMPLETE; OWNER ACCEPTANCE PENDING | The documentation-only baseline and policy freeze inventories exact historical, Router, legacy, and generic DEMO sources; separates runtime fixtures from real Owner evidence; and freezes incident/recovery, retention/privacy, controlled-learning, and readiness schemas. Runtime remains `BLOCKED_EXTERNAL_EVIDENCE / NO_VALIDATED_STRATEGY`; the current Router safety audit also fails closed because its latest fixture chain is not exact. No S21 implementation or LIVE authority exists. |
+| Journal / controlled learning / LIVE-readiness | ARK-S21-01 COMPLETE; OWNER ACCEPTANCE PENDING | Migration 047 and `GOVERNANCE_JOURNAL_INDEX_V1` implement a 23-type append-only exact-reference index, deterministic origin/scope/time semantics, source snapshot and lineage tamper detection, privacy-safe account references, cursor pagination, read-only verifier, FastAPI, and BFF. Runtime journal remains honestly zero because there is no implicit backfill. Incident/recovery, learning, readiness, UI, and LIVE authority do not yet exist. |
 
 ## Legacy Backtest and strategy classification
 

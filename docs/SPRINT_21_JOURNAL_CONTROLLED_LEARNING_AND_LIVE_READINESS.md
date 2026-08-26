@@ -2,10 +2,11 @@
 
 **Contract status:** accepted by the Owner on 2026-08-26
 
-**Active checkpoint:** ARK-S21-00 complete; awaiting Owner acceptance
+**Active checkpoint:** ARK-S21-01 complete; awaiting Owner acceptance
 
-**Implementation authority:** ARK-S21-00 documentation/read-only audit only;
-no S21 source, migration, runtime mutation, DEMO action, or LIVE authority
+**Implementation authority:** ARK-S21-01 immutable journal source/API scope
+only; no incident workflow, learning proposal, readiness assessment, DEMO
+action, or LIVE authority
 
 ## Product objective
 
@@ -409,4 +410,24 @@ UI, EA, database row, FILE_COMMON payload, config, deployment, order, trade, or
 LIVE action was changed.
 
 **ARK-S21-00 technical claim:** `VALIDATED`, scoped only to the baseline audit
-and policy freeze. Owner acceptance remains pending.
+and policy freeze. Accepted by the Owner and pushed as `20cb924`.
+
+## ARK-S21-01 completion evidence
+
+ARK-S21-01 completed on 2026-08-26. The concrete report is
+[`SPRINT_21_01_IMMUTABLE_UNIFIED_JOURNAL.md`](SPRINT_21_01_IMMUTABLE_UNIFIED_JOURNAL.md).
+
+Migration 047, `GOVERNANCE_JOURNAL_INDEX_V1`, a closed 23-type source
+registry, exact append-only materialization, source snapshot and lineage
+fingerprints, fixture/legacy/unknown/real classification, account-reference
+privacy, read-only verification, deterministic cursor pagination, FastAPI, and
+same-origin BFF routes are implemented.
+
+Focused regression is 11 passed, full backend regression is 304 passed, web
+regression is 30 passed, TypeScript/lint/build pass, and Docker
+migration/restart/API/BFF OAT pass. PostgreSQL records migration 047 once and
+has zero journal items because startup/GET performs no implicit backfill.
+Existing runtime counts and FILE_COMMON hashes are unchanged.
+
+**ARK-S21-01 technical claim:** `VALIDATED`, scoped only to immutable journal
+indexing and read verification. Owner acceptance remains pending.

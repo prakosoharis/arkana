@@ -477,6 +477,35 @@ class GenericDemoChainVerification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class GovernanceJournalItem(Base):
+    """Append-only reference to exact source evidence; never a blended ledger."""
+    __tablename__ = "governance_journal_items"
+    __table_args__ = (
+        UniqueConstraint("fingerprint", name="uq_governance_journal_fingerprint"),
+        UniqueConstraint("source_type", "source_id", name="uq_governance_journal_source"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    source_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    source_table: Mapped[str] = mapped_column(String(96), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    source_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    evidence_origin: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    evidence_scope: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    strategy_version_id: Mapped[str | None] = mapped_column(ForeignKey("strategy_versions.id"), nullable=True, index=True)
+    strategy_checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    config_checksum: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    publication_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    account_reference_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    broker_symbol: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    event_time: Mapped[str] = mapped_column(String(64), nullable=False)
+    observed_time: Mapped[str] = mapped_column(String(64), nullable=False)
+    time_semantics: Mapped[str] = mapped_column(String(48), nullable=False)
+    integrity_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    lineage: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"
