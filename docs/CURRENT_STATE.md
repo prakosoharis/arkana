@@ -1,8 +1,8 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-26 — ARK-S20-05 accepted; Sprint 20 technical delivery complete
-**Active milestone:** none authorized; Sprint 20 external Owner-terminal evidence remains pending
+**Updated:** 2026-08-26 — ARK-S21 contract proposed; Owner acceptance pending
+**Active milestone:** proposed Sprint 21 — Journal, Controlled Learning, and LIVE-Readiness Governance
 **Active card:** none
 
 This is the only canonical description of ARKANA's current implementation
@@ -23,16 +23,17 @@ path.
 
 The repository is being extended, not rewritten. Existing deterministic data,
 research, simulation, version/configuration, deployment, telemetry, and DEMO
-plumbing are reusable foundations. The bounded historical Strategy Factory and
-deterministic Router loops are implemented; generic DEMO execution remains
-missing:
+plumbing are reusable foundations. The bounded historical Strategy Factory,
+deterministic Router, generic DEMO compiler/publication/telemetry, and Owner
+governance foundations are implemented; real generic Owner-terminal evidence
+remains missing:
 
 ```text
 Legacy:  hard-coded BacktestRun → legacy StrategyVersion wrapper → manual APPROVED → DEMO
 Current: StrategyCandidate → deterministic StrategyVersion → canonical Backtest V1
          → generic evidence → eligibility → explicit historical VALIDATED → RETIRED
 Router:  VALIDATED-only eligibility → LONG/NO_TRADE → Entry/SL/TP/size evidence
-Next:    historically VALIDATED generic strategy → DEMO compiler → forward evidence
+Next:    immutable journal → controlled research feedback → LIVE-readiness governance
 ```
 
 ## Capability classification

@@ -345,6 +345,23 @@ Sprint 20 technical delivery is complete. The external Owner-terminal evidence
 track remains pending, and no Sprint 21 checkpoint is authorized until its
 contract is explicitly accepted.
 
+## Proposed milestone — Sprint 21 journal and LIVE-readiness governance
+
+[`SPRINT_21_JOURNAL_CONTROLLED_LEARNING_AND_LIVE_READINESS.md`](SPRINT_21_JOURNAL_CONTROLLED_LEARNING_AND_LIVE_READINESS.md)
+is proposed and awaits explicit Owner acceptance. Its six-checkpoint sequence
+covers post-S20 policy freeze, an immutable lineage-preserving journal index,
+incident/acknowledgement/recovery governance, evidence-bound controlled-
+learning proposals, a fail-closed LIVE-readiness assessment, and Owner UI plus
+complete-chain verification.
+
+Sprint 21 explicitly implements no LIVE endpoint, config, credential,
+deployment, order, or trade. A possible `READY_FOR_OWNER_LIVE_REVIEW` result is
+not LIVE authorization and must always retain
+`LIVE_AUTHORIZATION_NOT_IMPLEMENTED`. The current real runtime is expected to
+remain `NOT_READY_FOR_LIVE / BLOCKED_EXTERNAL_EVIDENCE` until an eligible
+generic strategy and genuine Owner MT5 DEMO evidence exist. No ARK-S21 source
+or checkpoint is authorized before contract acceptance.
+
 ## QA protocol
 
 Before coding: inspect the current repository, `git status`, dirty diffs,
