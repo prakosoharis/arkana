@@ -52,6 +52,7 @@ MIGRATION_049 = "049_controlled_learning_proposals"
 MIGRATION_050 = "050_immutable_live_readiness_assessments"
 MIGRATION_051 = "051_sprint21_acceptance_verifier"
 MIGRATION_052 = "052_bounded_edge_search_campaign"
+MIGRATION_053 = "053_edge_search_final_oos_outcome"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -857,6 +858,31 @@ def _migration_052(connection) -> None:
         connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_edge_search_final_oos_openings_{column} ON edge_search_final_oos_openings({column})"))
 
 
+def _migration_053(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS edge_search_final_oos_outcomes (
+        id VARCHAR(36) PRIMARY KEY, opening_id VARCHAR(36) NOT NULL UNIQUE,
+        campaign_id VARCHAR(36) NOT NULL, trial_id VARCHAR(36) NOT NULL,
+        strategy_version_id VARCHAR(36) NOT NULL, oos_validation_id VARCHAR(36) NOT NULL,
+        fingerprint VARCHAR(64) NOT NULL UNIQUE, gate_decision VARCHAR(32) NOT NULL,
+        result JSON NOT NULL, created_at TIMESTAMP NOT NULL,
+        FOREIGN KEY(opening_id) REFERENCES edge_search_final_oos_openings(id),
+        FOREIGN KEY(campaign_id) REFERENCES edge_search_campaigns(id),
+        FOREIGN KEY(trial_id) REFERENCES edge_search_trials(id),
+        FOREIGN KEY(strategy_version_id) REFERENCES strategy_versions(id),
+        FOREIGN KEY(oos_validation_id) REFERENCES oos_validations(id))"""))
+    for column in ("campaign_id", "gate_decision", "fingerprint"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_edge_search_final_oos_outcomes_{column} ON edge_search_final_oos_outcomes({column})"))
+    # The terminal verdict is itself immutable. NO_EDGE_FOUND must be as hard to
+    # revise later as a passing result would be.
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS edge_search_campaign_conclusions (
+        id VARCHAR(36) PRIMARY KEY, campaign_id VARCHAR(36) NOT NULL UNIQUE,
+        fingerprint VARCHAR(64) NOT NULL UNIQUE, conclusion VARCHAR(32) NOT NULL,
+        result JSON NOT NULL, created_at TIMESTAMP NOT NULL,
+        FOREIGN KEY(campaign_id) REFERENCES edge_search_campaigns(id))"""))
+    for column in ("conclusion", "fingerprint"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_edge_search_campaign_conclusions_{column} ON edge_search_campaign_conclusions({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -898,6 +924,7 @@ MIGRATIONS = (
     (MIGRATION_050, _migration_050),
     (MIGRATION_051, _migration_051),
     (MIGRATION_052, _migration_052),
+    (MIGRATION_053, _migration_053),
 )
 
 

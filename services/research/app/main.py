@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, ControlledLearningProposal, Dataset, DatasetBarAsset, Deployment, EdgeSearchCampaign, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericDemoChainVerification, GenericDemoContract, GenericForwardEvidence, GenericMt5Compilation, GenericMt5Publication, GenericMt5TelemetryEvent, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, GovernanceIncident, GovernanceJournalItem, JournalEvent, LiveReadinessAssessment, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, Sprint21AcceptanceVerification, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, ControlledLearningProposal, Dataset, DatasetBarAsset, Deployment, EdgeSearchCampaign, EdgeSearchTrial, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericDemoChainVerification, GenericDemoContract, GenericForwardEvidence, GenericMt5Compilation, GenericMt5Publication, GenericMt5TelemetryEvent, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, GovernanceIncident, GovernanceJournalItem, JournalEvent, LiveReadinessAssessment, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, Sprint21AcceptanceVerification, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -44,6 +44,7 @@ from .live_readiness import list_all as list_live_readiness_assessments, materia
 from .sprint21_acceptance import latest as latest_sprint21_acceptance, materialize as materialize_sprint21_acceptance, owner_overview as sprint21_owner_overview, serialize as serialize_sprint21_acceptance, verify as verify_sprint21_acceptance
 from .edge_search import create as create_edge_search_campaign, list_all as list_edge_search_campaigns, list_trials as list_edge_search_trials, policy_contract as edge_search_policy_contract, serialize as serialize_edge_search_campaign, validation_report as edge_search_validation_report, verify as verify_edge_search_campaign
 from .edge_search_execution import execute as execute_edge_search_campaign, progress as edge_search_progress, survivors as edge_search_survivors
+from .edge_search_final_oos import assess_conclusion as assess_edge_search_conclusion, list_outcomes as list_edge_search_outcomes, open_and_evaluate as open_edge_search_final_oos, record_conclusion as record_edge_search_conclusion, serialize_conclusion as serialize_edge_search_conclusion, serialize_outcome as serialize_edge_search_outcome
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
@@ -1071,6 +1072,49 @@ def get_edge_search_survivors(campaign_id: str, session: Session = Depends(get_s
     if not item:
         raise HTTPException(404, "Edge-search campaign not found")
     return edge_search_survivors(session, item)
+
+
+@app.post("/api/v1/edge-search/campaigns/{campaign_id}/final-oos-openings")
+def post_edge_search_final_oos(campaign_id: str, payload: dict, session: Session = Depends(get_session)) -> dict:
+    campaign = session.get(EdgeSearchCampaign, campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Edge-search campaign not found")
+    trial = session.get(EdgeSearchTrial, str(payload.get("trial_id", "")))
+    if not trial:
+        raise HTTPException(404, "Edge-search trial not found")
+    try:
+        item, reused = open_edge_search_final_oos(session, campaign, trial, str(payload.get("authorization", "")))
+        return serialize_edge_search_outcome(item, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/edge-search/campaigns/{campaign_id}/final-oos-openings")
+def get_edge_search_final_oos(campaign_id: str, session: Session = Depends(get_session)) -> dict:
+    campaign = session.get(EdgeSearchCampaign, campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Edge-search campaign not found")
+    return list_edge_search_outcomes(session, campaign)
+
+
+@app.get("/api/v1/edge-search/campaigns/{campaign_id}/conclusion")
+def get_edge_search_conclusion(campaign_id: str, session: Session = Depends(get_session)) -> dict:
+    campaign = session.get(EdgeSearchCampaign, campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Edge-search campaign not found")
+    return assess_edge_search_conclusion(session, campaign)
+
+
+@app.post("/api/v1/edge-search/campaigns/{campaign_id}/conclusion")
+def post_edge_search_conclusion(campaign_id: str, session: Session = Depends(get_session)) -> dict:
+    campaign = session.get(EdgeSearchCampaign, campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Edge-search campaign not found")
+    try:
+        item, reused = record_edge_search_conclusion(session, campaign)
+        return serialize_edge_search_conclusion(item, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
 
 
 @app.get("/api/v1/edge-search/campaigns/{campaign_id}/verification")

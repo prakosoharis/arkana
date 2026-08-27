@@ -715,6 +715,41 @@ class EdgeSearchFinalOosOpening(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class EdgeSearchFinalOosOutcome(Base):
+    """The gate result of one spent final-OOS budget unit, bound to the exact
+    opening, trial, StrategyVersion, and accepted OOS evidence row."""
+    __tablename__ = "edge_search_final_oos_outcomes"
+    __table_args__ = (
+        UniqueConstraint("opening_id", name="uq_edge_search_final_oos_outcome_opening"),
+        UniqueConstraint("fingerprint", name="uq_edge_search_final_oos_outcome_fingerprint"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    opening_id: Mapped[str] = mapped_column(String(36), ForeignKey("edge_search_final_oos_openings.id"), nullable=False)
+    campaign_id: Mapped[str] = mapped_column(String(36), ForeignKey("edge_search_campaigns.id"), nullable=False, index=True)
+    trial_id: Mapped[str] = mapped_column(String(36), ForeignKey("edge_search_trials.id"), nullable=False)
+    strategy_version_id: Mapped[str] = mapped_column(String(36), ForeignKey("strategy_versions.id"), nullable=False)
+    oos_validation_id: Mapped[str] = mapped_column(String(36), ForeignKey("oos_validations.id"), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    gate_decision: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class EdgeSearchCampaignConclusion(Base):
+    """Immutable terminal verdict. `NO_EDGE_FOUND` is as hard to revise as a pass."""
+    __tablename__ = "edge_search_campaign_conclusions"
+    __table_args__ = (
+        UniqueConstraint("campaign_id", name="uq_edge_search_conclusion_campaign"),
+        UniqueConstraint("fingerprint", name="uq_edge_search_conclusion_fingerprint"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    campaign_id: Mapped[str] = mapped_column(String(36), ForeignKey("edge_search_campaigns.id"), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    conclusion: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"
