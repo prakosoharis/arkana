@@ -51,6 +51,7 @@ MIGRATION_048 = "048_incident_recovery_governance"
 MIGRATION_049 = "049_controlled_learning_proposals"
 MIGRATION_050 = "050_immutable_live_readiness_assessments"
 MIGRATION_051 = "051_sprint21_acceptance_verifier"
+MIGRATION_052 = "052_bounded_edge_search_campaign"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -818,6 +819,44 @@ def _migration_051(connection) -> None:
         connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_sprint21_acceptance_verifications_{column} ON sprint21_acceptance_verifications({column})"))
 
 
+def _migration_052(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS edge_search_campaigns (
+        id VARCHAR(36) PRIMARY KEY, fingerprint VARCHAR(64) NOT NULL UNIQUE,
+        protocol_version VARCHAR(64) NOT NULL, status VARCHAR(32) NOT NULL,
+        dataset_id VARCHAR(36) NOT NULL, dataset_fingerprint VARCHAR(64) NOT NULL,
+        registry_fingerprint VARCHAR(64) NOT NULL, grid JSON NOT NULL,
+        trial_count INTEGER NOT NULL, spread_assumption VARCHAR(32) NOT NULL,
+        final_oos_budget INTEGER NOT NULL, split_policy JSON NOT NULL,
+        calibration_disclosure JSON NOT NULL, result JSON NOT NULL,
+        created_at TIMESTAMP NOT NULL,
+        FOREIGN KEY(dataset_id) REFERENCES datasets(id))"""))
+    for column in ("fingerprint", "status", "dataset_id", "created_at"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_edge_search_campaigns_{column} ON edge_search_campaigns({column})"))
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS edge_search_trials (
+        id VARCHAR(36) PRIMARY KEY, campaign_id VARCHAR(36) NOT NULL,
+        trial_index INTEGER NOT NULL, contract_fingerprint VARCHAR(64) NOT NULL,
+        parameters JSON NOT NULL, split_scope VARCHAR(32) NOT NULL,
+        status VARCHAR(32) NOT NULL, result JSON, created_at TIMESTAMP NOT NULL,
+        CONSTRAINT uq_edge_search_trial_contract UNIQUE (campaign_id, contract_fingerprint),
+        CONSTRAINT uq_edge_search_trial_index UNIQUE (campaign_id, trial_index),
+        FOREIGN KEY(campaign_id) REFERENCES edge_search_campaigns(id))"""))
+    for column in ("campaign_id", "contract_fingerprint", "status"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_edge_search_trials_{column} ON edge_search_trials({column})"))
+    # Append-only openings are the budget counter.  A mutable integer could be
+    # reset; a row that only ever accumulates cannot be.
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS edge_search_final_oos_openings (
+        id VARCHAR(36) PRIMARY KEY, campaign_id VARCHAR(36) NOT NULL,
+        trial_id VARCHAR(36) NOT NULL, sequence INTEGER NOT NULL,
+        fingerprint VARCHAR(64) NOT NULL UNIQUE, authorization_phrase VARCHAR(128) NOT NULL,
+        result JSON NOT NULL, created_at TIMESTAMP NOT NULL,
+        CONSTRAINT uq_edge_search_opening_sequence UNIQUE (campaign_id, sequence),
+        CONSTRAINT uq_edge_search_opening_trial UNIQUE (campaign_id, trial_id),
+        FOREIGN KEY(campaign_id) REFERENCES edge_search_campaigns(id),
+        FOREIGN KEY(trial_id) REFERENCES edge_search_trials(id))"""))
+    for column in ("campaign_id", "trial_id", "fingerprint"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_edge_search_final_oos_openings_{column} ON edge_search_final_oos_openings({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -858,6 +897,7 @@ MIGRATIONS = (
     (MIGRATION_049, _migration_049),
     (MIGRATION_050, _migration_050),
     (MIGRATION_051, _migration_051),
+    (MIGRATION_052, _migration_052),
 )
 
 

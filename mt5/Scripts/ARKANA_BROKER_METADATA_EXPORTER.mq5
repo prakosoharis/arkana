@@ -15,6 +15,14 @@ void OnStart()
   FileWrite(file,"schema_version=1"); FileWrite(file,"source=MT5"); FileWrite(file,"canonical_symbol=XAUUSD"); FileWrite(file,"broker_symbol="+InpBrokerSymbol);
   FileWrite(file,"digits="+IntegerToString((int)SymbolInfoInteger(InpBrokerSymbol,SYMBOL_DIGITS)));
   FileWrite(file,"point="+DoubleToString(SymbolInfoDouble(InpBrokerSymbol,SYMBOL_POINT),12));
+  // ARK-S22-01: the assumed spread is the single most leveraged number in the
+  // historical evidence chain, so it must come from the terminal rather than
+  // from memory.  These fields are additive; older snapshots stay valid.
+  FileWrite(file,"spread_points="+IntegerToString((int)SymbolInfoInteger(InpBrokerSymbol,SYMBOL_SPREAD)));
+  FileWrite(file,"spread_float="+(SymbolInfoInteger(InpBrokerSymbol,SYMBOL_SPREAD_FLOAT)?"true":"false"));
+  FileWrite(file,"spread_price="+DoubleToString(SymbolInfoDouble(InpBrokerSymbol,SYMBOL_ASK)-SymbolInfoDouble(InpBrokerSymbol,SYMBOL_BID),12));
+  FileWrite(file,"ask="+DoubleToString(SymbolInfoDouble(InpBrokerSymbol,SYMBOL_ASK),12));
+  FileWrite(file,"bid="+DoubleToString(SymbolInfoDouble(InpBrokerSymbol,SYMBOL_BID),12));
   FileWrite(file,"tick_size="+DoubleToString(SymbolInfoDouble(InpBrokerSymbol,SYMBOL_TRADE_TICK_SIZE),12));
   FileWrite(file,"tick_value="+DoubleToString(SymbolInfoDouble(InpBrokerSymbol,SYMBOL_TRADE_TICK_VALUE),12));
   FileWrite(file,"tick_value_profit="+DoubleToString(SymbolInfoDouble(InpBrokerSymbol,SYMBOL_TRADE_TICK_VALUE_PROFIT),12));

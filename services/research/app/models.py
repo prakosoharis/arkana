@@ -656,6 +656,65 @@ class Sprint21AcceptanceVerification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class EdgeSearchCampaign(Base):
+    """Immutable pre-registered search grid. Pre-registration is what stops a
+    sweep from being reinterpreted after its results are visible."""
+    __tablename__ = "edge_search_campaigns"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_edge_search_campaign_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    dataset_id: Mapped[str] = mapped_column(String(36), ForeignKey("datasets.id"), nullable=False, index=True)
+    dataset_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    registry_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    grid: Mapped[dict] = mapped_column(JSON, nullable=False)
+    trial_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    spread_assumption: Mapped[str] = mapped_column(String(32), nullable=False)
+    final_oos_budget: Mapped[int] = mapped_column(Integer, nullable=False)
+    split_policy: Mapped[dict] = mapped_column(JSON, nullable=False)
+    calibration_disclosure: Mapped[dict] = mapped_column(JSON, nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class EdgeSearchTrial(Base):
+    """One pre-registered grid point. Recorded whether it survives or fails."""
+    __tablename__ = "edge_search_trials"
+    __table_args__ = (
+        UniqueConstraint("campaign_id", "contract_fingerprint", name="uq_edge_search_trial_contract"),
+        UniqueConstraint("campaign_id", "trial_index", name="uq_edge_search_trial_index"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    campaign_id: Mapped[str] = mapped_column(String(36), ForeignKey("edge_search_campaigns.id"), nullable=False, index=True)
+    trial_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    contract_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    parameters: Mapped[dict] = mapped_column(JSON, nullable=False)
+    split_scope: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class EdgeSearchFinalOosOpening(Base):
+    """Append-only final-OOS budget. A mutable counter could be reset; an
+    accumulating ledger cannot be."""
+    __tablename__ = "edge_search_final_oos_openings"
+    __table_args__ = (
+        UniqueConstraint("fingerprint", name="uq_edge_search_opening_fingerprint"),
+        UniqueConstraint("campaign_id", "sequence", name="uq_edge_search_opening_sequence"),
+        UniqueConstraint("campaign_id", "trial_id", name="uq_edge_search_opening_trial"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    campaign_id: Mapped[str] = mapped_column(String(36), ForeignKey("edge_search_campaigns.id"), nullable=False, index=True)
+    trial_id: Mapped[str] = mapped_column(String(36), ForeignKey("edge_search_trials.id"), nullable=False, index=True)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    authorization_phrase: Mapped[str] = mapped_column(String(128), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"
