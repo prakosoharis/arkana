@@ -43,6 +43,7 @@ from .controlled_learning import confirm as confirm_learning_proposal, list_all 
 from .live_readiness import list_all as list_live_readiness_assessments, materialize as materialize_live_readiness_assessment, policy_contract as live_readiness_policy_contract, serialize as serialize_live_readiness_assessment, verify as verify_live_readiness_assessment
 from .sprint21_acceptance import latest as latest_sprint21_acceptance, materialize as materialize_sprint21_acceptance, owner_overview as sprint21_owner_overview, serialize as serialize_sprint21_acceptance, verify as verify_sprint21_acceptance
 from .edge_search import create as create_edge_search_campaign, list_all as list_edge_search_campaigns, list_trials as list_edge_search_trials, policy_contract as edge_search_policy_contract, serialize as serialize_edge_search_campaign, validation_report as edge_search_validation_report, verify as verify_edge_search_campaign
+from .edge_search_execution import execute as execute_edge_search_campaign, progress as edge_search_progress, survivors as edge_search_survivors
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
@@ -1043,6 +1044,33 @@ def get_edge_search_campaign_trials(campaign_id: str, session: Session = Depends
     if not item:
         raise HTTPException(404, "Edge-search campaign not found")
     return list_edge_search_trials(session, item)
+
+
+@app.post("/api/v1/edge-search/campaigns/{campaign_id}/execution")
+def post_edge_search_execution(campaign_id: str, payload: dict | None = None, session: Session = Depends(get_session)) -> dict:
+    item = session.get(EdgeSearchCampaign, campaign_id)
+    if not item:
+        raise HTTPException(404, "Edge-search campaign not found")
+    try:
+        return execute_edge_search_campaign(session, item, max_trials=(payload or {}).get("max_trials"))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/edge-search/campaigns/{campaign_id}/execution")
+def get_edge_search_execution(campaign_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(EdgeSearchCampaign, campaign_id)
+    if not item:
+        raise HTTPException(404, "Edge-search campaign not found")
+    return edge_search_progress(session, item)
+
+
+@app.get("/api/v1/edge-search/campaigns/{campaign_id}/survivors")
+def get_edge_search_survivors(campaign_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(EdgeSearchCampaign, campaign_id)
+    if not item:
+        raise HTTPException(404, "Edge-search campaign not found")
+    return edge_search_survivors(session, item)
 
 
 @app.get("/api/v1/edge-search/campaigns/{campaign_id}/verification")
