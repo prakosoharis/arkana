@@ -1,0 +1,4 @@
+import { NextResponse } from "next/server";
+const url=(id:string)=>`${process.env.RESEARCH_API_URL??"http://localhost:8000"}/api/v1/edge-search/campaigns/${id}/chain-verification`;
+export async function GET(_request:Request,{params}:{params:Promise<{id:string}>}){const{id}=await params;try{const response=await fetch(url(id),{cache:"no-store"});return NextResponse.json(await response.json(),{status:response.status})}catch{return NextResponse.json({detail:"Research service is unavailable"},{status:503})}}
+export async function POST(_request:Request,{params}:{params:Promise<{id:string}>}){const{id}=await params;try{const response=await fetch(url(id),{method:"POST",cache:"no-store"});return NextResponse.json(await response.json(),{status:response.status})}catch{return NextResponse.json({detail:"Research service is unavailable"},{status:503})}}

@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-27 — Sprint 21 accepted, closed, and pushed at `4145634`
-**Active milestone:** none. Sprint 21 is closed and no successor contract is accepted.
-**Active card:** none. No implementation is authorized until the Owner accepts a new milestone contract.
+**Updated:** 2026-08-27 — Sprint 22 complete at ARK-S22-05; Sprint 23 partially accepted
+**Active milestone:** Sprint 22 — Bounded Edge Search and Honest Exhaustion; Sprint 23 — Platform Trustworthiness (S23-01/02 accepted)
+**Active card:** ARK-S22-05 — campaign verifier, Owner UI, and closure
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -57,6 +57,8 @@ Next:    immutable journal → controlled research feedback → LIVE-readiness g
 | Capital Simulation | BROKER-CONSTRAINED FIXED/FRACTIONAL HISTORY AND OWNER UI IMPLEMENTED | Immutable `CAPITAL_BROKER_CONTRACT_V1` and `BROKER_CONSTRAINED_CAPITAL_V1` evidence bind exact StrategyVersion, full-history validation, dataset, MT5 profit/margin parity, sizing, and broker assumptions. The Owner UI validates/confirms contracts, runs or reuses results, and explicitly materializes one fingerprint-bound full-replay verifier artifact; GET is lightweight and never reruns the kernel. The verifier compares every normalized point and recomputed metric, exact lineage, constraints, disclosures, and lifecycle safety. One frozen 2026 snapshot is applied to the full 2017–2026 ledger, not reconstructed historical broker terms. Acceptance readiness is not `VALIDATED`, DEMO/LIVE authorization, or a trade recommendation. |
 | Variant Explorer | OWNER WORKFLOW + MATERIALIZED ACCEPTANCE VERIFIER — ARK-S15-05 | `/variants` exposes bounded contract, train, holdout, lock, matrix, split ledger, explicit confirmation boundary, and persisted verifier evidence. Runtime truth is `NO_ELIGIBLE_VARIANT`; all ten verifier checks pass while final-OOS stays locked, with zero confirmation/revision and no lifecycle promotion. |
 | Strategy Router / Current or Live Decision | SPRINT 19 ACCEPTED; CURRENT RUNTIME FAIL-CLOSED | Policy, eligibility, deterministic decision, exact parameter evidence, Current Decision UI, materialized verifier, and `STRATEGY_ROUTER_SAFETY_AUDITOR_V1` were accepted at Sprint 19. The latest runtime fixture chain now remains `NO_TRADE` but its current safety audit is `FAILED / NO_TRADE_DECISION_NOT_EXACT`; it cannot support DEMO or readiness. No Router path grants deployment, MT5, order, or trade authority. |
+| Bounded edge search | SPRINT 22 COMPLETE — `NO_EDGE_FOUND` | Migrations 052–054 provide an immutable pre-registered campaign grid, an append-only trial ledger, a non-resettable final-OOS budget, gate outcomes bound to accepted `oos_validations` evidence, an immutable verdict, and a materialized chain verifier. One 384-trial campaign executed in full: 73 holdout survivors, all confined to the widest geometries, with 100% survival at scale ×80 across every rule variant including contradictory ones. One of three budget units was spent; the accepted gate returned `FAIL` on profit factor, year concentration (0.659), and regime concentration (0.810). The result is drift exposure in a rising market, not an edge. `/edge-search` shows the grid, survivors, spent budget, gate refusal, and verdict, and never presents a survivor without its selection disclosure. |
+| Platform security and CI | ARK-S23-01/02 ACCEPTED | Every research route except `/health` requires a fail-closed Owner bearer token; an unset token refuses all traffic rather than opening the API. The BFF injects it server-side only. Compose binds `3000`, `8001`, and `5432` to loopback. GitHub Actions runs backend, web, and safety-boundary jobs on every push, machine-checking that no `/api/v1/live` route exists, that exactly one `simulate_kernel` definition exists, and that no runtime artifact is tracked. A shared token is not user identity; domain-layer Owner authorization remains a payload phrase. |
 | Journal / controlled learning / LIVE-readiness | SPRINT 21 ACCEPTED AND CLOSED | Migrations 047–051 provide the 23-type journal, deterministic incident/acknowledgement/recovery governance, immutable controlled-learning proposals with five hypothesis templates and DRAFT-only confirmation, the fail-closed `LIVE_READINESS_ASSESSMENT_V1` snapshot, and the `SPRINT_21_ACCEPTANCE_VERIFIER_V1` chain verifier. The Owner console at `/governance` separates historical eligibility, real MT5 DEMO evidence availability, readiness gates/blockers, acknowledgement versus recovery, DRAFT-only learning, journal lineage, and acceptance integrity. Runtime journal/incident/proposal ledgers honestly remain zero; readiness is `NOT_READY_FOR_LIVE` with 9 of 11 gates failing. `LIVE_AUTHORIZATION_NOT_IMPLEMENTED` is permanent and `/api/v1/live` returns HTTP `404`. |
 
 ## Legacy Backtest and strategy classification
@@ -246,13 +248,42 @@ publications, and forward evidence are all zero, and evidence origin is
 `0 / 0 / 0 / 0`. Five legacy deployments, 6,389 legacy journal rows, zero demo
 trades, and FILE_COMMON remain exact.
 
-**No successor milestone is authorized.** Sprint 21's implementation authority
-is exhausted. The single material blocker for every downstream claim is the
-absence of real Owner-controlled MT5 DEMO evidence — an eligible generic
-strategy, an Owner-authorized publication, an exact terminal acknowledgement, a
-coherent heartbeat, and sufficient forward evidence. That gap is an operational
-and evidence problem, not a missing governance feature. It must be scoped by an
-explicitly Owner-accepted contract before any source change begins.
+Sprint 22 — Bounded Edge Search and Honest Exhaustion is recorded in
+`docs/SPRINT_22_BOUNDED_EDGE_SEARCH.md`. ARK-S22-00 is accepted at `b64f951`,
+ARK-S22-01 at `7c501b2`, ARK-S22-02 at `9663190`, and ARK-S22-03 at `4e91d46`.
+
+Its verdict is **`NO_EDGE_FOUND`**, fingerprint
+`8cf4b7870f739188796b1ffaceca3aeda253cde1616e38a230de21aa0a2d84cf`. All 384
+pre-registered trials executed; 73 cleared the holdout criterion; one of three
+final-OOS budget units was spent on the strongest survivor and the accepted
+gate returned `FAIL`. Two units remain.
+
+Two independent results establish the same conclusion. ARK-S22-02 found that
+survivorship depended only on stop-distance geometry: at scale ×80 every rule
+combination that traded at all survived, including mutually contradictory ones,
+so the rules carry no predictive information. ARK-S22-03 then found the
+strongest survivor profitable in all three splits yet refused by the gate, with
+profit factor collapsing 1.4699 → 1.0519 out of sample, 65.9% of profit in one
+year, and 81.0% in one regime. Both are the signature of directional drift in a
+rising gold market, not of an edge.
+
+That negative result is bounded to its space: six generic blocks over XAUUSD M1
+LONG at the frozen geometry range. It is not evidence that no edge exists.
+
+Sprint 23 — Platform Trustworthiness is recorded in
+`docs/SPRINT_23_PLATFORM_TRUSTWORTHINESS.md`. ARK-S23-01 and ARK-S23-02 are
+accepted at `a3df309`: the research API now requires a fail-closed Owner bearer
+token on every route except `/health`, Compose binds `3000`, `8001`, and `5432`
+to loopback, and GitHub Actions runs the full backend, web, and safety-boundary
+suites on every push. ARK-S23-03 through ARK-S23-05 remain unauthorized.
+
+**The single material blocker for every downstream claim remains unchanged:**
+there is no eligible generic strategy, and therefore no real Owner-controlled
+MT5 DEMO evidence — no authorized publication, terminal acknowledgement,
+coherent heartbeat, or sufficient forward evidence. Sprint 22 confirmed that
+the currently executable strategy space cannot supply one. ARK-S22-04's
+conditional registry extension is now unlocked but not authorized, and its true
+scope is a milestone rather than a checkpoint.
 
 The historical evaluator compatibility seam is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:

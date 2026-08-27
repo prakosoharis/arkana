@@ -1,12 +1,16 @@
 # Sprint 22 — Bounded Edge Search and Honest Exhaustion
 
-**Contract status:** DRAFT — awaiting explicit Owner acceptance
+**Contract status:** accepted by the Owner on 2026-08-27
 
-**Active checkpoint:** none. No source change is authorized until the Owner
-accepts this contract and names ARK-S22-00.
+**Sprint status:** COMPLETE at ARK-S22-05. Verdict **`NO_EDGE_FOUND`**,
+fingerprint `8cf4b7870f739188796b1ffaceca3aeda253cde1616e38a230de21aa0a2d84cf`.
+ARK-S22-00 accepted at `b64f951`, ARK-S22-01 at `7c501b2`, ARK-S22-02 at
+`9663190`, ARK-S22-03 at `4e91d46`, and ARK-S22-05 pending acceptance.
 
-**Implementation authority:** none yet. Sprint 21 is closed and its authority is
-exhausted. This document proposes scope; it grants nothing until accepted.
+**Implementation authority:** exhausted for ARK-S22-00 through ARK-S22-05.
+ARK-S22-04's conditional registry extension is unlocked by the verdict but
+remains unauthorized, and its honest scope is a milestone rather than a
+checkpoint.
 
 ## Why this milestone, and why not a DEMO campaign
 

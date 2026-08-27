@@ -436,10 +436,44 @@ proposal rows, zero generic DEMO artifacts, and `0 / 0 / 0 / 0` evidence
 origin. That negative result is correct and must never be turned green by
 fabricating an input.
 
-**No successor milestone is authorized.** Sprint 21's implementation authority
-is exhausted, and closing it grants no scope for a LIVE path, a DEMO campaign,
-or Dynamic Discovery. The next agent must obtain an explicitly Owner-accepted
-milestone contract before changing source.
+## Closed milestone — Sprint 22 bounded edge search
+
+[`SPRINT_22_BOUNDED_EDGE_SEARCH.md`](SPRINT_22_BOUNDED_EDGE_SEARCH.md) asked
+whether the executable strategy space contains anything that survives the
+accepted gate. It does not. The verdict is `NO_EDGE_FOUND`, fingerprint
+`8cf4b787…`, from one 384-trial pre-registered campaign.
+
+Two independent results agree. Survivorship depended only on stop-distance
+geometry — at scale ×80 every rule combination that traded survived, including
+mutually contradictory ones — so the rules carry no predictive information. The
+strongest survivor was then profitable in all three splits and still refused by
+the gate: profit factor collapsed 1.4699 → 1.0519 out of sample, 65.9% of
+profit sat in one year, and 81.0% in one regime. Both are the signature of
+directional drift in a rising gold market.
+
+The more valuable outcome is that the gate works. Twenty-two sprints assumed it
+would refuse a plausible-looking result; this was the first candidate good
+enough to test that assumption, and it was refused for stated reasons.
+
+ARK-S22-04's conditional registry extension — `SHORT` direction, a session
+filter, volatility-scaled stops — is unlocked but not authorized. Its real
+scope is a milestone, not a checkpoint: each block requires evaluator,
+compiler, EA, and golden parity work.
+
+## Active milestone — Sprint 23 platform trustworthiness
+
+[`SPRINT_23_PLATFORM_TRUSTWORTHINESS.md`](SPRINT_23_PLATFORM_TRUSTWORTHINESS.md).
+ARK-S23-01 and ARK-S23-02 are accepted. The research API was reachable without
+any authentication, and a publication write reaches `FILE_COMMON` that the EA
+acts on, so anonymous access could drive real DEMO order placement. Every route
+except `/health` now requires a fail-closed Owner bearer token, ports bind to
+loopback, and CI machine-checks the safety boundaries that were previously only
+prose. ARK-S23-03 through ARK-S23-05 remain unauthorized.
+
+**No further implementation is authorized.** The next agent must obtain an
+explicitly Owner-accepted contract before changing source. The material blocker
+for every downstream claim is unchanged: no eligible generic strategy exists,
+so no real Owner-controlled MT5 DEMO evidence can exist yet.
 
 ## QA protocol
 
