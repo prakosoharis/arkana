@@ -2,8 +2,11 @@ from datetime import datetime
 from pathlib import Path
 from threading import Event, Lock, Thread
 
+from hmac import compare_digest
+
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session, selectinload
 
@@ -46,6 +49,7 @@ from .strategy_capabilities import confirm as confirm_capability_assessment, mat
 from .strategy_compiler import compile_contract as compile_strategy_contract
 from .strategy_evaluator_verification import get as get_strategy_evaluator_verification, materialize as materialize_strategy_evaluator_verification, serialize as serialize_strategy_evaluator_verification
 from .deployments import adapter_preflight, create_deployment, poll_ack, preflight, rollback, serialize as serialize_deployment
+from . import settings
 from .settings import DATA_ROOT, MAX_BARS_PER_REQUEST
 from .telemetry import serialize as serialize_journal_event, snapshot as telemetry_snapshot, sync as sync_telemetry
 from .discovery import discover, similar
@@ -78,6 +82,30 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def require_owner_token(request, call_next):
+    """Fail-closed bearer-token gate in front of every research route.
+
+    CORS restricts browsers only; it never restricted a direct client. Because
+    a publication write reaches FILE_COMMON and the EA acts on it, an
+    unauthenticated caller could previously reach real DEMO execution.
+    """
+    if request.url.path in settings.UNAUTHENTICATED_PATHS:
+        return await call_next(request)
+    if not settings.RESEARCH_API_TOKEN:
+        return JSONResponse({"detail": "RESEARCH_API_TOKEN is not configured; the research API is refusing every request"},
+                            status_code=503, headers={"x-arkana-auth": "API_TOKEN_NOT_CONFIGURED"})
+    header = request.headers.get("authorization", "")
+    scheme, _, presented = header.partition(" ")
+    if scheme.lower() != "bearer" or not presented:
+        return JSONResponse({"detail": "A bearer Owner token is required"}, status_code=401,
+                            headers={"www-authenticate": "Bearer", "x-arkana-auth": "TOKEN_MISSING"})
+    if not compare_digest(presented.strip(), settings.RESEARCH_API_TOKEN):
+        return JSONResponse({"detail": "The presented Owner token is not valid"}, status_code=401,
+                            headers={"www-authenticate": "Bearer", "x-arkana-auth": "TOKEN_INVALID"})
+    return await call_next(request)
 
 
 @app.on_event("startup")

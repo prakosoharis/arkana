@@ -1,0 +1,88 @@
+name: CI
+
+# ARK-S23-02. Every regression in this repository has been run by hand. Nothing
+# prevented a checkpoint from landing with a broken kernel, a lost migration, or
+# a reopened safety boundary.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Research service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/research
+    env:
+      PYTHONPATH: ${{ github.workspace }}/services/research
+      DATABASE_URL: sqlite:////tmp/arkana-ci.db
+      DATA_ROOT: /tmp/arkana-ci-data
+      MT5_COMMON_FILES_ROOT: /tmp/arkana-ci-mt5
+      RESEARCH_API_TOKEN: arkana-ci-owner-token
+      AI_ENABLED: "false"
+      AI_PROVIDER: unconfigured
+      AI_API_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: services/research/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: pytest -q --disable-warnings
+
+  web:
+    name: Owner web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    env:
+      RESEARCH_API_URL: http://research:8000
+      RESEARCH_API_TOKEN: arkana-ci-owner-token
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm test -- --run
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+
+  safety-boundaries:
+    name: Safety boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No LIVE route may exist
+        # Anchored so the legitimate /api/v1/live-readiness governance routes
+        # are not mistaken for a LIVE execution path.
+        run: |
+          if grep -rnE '"/api/v1/live(/[^-]|")' services/research/app apps/web/app; then
+            echo "::error::a LIVE route was introduced; this requires a separately authorized product and safety design"
+            exit 1
+          fi
+      - name: Backtest V1 must remain the only simulation kernel
+        run: |
+          count=$(grep -rl 'def simulate_kernel' services/research/app | wc -l)
+          if [ "$count" -ne 1 ]; then
+            echo "::error::expected exactly one simulate_kernel definition, found $count"
+            exit 1
+          fi
+      - name: Generated and runtime artifacts must not be committed
+        run: |
+          if git ls-files | grep -E '\.parquet$|/postgres-data/'; then
+            echo "::error::a runtime artifact is tracked in git"
+            exit 1
+          fi

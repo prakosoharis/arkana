@@ -56,3 +56,8 @@ AI_REQUEST_MAX_INPUT_TOKENS = int(os.getenv("AI_REQUEST_MAX_INPUT_TOKENS", "4000
 # typed rule.  800 is routinely truncated by otherwise healthy providers.
 AI_REQUEST_MAX_OUTPUT_TOKENS = int(os.getenv("AI_REQUEST_MAX_OUTPUT_TOKENS", "1600"))
 AI_REQUEST_MAX_COST_USD = float(os.getenv("AI_REQUEST_MAX_COST_USD", "0.05"))
+# ARK-S23-01.  Every research endpoint mutates or exposes Owner evidence, and
+# publication writes FILE_COMMON that the EA acts on.  An unset token is never
+# treated as "open"; it fails closed on every route except /health.
+RESEARCH_API_TOKEN = os.getenv("RESEARCH_API_TOKEN", "").strip()
+UNAUTHENTICATED_PATHS = frozenset({"/health"})
