@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
 import app.migrations as migrations
-from app.migrations import MIGRATION_013, MIGRATION_014, MIGRATION_015, MIGRATION_016, MIGRATION_017, MIGRATION_021, MIGRATION_022, MIGRATION_023, MIGRATION_024, MIGRATION_025, MIGRATION_026, MIGRATION_027, MIGRATION_028, MIGRATION_029, MIGRATION_030, MIGRATION_031, MIGRATION_032, MIGRATION_033, MIGRATION_034, MIGRATION_035, MIGRATION_036, MIGRATION_037, MIGRATION_038, MIGRATION_039, MIGRATION_040, MIGRATION_041, MIGRATION_042, MIGRATION_043, MIGRATION_044, MIGRATION_045, MIGRATION_046, MIGRATION_047, MIGRATION_048, run_migrations
+from app.migrations import MIGRATION_013, MIGRATION_014, MIGRATION_015, MIGRATION_016, MIGRATION_017, MIGRATION_021, MIGRATION_022, MIGRATION_023, MIGRATION_024, MIGRATION_025, MIGRATION_026, MIGRATION_027, MIGRATION_028, MIGRATION_029, MIGRATION_030, MIGRATION_031, MIGRATION_032, MIGRATION_033, MIGRATION_034, MIGRATION_035, MIGRATION_036, MIGRATION_037, MIGRATION_038, MIGRATION_039, MIGRATION_040, MIGRATION_041, MIGRATION_042, MIGRATION_043, MIGRATION_044, MIGRATION_045, MIGRATION_046, MIGRATION_047, MIGRATION_048, MIGRATION_049, run_migrations
 from app.models import BacktestRun, StrategyCandidate, StrategyVersion
 
 
@@ -83,6 +83,7 @@ def test_strategy_factory_migration_preserves_legacy_and_supports_pre_backtest_l
     assert "generic_validation_lifecycle_verifications" in metadata.get_table_names()
     assert "governance_journal_items" in metadata.get_table_names()
     assert {"governance_incidents", "governance_incident_acknowledgements", "governance_incident_resolutions"}.issubset(metadata.get_table_names())
+    assert {"controlled_learning_proposals", "controlled_learning_confirmations"}.issubset(metadata.get_table_names())
     assert {"strategy_candidate_id", "strategy_contract"}.issubset({column["name"] for column in metadata.get_columns("strategy_versions")})
     assert {"validation_evidence_id", "validated_at"}.issubset({column["name"] for column in metadata.get_columns("strategy_versions")})
     assert {"generic_validation_promotion_id"}.issubset({column["name"] for column in metadata.get_columns("strategy_versions")})
@@ -147,6 +148,7 @@ def test_strategy_factory_migration_preserves_legacy_and_supports_pre_backtest_l
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_046}).scalar_one() == 1
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_047}).scalar_one() == 1
         assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_048}).scalar_one() == 1
+        assert connection.execute(text("SELECT COUNT(*) FROM schema_migrations WHERE version = :version"), {"version": MIGRATION_049}).scalar_one() == 1
         assert "generic_mt5_compilations" in inspect(connection).get_table_names()
         assert "generic_mt5_publications" in inspect(connection).get_table_names()
         assert "generic_mt5_telemetry_events" in inspect(connection).get_table_names()

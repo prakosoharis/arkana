@@ -20,6 +20,9 @@ def update_strategy_candidate(session: Session, item: StrategyCandidate, payload
     candidate=create_strategy_candidate  # retain one validation policy
     name=str(payload.get("name",item.name)).strip(); source=str(payload.get("source",item.source)).upper(); provenance=payload.get("provenance",item.provenance)
     if not name or source not in SOURCES or not isinstance(provenance,dict): raise ValueError("candidate requires name, supported source, and structured provenance")
+    controlled = item.provenance.get("controlled_learning") if isinstance(item.provenance, dict) else None
+    if controlled and (source != item.source or provenance.get("controlled_learning") != controlled):
+        raise ValueError("controlled-learning source and exact proposal provenance are immutable")
     item.name=name; item.source=source; item.provenance=provenance; session.commit(); session.refresh(item); return item
 
 def confirm_strategy_version(session: Session, payload: dict, *, validation_report: dict | None = None) -> StrategyVersion:

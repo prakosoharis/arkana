@@ -573,6 +573,55 @@ class GovernanceIncidentResolution(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class ControlledLearningProposal(Base):
+    """Immutable evidence-to-research proposal; never an executable strategy."""
+    __tablename__ = "controlled_learning_proposals"
+    __table_args__ = (
+        UniqueConstraint("evidence_key", name="uq_controlled_learning_evidence_key"),
+        UniqueConstraint("fingerprint", name="uq_controlled_learning_fingerprint"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    evidence_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    hypothesis_code: Mapped[str] = mapped_column(String(96), nullable=False, index=True)
+    hypothesis_text: Mapped[str] = mapped_column(Text, nullable=False)
+    source_journal_item_ids: Mapped[list] = mapped_column(JSON, nullable=False)
+    source_journal_fingerprints: Mapped[list] = mapped_column(JSON, nullable=False)
+    source_incident_ids: Mapped[list] = mapped_column(JSON, nullable=False)
+    source_incident_fingerprints: Mapped[list] = mapped_column(JSON, nullable=False)
+    base_strategy_version_id: Mapped[str | None] = mapped_column(ForeignKey("strategy_versions.id"), nullable=True, index=True)
+    base_strategy_checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    affected_contract_blocks: Mapped[list] = mapped_column(JSON, nullable=False)
+    bounded_validation_scope: Mapped[dict] = mapped_column(JSON, nullable=False)
+    uncertainties: Mapped[list] = mapped_column(JSON, nullable=False)
+    exclusions: Mapped[list] = mapped_column(JSON, nullable=False)
+    generator: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    ai_interaction_id: Mapped[str | None] = mapped_column(ForeignKey("ai_interactions.id"), nullable=True)
+    ai_interaction_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ControlledLearningConfirmation(Base):
+    """Exact Owner gate that creates one DRAFT candidate and nothing more."""
+    __tablename__ = "controlled_learning_confirmations"
+    __table_args__ = (
+        UniqueConstraint("proposal_id", name="uq_controlled_learning_confirmation_proposal"),
+        UniqueConstraint("fingerprint", name="uq_controlled_learning_confirmation_fingerprint"),
+        UniqueConstraint("strategy_candidate_id", name="uq_controlled_learning_confirmation_candidate"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    proposal_id: Mapped[str] = mapped_column(ForeignKey("controlled_learning_proposals.id"), nullable=False, index=True)
+    proposal_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    confirmation_phrase: Mapped[str] = mapped_column(String(192), nullable=False)
+    phrase_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    strategy_candidate_id: Mapped[str] = mapped_column(ForeignKey("strategy_candidates.id"), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"

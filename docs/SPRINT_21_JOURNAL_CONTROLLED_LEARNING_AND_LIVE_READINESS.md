@@ -2,11 +2,11 @@
 
 **Contract status:** accepted by the Owner on 2026-08-26
 
-**Active checkpoint:** ARK-S21-02 complete; awaiting Owner acceptance
+**Active checkpoint:** ARK-S21-03 complete; awaiting Owner acceptance
 
-**Implementation authority:** ARK-S21-02 incident, acknowledgement, recovery,
-and fail-safe entry-block scope only; no learning proposal, readiness
-assessment, automatic unblocking, DEMO activation, or LIVE authority
+**Implementation authority:** ARK-S21-03 controlled-learning proposal and
+DRAFT-only candidate scope; no readiness assessment, automatic lifecycle or
+parameter change, DEMO activation, or LIVE authority
 
 ## Product objective
 
@@ -453,4 +453,28 @@ hashes are unchanged.
 
 **ARK-S21-02 technical claim:** `VALIDATED`, scoped only to incident,
 acknowledgement, evidence-bound recovery, and fail-safe entry-block governance.
-Owner acceptance remains pending.
+Accepted by the Owner and pushed as `b7d30fe`.
+
+## ARK-S21-03 completion evidence
+
+ARK-S21-03 completed on 2026-08-26. The concrete report is
+[`SPRINT_21_03_CONTROLLED_LEARNING_PROPOSALS.md`](SPRINT_21_03_CONTROLLED_LEARNING_PROPOSALS.md).
+
+Migration 049 and `CONTROLLED_LEARNING_PROPOSAL_V1` implement immutable,
+order-independent evidence-to-research proposals, a five-template deterministic
+hypothesis registry, bounded validation scope, explicit uncertainty/exclusions,
+resolved-incident and source-integrity gates, optional trace-only AI lineage,
+exact Owner confirmation, DRAFT-only StrategyCandidate creation, and complete
+chain verification. No existing strategy/evidence is mutated and no acceptance
+is reused.
+
+Focused regression is 38 passed, full backend regression is 331 passed, web
+regression is 30 passed, TypeScript/lint/build pass, and Docker
+migration/restart/API/BFF OAT pass. PostgreSQL records migration 049 once and
+has zero proposals/confirmations because OAT does not fabricate evidence or a
+research candidate. Existing candidate/version/runtime counts and FILE_COMMON
+hashes are unchanged.
+
+**ARK-S21-03 technical claim:** `VALIDATED`, scoped only to immutable
+controlled-learning proposal and DRAFT-candidate governance. Owner acceptance
+remains pending.

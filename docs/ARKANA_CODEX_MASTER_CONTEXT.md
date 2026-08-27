@@ -373,7 +373,7 @@ backfill occurs. Its accepted full backend was 304 passed and web was 30
 passed; Docker migration/restart OAT passed without changing prior evidence or
 FILE_COMMON.
 
-ARK-S21-02 is complete and awaits Owner acceptance. Its concrete evidence is
+ARK-S21-02 was accepted and pushed as `b7d30fe`. Its concrete evidence is
 [`SPRINT_21_02_INCIDENT_ACKNOWLEDGEMENT_RECOVERY.md`](SPRINT_21_02_INCIDENT_ACKNOWLEDGEMENT_RECOVERY.md).
 Migration 048 and `GOVERNANCE_INCIDENT_RECOVERY_V1` add append-only incident,
 acknowledgement, and resolution ledgers; a fingerprinted 19-reason fixed
@@ -385,13 +385,25 @@ migration/restart/API/BFF OAT passes. Runtime incident, acknowledgement, and
 resolution counts remain zero; existing counts and FILE_COMMON hashes remain
 unchanged.
 
+ARK-S21-03 is complete and awaits Owner acceptance. Its concrete evidence is
+[`SPRINT_21_03_CONTROLLED_LEARNING_PROPOSALS.md`](SPRINT_21_03_CONTROLLED_LEARNING_PROPOSALS.md).
+Migration 049 and `CONTROLLED_LEARNING_PROPOSAL_V1` add immutable
+order-independent evidence-to-research proposals, five closed deterministic
+hypothesis templates, bounded no-look-ahead/final-OOS-locked validation scope,
+resolved-incident and source-integrity gates, optional trace-only AI lineage,
+exact DRAFT-only Owner confirmation, immutable candidate provenance, and
+complete-chain verification. Focused is 38 passed, full backend is 331 passed,
+web is 30 passed, and Docker migration/restart/API/BFF OAT passes. Runtime
+proposal/confirmation counts remain zero; StrategyCandidate/StrategyVersion
+remain 7/13 and FILE_COMMON remains unchanged.
+
 Sprint 21 explicitly implements no LIVE endpoint, config, credential,
 deployment, order, or trade. A possible `READY_FOR_OWNER_LIVE_REVIEW` result is
 not LIVE authorization and must always retain
 `LIVE_AUTHORIZATION_NOT_IMPLEMENTED`. The current real runtime is expected to
 remain `NOT_READY_FOR_LIVE / BLOCKED_EXTERNAL_EVIDENCE` until an eligible
 generic strategy and genuine Owner MT5 DEMO evidence exist. No ARK-S21 source
-or checkpoint after ARK-S21-02 is authorized before checkpoint acceptance.
+or checkpoint after ARK-S21-03 is authorized before checkpoint acceptance.
 
 ## QA protocol
 
