@@ -45,6 +45,7 @@ from .sprint21_acceptance import latest as latest_sprint21_acceptance, materiali
 from .edge_search import create as create_edge_search_campaign, list_all as list_edge_search_campaigns, list_trials as list_edge_search_trials, policy_contract as edge_search_policy_contract, serialize as serialize_edge_search_campaign, validation_report as edge_search_validation_report, verify as verify_edge_search_campaign
 from .edge_search_execution import execute as execute_edge_search_campaign, progress as edge_search_progress, survivors as edge_search_survivors
 from .operational_health import assess as assess_operational_health
+from .strategy_lineage import materialize_all as materialize_strategy_lineage, overview as strategy_lineage_overview, serialize as serialize_strategy_lineage, latest_for as latest_strategy_lineage
 from .edge_search_verification import latest as latest_edge_search_verification, materialize as materialize_edge_search_verification, owner_overview as edge_search_owner_overview, serialize as serialize_edge_search_verification
 from .edge_search_final_oos import assess_conclusion as assess_edge_search_conclusion, list_outcomes as list_edge_search_outcomes, open_and_evaluate as open_edge_search_final_oos, record_conclusion as record_edge_search_conclusion, serialize_conclusion as serialize_edge_search_conclusion, serialize_outcome as serialize_edge_search_outcome
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
@@ -1117,6 +1118,24 @@ def post_edge_search_conclusion(campaign_id: str, session: Session = Depends(get
         return serialize_edge_search_conclusion(item, reused=reused)
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/strategy-lineage")
+def get_strategy_lineage_overview(session: Session = Depends(get_session)) -> dict:
+    return strategy_lineage_overview(session)
+
+
+@app.post("/api/v1/strategy-lineage/classifications")
+def post_strategy_lineage_classifications(session: Session = Depends(get_session)) -> dict:
+    return materialize_strategy_lineage(session)
+
+
+@app.get("/api/v1/strategy-versions/{strategy_version_id}/lineage")
+def get_strategy_lineage(strategy_version_id: str, session: Session = Depends(get_session)) -> dict:
+    item = latest_strategy_lineage(session, strategy_version_id)
+    if not item:
+        raise HTTPException(404, "Strategy lineage classification has not been materialized")
+    return serialize_strategy_lineage(item)
 
 
 @app.get("/api/v1/operational-health")

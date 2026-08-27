@@ -54,6 +54,7 @@ MIGRATION_051 = "051_sprint21_acceptance_verifier"
 MIGRATION_052 = "052_bounded_edge_search_campaign"
 MIGRATION_053 = "053_edge_search_final_oos_outcome"
 MIGRATION_054 = "054_edge_search_campaign_verification"
+MIGRATION_055 = "055_strategy_lineage_classification"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -894,6 +895,18 @@ def _migration_054(connection) -> None:
         connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_edge_search_campaign_verifications_{column} ON edge_search_campaign_verifications({column})"))
 
 
+def _migration_055(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS strategy_lineage_classifications (
+        id VARCHAR(36) PRIMARY KEY, strategy_version_id VARCHAR(36) NOT NULL,
+        fingerprint VARCHAR(64) NOT NULL UNIQUE, classifier_version VARCHAR(64) NOT NULL,
+        classification VARCHAR(48) NOT NULL, may_satisfy_generic_gate BOOLEAN NOT NULL,
+        result JSON NOT NULL, created_at TIMESTAMP NOT NULL,
+        CONSTRAINT uq_strategy_lineage_version UNIQUE (strategy_version_id, fingerprint),
+        FOREIGN KEY(strategy_version_id) REFERENCES strategy_versions(id))"""))
+    for column in ("strategy_version_id", "classification", "fingerprint"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_strategy_lineage_classifications_{column} ON strategy_lineage_classifications({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -937,6 +950,7 @@ MIGRATIONS = (
     (MIGRATION_052, _migration_052),
     (MIGRATION_053, _migration_053),
     (MIGRATION_054, _migration_054),
+    (MIGRATION_055, _migration_055),
 )
 
 

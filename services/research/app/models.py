@@ -764,6 +764,21 @@ class EdgeSearchCampaignVerification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class StrategyLineageClassification(Base):
+    """Immutable, evidence-derived judgement of whether a StrategyVersion's
+    lineage is real. A fixture must be refused by rule, not by coincidence."""
+    __tablename__ = "strategy_lineage_classifications"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_strategy_lineage_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    strategy_version_id: Mapped[str] = mapped_column(String(36), ForeignKey("strategy_versions.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    classifier_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    classification: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    may_satisfy_generic_gate: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"

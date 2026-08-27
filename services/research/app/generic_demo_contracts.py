@@ -22,6 +22,7 @@ from .capital_contracts import PROTOCOL_VERSION as CAPITAL_PROTOCOL, READY as CA
 from .generic_validation_lifecycle_verification import VERIFIER_VERSION as LIFECYCLE_VERIFIER_VERSION, fingerprint as lifecycle_fingerprint, get_latest as get_latest_lifecycle, verify as verify_lifecycle
 from .models import BrokerMetadataSnapshot, CapitalBrokerContract, Deployment, GenericDemoContract, GenericValidationLifecycleVerification, StrategyContractAssessment, StrategyVersion
 from .strategy_capabilities import GENERIC, assess as assess_capability
+from .strategy_lineage import classify as classify_lineage
 from .strategy_contracts import canonical_json
 
 
@@ -304,14 +305,20 @@ def eligibility_overview(session: Session) -> dict[str, Any]:
             except (ValueError, TypeError, KeyError):
                 lifecycle_ok = False
         capability_ok = bool(capability) and capability.fingerprint == capability_result.get("fingerprint") and capability.assessment == capability_result and capability.status == "CONTRACT_VALID" and capability.evaluator_capability_id == GENERIC and strategy.checksum == capability_result.get("strategy_contract_fingerprint") and bound.get("fingerprint") == capability.fingerprint
-        eligible = strategy.status == "VALIDATED" and not strategy.generic_validation_retirement_id and lifecycle_ok and capability_ok
+        # ARK-S23-03: a fixture was previously refused only because its synthetic
+        # checksum could not match a real fingerprint.  Refuse it by rule instead,
+        # so a fixture with a real-looking checksum cannot pass either.
+        lineage = classify_lineage(session, strategy)
+        lineage_ok = lineage["may_satisfy_generic_gate"]
+        eligible = strategy.status == "VALIDATED" and not strategy.generic_validation_retirement_id and lifecycle_ok and capability_ok and lineage_ok
         if strategy.status in {"VALIDATED", "RETIRED"} or capability_ok:
-            candidates.append({"strategy_version_id": strategy.id, "status": "ELIGIBLE_SOURCE" if eligible else "INELIGIBLE_SOURCE", "strategy_status": strategy.status, "lifecycle_verification_id": lifecycle.id if lifecycle else None, "lifecycle_exact": lifecycle_ok, "capability_assessment_id": capability.id if capability else None, "capability_exact": capability_ok})
+            candidates.append({"strategy_version_id": strategy.id, "status": "ELIGIBLE_SOURCE" if eligible else "INELIGIBLE_SOURCE", "strategy_status": strategy.status, "lifecycle_verification_id": lifecycle.id if lifecycle else None, "lifecycle_exact": lifecycle_ok, "capability_assessment_id": capability.id if capability else None, "capability_exact": capability_ok, "lineage": lineage["classification"], "lineage_ok": lineage_ok})
     eligible_ids = [item["strategy_version_id"] for item in candidates if item["status"] == "ELIGIBLE_SOURCE"]
     return {
         "status": "ELIGIBLE_STRATEGY_AVAILABLE" if eligible_ids else "NO_VALIDATED_STRATEGY",
         "eligible_strategy_version_ids": eligible_ids,
         "candidates": candidates,
+        "fixture_strategy_version_ids": [item["strategy_version_id"] for item in candidates if item["lineage"] == "SYNTHETIC_CHECKSUM"],
         "counts": {"strategies": session.query(StrategyVersion).count(), "validated": session.query(StrategyVersion).filter(StrategyVersion.status == "VALIDATED").count(), "generic_demo_contracts": session.query(GenericDemoContract).count(), "deployments_observed_only": session.query(Deployment).count()},
         "safety_boundary": {"read_only": True, "configuration_compiled": False, "file_common_written": False, "deployment_created": False, "mt5_action_created": False, "order_or_trade_created": False},
         "warning": "Source eligibility is not a complete DEMO contract. Exact broker, capital, risk, and safety validation is still required.",
