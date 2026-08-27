@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-26 — ARK-S21-03 complete; Owner acceptance pending
-**Active milestone:** Sprint 21 — Journal, Controlled Learning, and LIVE-Readiness Governance
-**Active card:** ARK-S21-03 — Controlled-learning proposal ledger
+**Updated:** 2026-08-27 — Sprint 21 accepted, closed, and pushed at `4145634`
+**Active milestone:** none. Sprint 21 is closed and no successor contract is accepted.
+**Active card:** none. No implementation is authorized until the Owner accepts a new milestone contract.
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -57,7 +57,7 @@ Next:    immutable journal → controlled research feedback → LIVE-readiness g
 | Capital Simulation | BROKER-CONSTRAINED FIXED/FRACTIONAL HISTORY AND OWNER UI IMPLEMENTED | Immutable `CAPITAL_BROKER_CONTRACT_V1` and `BROKER_CONSTRAINED_CAPITAL_V1` evidence bind exact StrategyVersion, full-history validation, dataset, MT5 profit/margin parity, sizing, and broker assumptions. The Owner UI validates/confirms contracts, runs or reuses results, and explicitly materializes one fingerprint-bound full-replay verifier artifact; GET is lightweight and never reruns the kernel. The verifier compares every normalized point and recomputed metric, exact lineage, constraints, disclosures, and lifecycle safety. One frozen 2026 snapshot is applied to the full 2017–2026 ledger, not reconstructed historical broker terms. Acceptance readiness is not `VALIDATED`, DEMO/LIVE authorization, or a trade recommendation. |
 | Variant Explorer | OWNER WORKFLOW + MATERIALIZED ACCEPTANCE VERIFIER — ARK-S15-05 | `/variants` exposes bounded contract, train, holdout, lock, matrix, split ledger, explicit confirmation boundary, and persisted verifier evidence. Runtime truth is `NO_ELIGIBLE_VARIANT`; all ten verifier checks pass while final-OOS stays locked, with zero confirmation/revision and no lifecycle promotion. |
 | Strategy Router / Current or Live Decision | SPRINT 19 ACCEPTED; CURRENT RUNTIME FAIL-CLOSED | Policy, eligibility, deterministic decision, exact parameter evidence, Current Decision UI, materialized verifier, and `STRATEGY_ROUTER_SAFETY_AUDITOR_V1` were accepted at Sprint 19. The latest runtime fixture chain now remains `NO_TRADE` but its current safety audit is `FAILED / NO_TRADE_DECISION_NOT_EXACT`; it cannot support DEMO or readiness. No Router path grants deployment, MT5, order, or trade authority. |
-| Journal / controlled learning / LIVE-readiness | ARK-S21-03 COMPLETE; OWNER ACCEPTANCE PENDING | Accepted migrations 047–048 provide the 23-type journal and deterministic incident/recovery governance. Migration 049 and `CONTROLLED_LEARNING_PROPOSAL_V1` add immutable order-independent proposals, five deterministic hypothesis templates, bounded validation scope, source/incident/forward-evidence fingerprints, trace-only AI lineage, exact DRAFT-only Owner confirmation, immutable candidate provenance, and a read-only verifier. Runtime journal/incident/proposal ledgers honestly remain zero and candidate/version counts remain unchanged. Readiness assessment, UI, and LIVE authority do not yet exist. |
+| Journal / controlled learning / LIVE-readiness | SPRINT 21 ACCEPTED AND CLOSED | Migrations 047–051 provide the 23-type journal, deterministic incident/acknowledgement/recovery governance, immutable controlled-learning proposals with five hypothesis templates and DRAFT-only confirmation, the fail-closed `LIVE_READINESS_ASSESSMENT_V1` snapshot, and the `SPRINT_21_ACCEPTANCE_VERIFIER_V1` chain verifier. The Owner console at `/governance` separates historical eligibility, real MT5 DEMO evidence availability, readiness gates/blockers, acknowledgement versus recovery, DRAFT-only learning, journal lineage, and acceptance integrity. Runtime journal/incident/proposal ledgers honestly remain zero; readiness is `NOT_READY_FOR_LIVE` with 9 of 11 gates failing. `LIVE_AUTHORIZATION_NOT_IMPLEMENTED` is permanent and `/api/v1/live` returns HTTP `404`. |
 
 ## Legacy Backtest and strategy classification
 
@@ -225,7 +225,34 @@ plus browser OAT pass. Runtime remains `BLOCKED_EXTERNAL_EVIDENCE` with zero
 generic publication/event/evidence/verifier rows; five legacy deployments,
 6,389 journal rows, and FILE_COMMON remain exact. The checkpoint technical
 claim is `VALIDATED`; no real DEMO activation, profit, or LIVE claim exists.
-No subsequent sprint or checkpoint is authorized yet.
+
+Sprint 21 — Journal, Controlled Learning, and LIVE-Readiness Governance is
+accepted and closed, recorded in
+`docs/SPRINT_21_JOURNAL_CONTROLLED_LEARNING_AND_LIVE_READINESS.md`. All six
+checkpoints are accepted and pushed: ARK-S21-00 at `20cb924`, ARK-S21-01 at
+`301f311`, ARK-S21-02 at `b7d30fe`, ARK-S21-03 at `fd4234b`, ARK-S21-04 at
+`0ba378f`, and ARK-S21-05 at `4145634`. The Owner accepted ARK-S21-05 and
+Sprint 21 on 2026-08-27. Final regression is 339 backend and 31 web across 12
+files, with TypeScript, ESLint, production build, Docker restart, and browser
+OAT passing.
+
+Real runtime after closure is deliberately negative and must not be restated as
+progress: the acceptance verifier `c1444cf3-6127-4317-b8cd-fd159ab04f64`
+(fingerprint `482d55f6…`) reports integrity `PASSED` while Owner acceptance
+state is `NOT_READY_FOR_OWNER_ACCEPTANCE` and readiness is `NOT_READY_FOR_LIVE`
+(fingerprint `c71f4dc8…`). Nine of eleven readiness gates fail, journal,
+incident, and proposal ledgers are zero, generic DEMO contracts, compilations,
+publications, and forward evidence are all zero, and evidence origin is
+`0 / 0 / 0 / 0`. Five legacy deployments, 6,389 legacy journal rows, zero demo
+trades, and FILE_COMMON remain exact.
+
+**No successor milestone is authorized.** Sprint 21's implementation authority
+is exhausted. The single material blocker for every downstream claim is the
+absence of real Owner-controlled MT5 DEMO evidence — an eligible generic
+strategy, an Owner-authorized publication, an exact terminal acknowledgement, a
+coherent heartbeat, and sufficient forward evidence. That gap is an operational
+and evidence problem, not a missing governance feature. It must be scoped by an
+explicitly Owner-accepted contract before any source change begins.
 
 The historical evaluator compatibility seam is recorded in
 `ARKANA_Codex_Handoff_v1/docs/adr/ADR-008-CANONICAL-BACKTEST-V1-STRATEGY-EVALUATOR-COMPATIBILITY-SEAM.md`:
@@ -270,3 +297,15 @@ claim.
   `docs/SPRINT_13_OOS_ROBUSTNESS.md`.
 - Sprint 14 capital/broker contract and current Owner OAT:
   `docs/SPRINT_14_CAPITAL_SIMULATION.md`.
+- Generic DEMO contract, compiler, publication, telemetry, and Owner lifecycle:
+  `services/research/app/generic_demo_contracts.py`,
+  `generic_mt5_compiler.py`, `generic_mt5_publications.py`,
+  `generic_forward_telemetry.py`, and `generic_demo_chain_verification.py`.
+- Sprint 21 governance layer: `services/research/app/governance_journal.py`,
+  `governance_incidents.py`, `controlled_learning.py`, `live_readiness.py`,
+  and `sprint21_acceptance.py`; Owner console at
+  `apps/web/components/governance-console.tsx`.
+- Sprint 21 contract, checkpoint evidence, and closure:
+  `docs/SPRINT_21_JOURNAL_CONTROLLED_LEARNING_AND_LIVE_READINESS.md`.
+- Agent handover and delivery protocol:
+  `docs/CLAUDE_CODE_HANDOVER_2026-08-27.md`.

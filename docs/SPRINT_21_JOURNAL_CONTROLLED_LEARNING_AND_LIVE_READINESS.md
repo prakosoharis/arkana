@@ -2,11 +2,15 @@
 
 **Contract status:** accepted by the Owner on 2026-08-26
 
-**Active checkpoint:** ARK-S21-03 complete; awaiting Owner acceptance
+**Sprint status:** CLOSED. All six checkpoints are accepted and pushed. The
+Owner accepted ARK-S21-05 and Sprint 21 on 2026-08-27 with `DITERIMA —
+ARK-S21-05` and `DITERIMA — SPRINT 21`.
 
-**Implementation authority:** ARK-S21-03 controlled-learning proposal and
-DRAFT-only candidate scope; no readiness assessment, automatic lifecycle or
-parameter change, DEMO activation, or LIVE authority
+**Implementation authority:** exhausted. This contract authorizes no further
+source change. Sprint 21 created no readiness waiver, automatic lifecycle or
+parameter change, DEMO activation, or LIVE authority, and closing it grants
+none. A new explicitly Owner-accepted milestone contract is required before the
+next implementation begins.
 
 ## Product objective
 
@@ -476,5 +480,90 @@ research candidate. Existing candidate/version/runtime counts and FILE_COMMON
 hashes are unchanged.
 
 **ARK-S21-03 technical claim:** `VALIDATED`, scoped only to immutable
-controlled-learning proposal and DRAFT-candidate governance. Owner acceptance
-remains pending.
+controlled-learning proposal and DRAFT-candidate governance. Accepted by the
+Owner and pushed as `fd4234b`.
+
+## ARK-S21-04 completion evidence
+
+ARK-S21-04 completed on 2026-08-27. The concrete report is
+[`SPRINT_21_04_IMMUTABLE_LIVE_READINESS.md`](SPRINT_21_04_IMMUTABLE_LIVE_READINESS.md).
+
+Migration 050, `LIVE_READINESS_ASSESSMENT_V1`, and `LIVE_READINESS_VERIFIER_V1`
+implement an append-only readiness snapshot that recomputes every input by
+exact ID and fingerprint, fails closed on any missing or mismatched evidence,
+and separates a readiness label from LIVE authority. Fixture-origin evidence
+can never produce a real Owner-ready result, and
+`LIVE_AUTHORIZATION_NOT_IMPLEMENTED` is permanent.
+
+Focused regression is 44 passed plus a 9-passed readiness/migration rerun after
+freezing runtime state, full backend regression is 336 passed, web regression is
+30 passed across 11 files, TypeScript/lint pass, the optimized build generates
+62 pages/routes, and Docker research/web builds pass. PostgreSQL records
+migration 050 once. Existing runtime counts and FILE_COMMON hashes are
+unchanged.
+
+**ARK-S21-04 technical claim:** `VALIDATED`, scoped only to the immutable
+readiness assessment and its verifier. Accepted by the Owner and pushed as
+`0ba378f`.
+
+## ARK-S21-05 completion evidence
+
+ARK-S21-05 completed on 2026-08-27. The concrete report is
+[`SPRINT_21_05_OWNER_GOVERNANCE_AND_CLOSURE.md`](SPRINT_21_05_OWNER_GOVERNANCE_AND_CLOSURE.md).
+
+Migration 051 and `SPRINT_21_ACCEPTANCE_VERIFIER_V1` add an append-only
+single-winner acceptance record that recomputes every frozen journal, incident,
+controlled-learning, readiness, generic-chain, and publication fingerprint
+before returning a result. The Owner `/governance` console renders historical
+eligibility, real Owner MT5 DEMO evidence availability, readiness gates and
+blockers, incident acknowledgement versus recovery, DRAFT-only learning, the
+journal timeline, and the acceptance verifier as distinct states. Fixture-only
+readiness is rendered `FIXTURE ONLY — BUKAN READY OWNER`. The single POST
+materializes the immutable verifier and mutates no source evidence, entry
+control, configuration, deployment, MT5 terminal, order, or trade;
+`/api/v1/live` returns HTTP `404`.
+
+Focused regression is 12 passed, full backend regression is 339 passed, web
+regression is 31 passed across 12 files, TypeScript/lint pass, the optimized
+Next production build passes including `/governance`, and Docker
+migration/restart/API/BFF plus browser OAT pass. PostgreSQL records migration
+051 once and holds exactly one verifier, `c1444cf3-6127-4317-b8cd-fd159ab04f64`
+with fingerprint
+`482d55f602430e579a98633a60411f18b382208f9d13511e37de7d471fd8ff27`, which
+survives restart unchanged. Existing runtime counts and FILE_COMMON hashes are
+unchanged.
+
+**ARK-S21-05 technical claim:** `VALIDATED`, scoped only to the Owner
+governance UI, the immutable acceptance verifier, and its no-side-effect
+boundary. Accepted by the Owner and pushed as `4145634`.
+
+## Sprint 21 closure
+
+Sprint 21 is closed. Its delivered governance layer is real, but the runtime
+truth it reports is deliberately negative and must not be restated as progress
+toward LIVE:
+
+| Fact | Value |
+|---|---|
+| verifier integrity | `PASSED` |
+| Owner acceptance state | `NOT_READY_FOR_OWNER_ACCEPTANCE` |
+| readiness | `NOT_READY_FOR_LIVE` |
+| readiness fingerprint | `c71f4dc85b55321e40cd03eaf180ea9e7b86b2963f0ffd61e02f216cad6ba67e` |
+| readiness gates | 2 of 11 `PASS`; 9 `FAIL` |
+| evidence origin (real/fixture/legacy/unknown) | `0 / 0 / 0 / 0` |
+| journal items, incidents, proposals | `0 / 0 / 0` |
+| generic DEMO contracts, compilations, publications, forward evidence | `0 / 0 / 0 / 0` |
+| legacy deployments, journal events, demo trades | `5 / 6389 / 0` |
+| `/api/v1/live` | HTTP `404` |
+
+The nine failing gates are the correct report of an absent external evidence
+chain, not a defect: `NO_VALIDATED_STRATEGY`,
+`CAPABILITY_OR_LIFECYCLE_UNVERIFIED`, `BROKER_OR_CAPITAL_STALE_OR_UNBOUND`,
+`DEMO_CHAIN_MISSING`, `GENERIC_ACK_MISSING`, `HEARTBEAT_MISSING`,
+`FORWARD_EVIDENCE_MISSING`, `CONTROL_RECOVERY_EVIDENCE_MISSING`, and
+`JOURNAL_OR_VERIFIER_LINEAGE_MISSING`. None of them may be turned green by
+fabricating an input.
+
+The governance layer is now complete enough to record and verify real Owner
+MT5 DEMO evidence. It has never yet observed any. That gap, not another
+governance feature, is the material blocker for every downstream claim.

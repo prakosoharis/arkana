@@ -102,9 +102,14 @@ Implemented Router path:
 VALIDATED-only Router eligibility → LONG / NO_TRADE decision contract
 → exact Entry / SL / TP / size evidence → Current Decision verifier
 
-Next missing path:
-historically VALIDATED generic strategy → generic DEMO compiler
-→ exact MT5 DEMO acknowledgement → separated forward validation
+Implemented generic DEMO path, with zero real traffic:
+generic DEMO contract → deterministic MT5 compiler → Owner-authorized
+publication → exact terminal acknowledgement → separated forward evidence
+→ immutable journal / incident / controlled learning / LIVE-readiness
+
+Missing input, not a missing feature:
+an eligible generic strategy and real Owner-controlled MT5 DEMO evidence
+travelling through the implemented path above
 ```
 
 StrategyCandidate, immutable StrategyVersion contracts, the block registry,
@@ -112,9 +117,17 @@ generic evaluator/compiler seam, version-to-backtest lineage, Strategy Factory
 UX, frozen generic evidence gate, capital simulation, bounded Variant Explorer,
 historical promotion/retirement, lifecycle verification, and deterministic
 Router/current-decision evidence are implemented in their accepted bounded
-scopes. Missing target capabilities begin at generic DEMO compilation/forward
-validation, then LIVE-readiness governance, and later Dynamic Discovery
-enhancement.
+scopes. Generic DEMO compilation, publication, acknowledgement, forward
+telemetry, the unified journal, incident/recovery governance, controlled
+learning, and fail-closed LIVE-readiness assessment are also implemented and
+accepted through Sprint 21.
+
+What remains missing is therefore no longer a governance capability. It is
+real Owner-controlled MT5 DEMO evidence: an eligible generic strategy, an
+Owner-authorized publication, an exact terminal acknowledgement, a coherent
+heartbeat, and sufficient forward evidence. Dynamic Discovery enhancement and
+any future LIVE authorization architecture remain later, separately contracted
+epics; neither is authorized by Sprint 21's closure.
 
 `BULLISH_REVERSAL_M1` is a **LEGACY_EXECUTION_PROTOTYPE**, useful for
 regression and DEMO plumbing but not a validated edge, Router candidate, or
@@ -345,7 +358,7 @@ Sprint 20 technical delivery is complete. The external Owner-terminal evidence
 track remains pending, and no Sprint 21 checkpoint is authorized until its
 contract is explicitly accepted.
 
-## Active milestone — Sprint 21 journal and LIVE-readiness governance
+## Closed milestone — Sprint 21 journal and LIVE-readiness governance
 
 [`SPRINT_21_JOURNAL_CONTROLLED_LEARNING_AND_LIVE_READINESS.md`](SPRINT_21_JOURNAL_CONTROLLED_LEARNING_AND_LIVE_READINESS.md)
 was accepted by the Owner and pushed as `34fdd77`. Its six-checkpoint sequence
@@ -385,7 +398,7 @@ migration/restart/API/BFF OAT passes. Runtime incident, acknowledgement, and
 resolution counts remain zero; existing counts and FILE_COMMON hashes remain
 unchanged.
 
-ARK-S21-03 is complete and awaits Owner acceptance. Its concrete evidence is
+ARK-S21-03 was accepted and pushed as `fd4234b`. Its concrete evidence is
 [`SPRINT_21_03_CONTROLLED_LEARNING_PROPOSALS.md`](SPRINT_21_03_CONTROLLED_LEARNING_PROPOSALS.md).
 Migration 049 and `CONTROLLED_LEARNING_PROPOSAL_V1` add immutable
 order-independent evidence-to-research proposals, five closed deterministic
@@ -397,13 +410,36 @@ web is 30 passed, and Docker migration/restart/API/BFF OAT passes. Runtime
 proposal/confirmation counts remain zero; StrategyCandidate/StrategyVersion
 remain 7/13 and FILE_COMMON remains unchanged.
 
-Sprint 21 explicitly implements no LIVE endpoint, config, credential,
-deployment, order, or trade. A possible `READY_FOR_OWNER_LIVE_REVIEW` result is
-not LIVE authorization and must always retain
-`LIVE_AUTHORIZATION_NOT_IMPLEMENTED`. The current real runtime is expected to
-remain `NOT_READY_FOR_LIVE / BLOCKED_EXTERNAL_EVIDENCE` until an eligible
-generic strategy and genuine Owner MT5 DEMO evidence exist. No ARK-S21 source
-or checkpoint after ARK-S21-03 is authorized before checkpoint acceptance.
+ARK-S21-04 was accepted and pushed as `0ba378f`. Its concrete evidence is
+[`SPRINT_21_04_IMMUTABLE_LIVE_READINESS.md`](SPRINT_21_04_IMMUTABLE_LIVE_READINESS.md).
+Migration 050, `LIVE_READINESS_ASSESSMENT_V1`, and `LIVE_READINESS_VERIFIER_V1`
+add an append-only readiness snapshot that recomputes every input by exact ID
+and fingerprint and fails closed. Focused is 44 plus 9 passed, full backend is
+336 passed, and web is 30 passed across 11 files.
+
+ARK-S21-05 was accepted and pushed as `4145634`, closing Sprint 21. Its
+concrete evidence is
+[`SPRINT_21_05_OWNER_GOVERNANCE_AND_CLOSURE.md`](SPRINT_21_05_OWNER_GOVERNANCE_AND_CLOSURE.md).
+Migration 051 and `SPRINT_21_ACCEPTANCE_VERIFIER_V1` add a single-winner
+immutable acceptance record over the whole Sprint 21 chain, and `/governance`
+gives the Owner one read-only view of eligibility, real DEMO evidence
+availability, readiness gates/blockers, acknowledgement versus recovery,
+DRAFT-only learning, journal lineage, and acceptance integrity. Focused is 12
+passed, full backend is 339 passed, web is 31 passed across 12 files, and
+Docker restart plus browser OAT pass.
+
+Sprint 21 implements no LIVE endpoint, config, credential, deployment, order,
+or trade. A `READY_FOR_OWNER_LIVE_REVIEW` result is not LIVE authorization and
+always retains `LIVE_AUTHORIZATION_NOT_IMPLEMENTED`. Real runtime after closure
+is `NOT_READY_FOR_LIVE` with 9 of 11 gates failing, zero journal/incident/
+proposal rows, zero generic DEMO artifacts, and `0 / 0 / 0 / 0` evidence
+origin. That negative result is correct and must never be turned green by
+fabricating an input.
+
+**No successor milestone is authorized.** Sprint 21's implementation authority
+is exhausted, and closing it grants no scope for a LIVE path, a DEMO campaign,
+or Dynamic Discovery. The next agent must obtain an explicitly Owner-accepted
+milestone contract before changing source.
 
 ## QA protocol
 
