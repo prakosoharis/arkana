@@ -29,8 +29,8 @@ jobs:
       AI_PROVIDER: unconfigured
       AI_API_KEY: ""
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
@@ -48,8 +48,8 @@ jobs:
       RESEARCH_API_URL: http://research:8000
       RESEARCH_API_TOKEN: arkana-ci-owner-token
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -64,7 +64,7 @@ jobs:
     name: Safety boundaries
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: No LIVE route may exist
         # Anchored so the legitimate /api/v1/live-readiness governance routes
         # are not mistaken for a LIVE execution path.
