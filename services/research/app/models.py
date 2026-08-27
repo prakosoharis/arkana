@@ -622,6 +622,28 @@ class ControlledLearningConfirmation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class LiveReadinessAssessment(Base):
+    """Immutable, read-only S21 readiness snapshot; it grants no LIVE authority."""
+    __tablename__ = "live_readiness_assessments"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_live_readiness_assessment_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    verifier_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    publication_id: Mapped[str | None] = mapped_column(ForeignKey("generic_mt5_publications.id"), nullable=True, index=True)
+    strategy_version_id: Mapped[str | None] = mapped_column(ForeignKey("strategy_versions.id"), nullable=True, index=True)
+    strategy_checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    status: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    exact_inputs: Mapped[dict] = mapped_column(JSON, nullable=False)
+    gates: Mapped[list] = mapped_column(JSON, nullable=False)
+    blockers: Mapped[list] = mapped_column(JSON, nullable=False)
+    evidence_origin_summary: Mapped[dict] = mapped_column(JSON, nullable=False)
+    live_authorization: Mapped[str] = mapped_column(String(64), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"

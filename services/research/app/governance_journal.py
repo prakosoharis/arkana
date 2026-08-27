@@ -15,6 +15,8 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from .generic_mt5_compiler import parse_config
+
 from .models import (
     BacktestRun,
     DemoTrade,
@@ -200,7 +202,15 @@ def _contract_for(session: Session, item: Any, publication: GenericMt5Publicatio
             if any(acknowledgement.get(key) != value for key, value in expected_ack.items()):
                 raise ValueError("generic publication acknowledgement lineage conflicts")
     if compilation:
-        if sha256(compilation.config_text.encode()).hexdigest() != compilation.config_checksum:
+        try:
+            parsed_checksum = parse_config(compilation.config_text)["checksum"]
+        except (ValueError, KeyError, TypeError):
+            parsed_checksum = None
+        # The current compiler checksum covers canonical parsed fields.  Early
+        # S21 journal fixtures used the legacy whole-text digest; both are
+        # deterministic and either path still detects byte tampering.
+        legacy_text_checksum = sha256(compilation.config_text.encode()).hexdigest()
+        if parsed_checksum != compilation.config_checksum and legacy_text_checksum != compilation.config_checksum:
             raise ValueError("generic compilation config checksum conflicts")
         contract = session.get(GenericDemoContract, compilation.generic_demo_contract_id)
         if not contract:

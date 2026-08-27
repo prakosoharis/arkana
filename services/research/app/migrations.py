@@ -49,6 +49,7 @@ MIGRATION_046 = "046_generic_demo_chain_verifier"
 MIGRATION_047 = "047_governance_journal_index"
 MIGRATION_048 = "048_incident_recovery_governance"
 MIGRATION_049 = "049_controlled_learning_proposals"
+MIGRATION_050 = "050_immutable_live_readiness_assessments"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -792,6 +793,21 @@ def _migration_049(connection) -> None:
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_controlled_learning_confirmations_proposal_id ON controlled_learning_confirmations(proposal_id)"))
 
 
+def _migration_050(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS live_readiness_assessments (
+        id VARCHAR(36) PRIMARY KEY, fingerprint VARCHAR(64) NOT NULL UNIQUE,
+        protocol_version VARCHAR(64) NOT NULL, verifier_version VARCHAR(64) NOT NULL,
+        evaluated_at TIMESTAMP NOT NULL, publication_id VARCHAR(36), strategy_version_id VARCHAR(36),
+        strategy_checksum VARCHAR(128), status VARCHAR(64) NOT NULL,
+        exact_inputs JSON NOT NULL, gates JSON NOT NULL, blockers JSON NOT NULL,
+        evidence_origin_summary JSON NOT NULL, live_authorization VARCHAR(64) NOT NULL,
+        result JSON NOT NULL, created_at TIMESTAMP NOT NULL,
+        FOREIGN KEY(publication_id) REFERENCES generic_mt5_publications(id),
+        FOREIGN KEY(strategy_version_id) REFERENCES strategy_versions(id))"""))
+    for column in ("fingerprint", "evaluated_at", "publication_id", "strategy_version_id", "status"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_live_readiness_assessments_{column} ON live_readiness_assessments({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -830,6 +846,7 @@ MIGRATIONS = (
     (MIGRATION_047, _migration_047),
     (MIGRATION_048, _migration_048),
     (MIGRATION_049, _migration_049),
+    (MIGRATION_050, _migration_050),
 )
 
 

@@ -796,4 +796,6 @@ def test_demo_validation_no_active_deployment_is_not_ready_and_has_no_live_actio
     with TestClient(app) as client:
         # Existing test state may contain deployments, but no endpoint for any LIVE action exists.
         schema=app.openapi()
-        assert not any("live" in path.lower() for path in schema["paths"])
+        live_paths = [path.lower() for path in schema["paths"] if "live" in path.lower()]
+        assert live_paths and all("live-readiness" in path for path in live_paths)
+        assert not any(path.endswith("/live") or "live-deploy" in path or "environment-change" in path for path in schema["paths"])
