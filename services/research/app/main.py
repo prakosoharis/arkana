@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
 from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
-from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, ControlledLearningProposal, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericDemoChainVerification, GenericDemoContract, GenericForwardEvidence, GenericMt5Compilation, GenericMt5Publication, GenericMt5TelemetryEvent, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, GovernanceIncident, GovernanceJournalItem, JournalEvent, LiveReadinessAssessment, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
+from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, ControlledLearningProposal, Dataset, DatasetBarAsset, Deployment, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericDemoChainVerification, GenericDemoContract, GenericForwardEvidence, GenericMt5Compilation, GenericMt5Publication, GenericMt5TelemetryEvent, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, GovernanceIncident, GovernanceJournalItem, JournalEvent, LiveReadinessAssessment, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, Sprint21AcceptanceVerification, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
 from .research_execution import run_hypothesis
@@ -38,6 +38,7 @@ from .governance_journal import list_items as list_governance_journal_items, mat
 from .governance_incidents import acknowledge as acknowledge_governance_incident, list_all as list_governance_incidents, materialize as materialize_governance_incident, policy_contract as governance_incident_policy_contract, resolve as resolve_governance_incident, serialize as serialize_governance_incident, serialize_ack as serialize_governance_incident_ack, serialize_resolution as serialize_governance_incident_resolution, verify as verify_governance_incident
 from .controlled_learning import confirm as confirm_learning_proposal, list_all as list_learning_proposals, materialize as materialize_learning_proposal, policy_contract as learning_proposal_policy_contract, serialize as serialize_learning_proposal, serialize_confirmation as serialize_learning_confirmation, verify as verify_learning_proposal
 from .live_readiness import list_all as list_live_readiness_assessments, materialize as materialize_live_readiness_assessment, policy_contract as live_readiness_policy_contract, serialize as serialize_live_readiness_assessment, verify as verify_live_readiness_assessment
+from .sprint21_acceptance import latest as latest_sprint21_acceptance, materialize as materialize_sprint21_acceptance, owner_overview as sprint21_owner_overview, serialize as serialize_sprint21_acceptance, verify as verify_sprint21_acceptance
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
@@ -943,6 +944,36 @@ def get_live_readiness_assessment_verification(assessment_id: str, session: Sess
     if not item:
         raise HTTPException(404, "LIVE-readiness assessment not found")
     return verify_live_readiness_assessment(session, item)
+
+
+@app.get("/api/v1/governance/owner-overview")
+def get_sprint21_owner_governance_overview(session: Session = Depends(get_session)) -> dict:
+    return sprint21_owner_overview(session)
+
+
+@app.post("/api/v1/governance/sprint21-acceptance-verifications")
+def post_sprint21_acceptance_verification(session: Session = Depends(get_session)) -> dict:
+    try:
+        item, reused = materialize_sprint21_acceptance(session)
+        return serialize_sprint21_acceptance(item, reused=reused)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/governance/sprint21-acceptance-verifications/latest")
+def get_latest_sprint21_acceptance_verification(session: Session = Depends(get_session)) -> dict:
+    item = latest_sprint21_acceptance(session)
+    if not item:
+        raise HTTPException(404, "Sprint 21 acceptance verification has not been materialized")
+    return serialize_sprint21_acceptance(item)
+
+
+@app.get("/api/v1/governance/sprint21-acceptance-verifications/{verification_id}/verification")
+def get_sprint21_acceptance_verification(verification_id: str, session: Session = Depends(get_session)) -> dict:
+    item = session.get(Sprint21AcceptanceVerification, verification_id)
+    if not item:
+        raise HTTPException(404, "Sprint 21 acceptance verification not found")
+    return verify_sprint21_acceptance(session, item)
 
 
 @app.post("/api/v1/generic-demo-contracts/validate")

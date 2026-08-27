@@ -50,6 +50,7 @@ MIGRATION_047 = "047_governance_journal_index"
 MIGRATION_048 = "048_incident_recovery_governance"
 MIGRATION_049 = "049_controlled_learning_proposals"
 MIGRATION_050 = "050_immutable_live_readiness_assessments"
+MIGRATION_051 = "051_sprint21_acceptance_verifier"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -808,6 +809,15 @@ def _migration_050(connection) -> None:
         connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_live_readiness_assessments_{column} ON live_readiness_assessments({column})"))
 
 
+def _migration_051(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS sprint21_acceptance_verifications (
+        id VARCHAR(36) PRIMARY KEY, fingerprint VARCHAR(64) NOT NULL UNIQUE,
+        verifier_version VARCHAR(64) NOT NULL, status VARCHAR(32) NOT NULL,
+        result JSON NOT NULL, created_at TIMESTAMP NOT NULL)"""))
+    for column in ("fingerprint", "status", "created_at"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_sprint21_acceptance_verifications_{column} ON sprint21_acceptance_verifications({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -847,6 +857,7 @@ MIGRATIONS = (
     (MIGRATION_048, _migration_048),
     (MIGRATION_049, _migration_049),
     (MIGRATION_050, _migration_050),
+    (MIGRATION_051, _migration_051),
 )
 
 
