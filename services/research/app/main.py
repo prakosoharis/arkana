@@ -44,6 +44,7 @@ from .live_readiness import list_all as list_live_readiness_assessments, materia
 from .sprint21_acceptance import latest as latest_sprint21_acceptance, materialize as materialize_sprint21_acceptance, owner_overview as sprint21_owner_overview, serialize as serialize_sprint21_acceptance, verify as verify_sprint21_acceptance
 from .edge_search import create as create_edge_search_campaign, list_all as list_edge_search_campaigns, list_trials as list_edge_search_trials, policy_contract as edge_search_policy_contract, serialize as serialize_edge_search_campaign, validation_report as edge_search_validation_report, verify as verify_edge_search_campaign
 from .edge_search_execution import execute as execute_edge_search_campaign, progress as edge_search_progress, survivors as edge_search_survivors
+from .operational_health import assess as assess_operational_health
 from .edge_search_verification import latest as latest_edge_search_verification, materialize as materialize_edge_search_verification, owner_overview as edge_search_owner_overview, serialize as serialize_edge_search_verification
 from .edge_search_final_oos import assess_conclusion as assess_edge_search_conclusion, list_outcomes as list_edge_search_outcomes, open_and_evaluate as open_edge_search_final_oos, record_conclusion as record_edge_search_conclusion, serialize_conclusion as serialize_edge_search_conclusion, serialize_outcome as serialize_edge_search_outcome
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
@@ -1116,6 +1117,11 @@ def post_edge_search_conclusion(campaign_id: str, session: Session = Depends(get
         return serialize_edge_search_conclusion(item, reused=reused)
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
+
+
+@app.get("/api/v1/operational-health")
+def get_operational_health(session: Session = Depends(get_session)) -> dict:
+    return assess_operational_health(session)
 
 
 @app.get("/api/v1/edge-search/owner-overview")

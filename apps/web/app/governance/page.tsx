@@ -1,2 +1,3 @@
 import { GovernanceConsole } from "../../components/governance-console";
-export default function GovernancePage(){return <GovernanceConsole/>}
+import { OperationalHealthPanel } from "../../components/operational-health-panel";
+export default function GovernancePage(){return <><OperationalHealthPanel/><GovernanceConsole/></>}

@@ -60,4 +60,9 @@ AI_REQUEST_MAX_COST_USD = float(os.getenv("AI_REQUEST_MAX_COST_USD", "0.05"))
 # publication writes FILE_COMMON that the EA acts on.  An unset token is never
 # treated as "open"; it fails closed on every route except /health.
 RESEARCH_API_TOKEN = os.getenv("RESEARCH_API_TOKEN", "").strip()
+# ARK-S23-04.  The service observes backups; it never writes them.  The host
+# script owns BACKUP_ROOT and the service mounts it read-only.
+BACKUP_ROOT = Path(os.getenv("BACKUP_ROOT", "../../backups")).resolve()
+BACKUP_MAX_AGE_SECONDS = int(os.getenv("BACKUP_MAX_AGE_SECONDS", str(36 * 3600)))
+DATASET_MAX_AGE_SECONDS = int(os.getenv("DATASET_MAX_AGE_SECONDS", str(14 * 24 * 3600)))
 UNAUTHENTICATED_PATHS = frozenset({"/health"})

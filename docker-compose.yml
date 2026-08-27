@@ -22,6 +22,7 @@ services:
       DATABASE_URL: ${RESEARCH_DATABASE_URL:-postgresql+psycopg://arkana:arkana_local_only@postgres:5432/arkana}
       DATA_ROOT: ${RESEARCH_DATA_ROOT:-/workspace/data/processed}
       MT5_COMMON_FILES_ROOT: /workspace/mt5-common
+      BACKUP_ROOT: /workspace/backups
       AI_ENABLED: ${AI_ENABLED:-false}
       AI_PROVIDER: ${AI_PROVIDER:-UNCONFIGURED}
       AI_API_KEY: ${AI_API_KEY:-}
@@ -51,6 +52,8 @@ services:
     volumes:
       - ./data:/workspace/data
       - ${MT5_COMMON_FILES_ROOT:-./data/mt5-common}:/workspace/mt5-common
+      # read-only: a service that can overwrite its own backups is not a backup
+      - ${ARKANA_BACKUP_ROOT:-./backups}:/workspace/backups:ro
     ports:
       - "127.0.0.1:8001:8000"
     depends_on:
