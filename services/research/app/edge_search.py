@@ -49,24 +49,53 @@ TRIAL_SPLIT_SCOPE = "TRAIN_AND_HOLDOUT_ONLY"
 ACCEPTED_V1_REGISTRY_FINGERPRINT = "808d3506e7020b41d977fc8aae94f6cc6eb7a1c9e25a8093ea0bdb402a3b2bfb"
 ACCEPTED_V1_CAPABILITY_DEPENDENCY_FINGERPRINT = "f73b4bd68c5dd0b9d370d40390a81b4c4a5c60b5d2ca24662a4f584ff7a59069"
 
+# ARK-S24-04. V2 adds direction, session_window, and stop_type. It is a new
+# protocol rather than an edit, so every V1 campaign still recomputes to the
+# fingerprint it was accepted with.
+PROTOCOL_VERSION_V2 = "BOUNDED_EDGE_SEARCH_CAMPAIGN_V2"
+ATR_PERIOD = 14
+# Measured over all 2,985,994 registered M1 bars at ARK-S24-00.
+MEAN_M1_TRUE_RANGE = 0.7560
+# ARK-S22-01's 40 s was an estimate and it was 6x optimistic; the ledger's 384
+# completed trials averaged 250.1 s, but that figure carries the machine
+# contention of the night it ran (median 133.6 s, p90 770.2 s).
+#
+# ARK-S24-04 measures instead of inheriting either number. A stratified
+# read-only probe over stop_scale x stop_type x session_window on the same
+# registered asset gave mean 71.2 s, median 52.9 s, max 169.7 s. Cost tracks
+# trade count: a x10 stop is roughly four times a x80 stop, and ATR is dearer
+# than FIXED only where trades are dense. 72 s is the measured mean, rounded up.
+MEASURED_SECONDS_PER_TRIAL_V2 = 72
+WALL_CLOCK_BUDGET_SECONDS_V2 = 18 * 3600
+OPERATIVE_TRIAL_CAP_V2 = WALL_CLOCK_BUDGET_SECONDS_V2 // MEASURED_SECONDS_PER_TRIAL_V2
 
-def policy_contract() -> dict[str, Any]:
+
+def seconds_per_trial(protocol: str = PROTOCOL_VERSION) -> int:
+    return MEASURED_SECONDS_PER_TRIAL_V2 if protocol == PROTOCOL_VERSION_V2 else MEASURED_SECONDS_PER_TRIAL
+
+
+def operative_trial_cap(protocol: str = PROTOCOL_VERSION) -> int:
+    return OPERATIVE_TRIAL_CAP_V2 if protocol == PROTOCOL_VERSION_V2 else OPERATIVE_TRIAL_CAP
+
+
+def policy_contract(protocol: str = PROTOCOL_VERSION) -> dict[str, Any]:
     """The frozen ARK-S22-00 policy, restated as machine-readable evidence."""
+    extended = protocol == PROTOCOL_VERSION_V2
     return {
-        "protocol_version": PROTOCOL_VERSION,
+        "protocol_version": protocol,
         "reference_stop_distance": REFERENCE_STOP_DISTANCE,
         "spread_assumption": SPREAD_ASSUMPTION,
         "spread_is_a_search_dimension": False,
         "context_timeframe": "M1",
         "context_timeframe_reason": "the generic MT5 adapter accepts M1 only, so any survivor must be deployable",
-        "direction_eligibility": "LONG",
+        "direction_eligibility": ["LONG", "SHORT"] if extended else "LONG",
         "trial_split_scope": TRIAL_SPLIT_SCOPE,
         "final_oos_budget": FINAL_OOS_BUDGET,
         "final_oos_authorization": FINAL_OOS_AUTHORIZATION,
         "hard_trial_cap": HARD_TRIAL_CAP,
-        "operative_trial_cap": OPERATIVE_TRIAL_CAP,
-        "wall_clock_budget_seconds": WALL_CLOCK_BUDGET_SECONDS,
-        "measured_seconds_per_trial": MEASURED_SECONDS_PER_TRIAL,
+        "operative_trial_cap": operative_trial_cap(protocol),
+        "wall_clock_budget_seconds": WALL_CLOCK_BUDGET_SECONDS_V2 if extended else WALL_CLOCK_BUDGET_SECONDS,
+        "measured_seconds_per_trial": seconds_per_trial(protocol),
         "split_policy": {"train": OOS_PROTOCOL["splits"]["train"], "holdout": OOS_PROTOCOL["splits"]["holdout"], "final_oos": OOS_PROTOCOL["splits"]["final_oos"]},
         "gate_policy": OOS_PROTOCOL["gate_policy"],
         "no_edge_found_definition": (
@@ -88,7 +117,28 @@ def policy_contract() -> dict[str, Any]:
 
 
 def build_contract(parameters: dict[str, Any]) -> dict[str, Any]:
-    """Deterministically expand one grid point into a full Strategy Contract."""
+    """Deterministically expand one grid point into a full Strategy Contract.
+
+    ARK-S24-04 dispatches on the parameter keys rather than on a module
+    constant, so the ARK-S22-01 grid still expands to byte-identical contracts
+    and the accepted executor needs no change to run either protocol.
+    """
+    if protocol_of(parameters) == PROTOCOL_VERSION_V2:
+        return _build_contract_v2(parameters)
+    return _build_contract_v1(parameters)
+
+
+def protocol_of(parameters: dict[str, Any]) -> str:
+    """Which protocol a grid point belongs to, refusing a half-declared point."""
+    extra = set(parameters) & _V2_ONLY_KEYS
+    if not extra:
+        return PROTOCOL_VERSION
+    if extra != _V2_ONLY_KEYS:
+        raise ValueError(f"a V2 grid point must declare all of {sorted(_V2_ONLY_KEYS)}")
+    return PROTOCOL_VERSION_V2
+
+
+def _build_contract_v1(parameters: dict[str, Any]) -> dict[str, Any]:
     stop = round(REFERENCE_STOP_DISTANCE * float(parameters["stop_scale"]), 6)
     target = round(stop * float(parameters["target_ratio"]), 6)
     return {
@@ -116,24 +166,126 @@ def build_contract(parameters: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _build_contract_v2(parameters: dict[str, Any]) -> dict[str, Any]:
+    """ARK-S24-04. Same contract shape, three declared axes wired in.
+
+    The reference stop is unchanged, so a FIXED V2 point and the equivalent V1
+    point differ only in the axes the Owner asked to search.
+    """
+    stop = round(REFERENCE_STOP_DISTANCE * float(parameters["stop_scale"]), 6)
+    ratio = float(parameters["target_ratio"])
+    polarity = parameters["polarity"]
+    contract = {
+        "schema_version": 1, "instrument": "XAUUSD", "direction_eligibility": parameters["direction"],
+        "context_timeframes": ["M1"], "setup_timeframes": ["M1"], "execution_timeframe": "M1",
+        "context_rules": [{"block_id": "SMA_RELATION", "uses_completed_candles": True, "timeframe": "M1",
+                           "fast_period": int(parameters["sma_fast"]), "slow_period": int(parameters["sma_slow"]),
+                           "relation": parameters["sma_relation"]}],
+        # ARK-S24-02 proved a contradictory setup/trigger pair produces no
+        # trades at all, so V2 declares one polarity instead of two axes whose
+        # disagreeing half was measured to be empty.
+        "setup_rules": [{"block_id": "TWO_BAR_REVERSAL", "uses_completed_candles": True, "timeframe": "M1",
+                         "direction": polarity}],
+        "trigger_rules": [{"block_id": "CANDLE_DIRECTION", "uses_completed_candles": True, "timeframe": "M1",
+                           "direction": polarity}],
+        "entry_rule": {"block_id": "NEXT_BAR_OPEN", "uses_completed_candles": True, "uses_future_ohlc": False},
+        "invalidation_rule": {"block_id": "ALWAYS", "uses_completed_candles": True},
+        **_distance_rules(stop, ratio, parameters["stop_type"]),
+        "position_sizing_rule": {"block_id": "FIXED_LOT_DEMO", "uses_completed_candles": True, "volume": 0.01},
+        "no_trade_conditions": [
+            {"block_id": "FIXED_SPREAD_GUARD", "uses_completed_candles": True, "unit": "PRICE", "maximum": SPREAD_ASSUMPTION},
+            {"block_id": "MAX_OPEN_POSITIONS", "uses_completed_candles": True, "maximum": 1},
+            {"block_id": "STOP_FIRST", "uses_completed_candles": True},
+        ],
+        "cost_assumptions": {"commission_price": 0.0},
+        "provenance": {"source": "BOUNDED_EDGE_SEARCH_CAMPAIGN", "protocol_version": PROTOCOL_VERSION_V2},
+    }
+    window = parameters["session_window"]
+    if window != "NONE":
+        start, end = int(window[:2]), int(window[3:])
+        contract["no_trade_conditions"].append({
+            "block_id": "SESSION_WINDOW", "uses_completed_candles": True, "clock": "BROKER_TIME",
+            "windows": [{"start_hour": start, "end_hour": end}]})
+    return contract
+
+
+def _distance_rules(stop: float, ratio: float, stop_type: str) -> dict[str, Any]:
+    """Both stop types are matched on *mean* distance, not on multiplier.
+
+    A scaled arm that was simply wider than the fixed arm would compare
+    geometry, not adaptivity.  Dividing by the measured mean M1 true range
+    makes the two arms cost the same on average, so the only difference under
+    test is whether the distance follows volatility.
+    """
+    if stop_type == "FIXED":
+        return {
+            "stop_loss_rule": {"block_id": "FIXED_PRICE_DISTANCE_SL", "uses_completed_candles": True, "unit": "PRICE", "distance": stop},
+            "take_profit_rule": {"block_id": "FIXED_PRICE_DISTANCE_TP", "uses_completed_candles": True, "unit": "PRICE", "distance": round(stop * ratio, 6)},
+        }
+    multiplier = round(stop / MEAN_M1_TRUE_RANGE, 6)
+    return {
+        "stop_loss_rule": {"block_id": "ATR_SCALED_SL", "uses_completed_candles": True, "unit": "ATR",
+                           "period": ATR_PERIOD, "multiplier": multiplier},
+        "take_profit_rule": {"block_id": "ATR_SCALED_TP", "uses_completed_candles": True, "unit": "ATR",
+                             "period": ATR_PERIOD, "multiplier": round(multiplier * ratio, 6)},
+    }
+
+
 DIMENSION_KEYS = ("stop_scale", "target_ratio", "sma_fast", "sma_slow", "sma_relation", "setup_direction", "trigger_direction")
+DIMENSION_KEYS_V2 = ("stop_scale", "target_ratio", "sma_fast", "sma_slow", "sma_relation",
+                     "polarity", "direction", "session_window", "stop_type")
+_V2_ONLY_KEYS = set(DIMENSION_KEYS_V2) - set(DIMENSION_KEYS)
+_V2_ENUMS = {
+    "polarity": {"BULLISH", "BEARISH"},
+    "direction": {"LONG", "SHORT"},
+    "stop_type": {"FIXED", "ATR"},
+}
+
+
+def dimension_keys(protocol: str) -> tuple[str, ...]:
+    return DIMENSION_KEYS_V2 if protocol == PROTOCOL_VERSION_V2 else DIMENSION_KEYS
+
+
+def protocol_of_dimensions(dimensions: Any) -> str:
+    if isinstance(dimensions, dict) and set(dimensions) == set(DIMENSION_KEYS_V2):
+        return PROTOCOL_VERSION_V2
+    return PROTOCOL_VERSION
+
+
+def _session_window_issue(value: Any) -> str | None:
+    if value == "NONE":
+        return None
+    if not isinstance(value, str) or len(value) != 5 or value[2] != "-" or not (value[:2].isdigit() and value[3:].isdigit()):
+        return "session_window must be NONE or a canonical HH-HH broker-hour window"
+    start, end = int(value[:2]), int(value[3:])
+    if not (0 <= start <= 23 and 0 <= end <= 23) or start > end:
+        return "session_window hours must be 0..23 and must not wrap past hour 23"
+    return None
 
 
 def enumerate_grid(dimensions: dict[str, Any]) -> list[dict[str, Any]]:
     """Expand declared dimensions in one fixed, reproducible order."""
-    if not isinstance(dimensions, dict) or set(dimensions) != set(DIMENSION_KEYS):
-        raise ValueError(f"grid dimensions must declare exactly {sorted(DIMENSION_KEYS)}")
+    keys = dimension_keys(protocol_of_dimensions(dimensions))
+    if not isinstance(dimensions, dict) or set(dimensions) != set(keys):
+        raise ValueError(f"grid dimensions must declare exactly {sorted(DIMENSION_KEYS)} or {sorted(DIMENSION_KEYS_V2)}")
     values: list[list[Any]] = []
-    for key in DIMENSION_KEYS:
+    for key in keys:
         declared = dimensions[key]
         if not isinstance(declared, list) or not declared:
             raise ValueError(f"grid dimension {key} must be a non-empty list")
         unique = sorted(set(declared), key=lambda item: (str(type(item)), item))
         if len(unique) != len(declared):
             raise ValueError(f"grid dimension {key} must not repeat a value")
+        if key in _V2_ENUMS and not set(unique) <= _V2_ENUMS[key]:
+            raise ValueError(f"grid dimension {key} must be a subset of {sorted(_V2_ENUMS[key])}")
+        if key == "session_window":
+            for item in unique:
+                issue = _session_window_issue(item)
+                if issue:
+                    raise ValueError(issue)
         values.append(unique)
     points: list[dict[str, Any]] = [{}]
-    for key, options in zip(DIMENSION_KEYS, values):
+    for key, options in zip(keys, values):
         points = [{**point, key: option} for point in points for option in options]
     for index, point in enumerate(points):
         if int(point["sma_slow"]) <= int(point["sma_fast"]):
@@ -145,19 +297,22 @@ def enumerate_grid(dimensions: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _grid_record(dimensions: dict[str, Any], points: list[dict[str, Any]]) -> dict[str, Any]:
+    keys = dimension_keys(protocol_of_dimensions(dimensions))
     return {
-        "dimensions": {key: sorted(set(dimensions[key]), key=lambda item: (str(type(item)), item)) for key in DIMENSION_KEYS},
-        "enumeration_order": list(DIMENSION_KEYS),
+        "dimensions": {key: sorted(set(dimensions[key]), key=lambda item: (str(type(item)), item)) for key in keys},
+        "enumeration_order": list(keys),
         "trials": [{"trial_index": point["trial_index"],
-                    "parameters": {key: point[key] for key in DIMENSION_KEYS},
+                    "parameters": {key: point[key] for key in keys},
                     "contract_fingerprint": contract_fingerprint(build_contract(point))}
                    for point in points],
     }
 
 
 def _fingerprint(dataset: Dataset, registry_fp: str, grid: dict[str, Any], calibration: dict[str, Any]) -> str:
+    # The protocol version is read from the grid, never from a module constant,
+    # so adding V2 cannot move the fingerprint of an accepted V1 campaign.
     return sha256(canonical_json({
-        "protocol_version": PROTOCOL_VERSION,
+        "protocol_version": protocol_of_dimensions(grid["dimensions"]),
         "dataset_id": dataset.id, "dataset_fingerprint": dataset.fingerprint,
         "registry_fingerprint": registry_fp, "grid": grid,
         "spread_assumption": SPREAD_ASSUMPTION, "final_oos_budget": FINAL_OOS_BUDGET,
@@ -183,9 +338,10 @@ def validation_report(session: Session, payload: dict[str, Any]) -> dict[str, An
         issues.append("a registered XAUUSD dataset is required")
     elif not any(item.timeframe == "M1" for item in dataset.bars):
         issues.append("the dataset must expose a registered M1 asset")
+    protocol = protocol_of_dimensions(dimensions)
     if points:
-        if len(points) > OPERATIVE_TRIAL_CAP:
-            issues.append(f"grid of {len(points)} trials exceeds the operative cap of {OPERATIVE_TRIAL_CAP} derived from the approved wall-clock budget")
+        if len(points) > operative_trial_cap(protocol):
+            issues.append(f"grid of {len(points)} trials exceeds the operative cap of {operative_trial_cap(protocol)} derived from the approved wall-clock budget")
         if len(points) > HARD_TRIAL_CAP:
             issues.append(f"grid exceeds the hard cap of {HARD_TRIAL_CAP}")
         for point in points:
@@ -195,9 +351,9 @@ def validation_report(session: Session, payload: dict[str, Any]) -> dict[str, An
                 break
     registry_fp = capability_registry()["fingerprint"]
     return {
-        "ready": not issues, "issues": issues, "protocol_version": PROTOCOL_VERSION,
-        "trial_count": len(points), "operative_trial_cap": OPERATIVE_TRIAL_CAP,
-        "estimated_wall_clock_seconds": len(points) * MEASURED_SECONDS_PER_TRIAL,
+        "ready": not issues, "issues": issues, "protocol_version": protocol,
+        "trial_count": len(points), "operative_trial_cap": operative_trial_cap(protocol),
+        "estimated_wall_clock_seconds": len(points) * seconds_per_trial(protocol),
         "registry_fingerprint": registry_fp,
         "dataset_id": dataset.id if dataset else None,
         "fingerprint": _fingerprint(dataset, registry_fp, _grid_record(dimensions, points), calibration) if not issues and dataset else None,
@@ -210,6 +366,7 @@ def create(session: Session, payload: dict[str, Any]) -> tuple[EdgeSearchCampaig
         raise ValueError("; ".join(report["issues"]))
     dimensions = payload["grid_dimensions"]
     calibration = payload["calibration_disclosure"]
+    protocol = protocol_of_dimensions(dimensions)
     points = enumerate_grid(dimensions)
     grid = _grid_record(dimensions, points)
     dataset = session.get(Dataset, report["dataset_id"])
@@ -219,11 +376,11 @@ def create(session: Session, payload: dict[str, Any]) -> tuple[EdgeSearchCampaig
     if existing:
         return existing, True
     result = {
-        "protocol_version": PROTOCOL_VERSION, "status": "PRE_REGISTERED",
+        "protocol_version": protocol, "status": "PRE_REGISTERED",
         "trial_count": len(points), "spread_assumption": SPREAD_ASSUMPTION,
         "final_oos_budget": FINAL_OOS_BUDGET, "trial_split_scope": TRIAL_SPLIT_SCOPE,
-        "estimated_wall_clock_seconds": len(points) * MEASURED_SECONDS_PER_TRIAL,
-        "policy": policy_contract(),
+        "estimated_wall_clock_seconds": len(points) * seconds_per_trial(protocol),
+        "policy": policy_contract(protocol),
         "warning": (
             "Pre-registration records intent only. It executes no trial, proves no edge, and creates no "
             "VALIDATED, DEMO, LIVE, capital, router, order, or trade authority."
@@ -233,10 +390,10 @@ def create(session: Session, payload: dict[str, Any]) -> tuple[EdgeSearchCampaig
     # a constant pinned in source the way the ARK-S22-01 one does.
     result["capability_dependency_fingerprint"] = _dependency_fingerprint(_used_block_ids(points))
     item = EdgeSearchCampaign(
-        fingerprint=fingerprint, protocol_version=PROTOCOL_VERSION, status="PRE_REGISTERED",
+        fingerprint=fingerprint, protocol_version=protocol, status="PRE_REGISTERED",
         dataset_id=dataset.id, dataset_fingerprint=dataset.fingerprint, registry_fingerprint=registry_fp,
         grid=grid, trial_count=len(points), spread_assumption=str(SPREAD_ASSUMPTION),
-        final_oos_budget=FINAL_OOS_BUDGET, split_policy=policy_contract()["split_policy"],
+        final_oos_budget=FINAL_OOS_BUDGET, split_policy=policy_contract(protocol)["split_policy"],
         calibration_disclosure=calibration, result=result,
     )
     session.add(item)
@@ -390,7 +547,9 @@ def accepted_dependency_fingerprint(campaign: EdgeSearchCampaign) -> str:
 
 
 def verify(session: Session, campaign: EdgeSearchCampaign) -> dict[str, Any]:
-    grid = _grid_record({key: campaign.grid["dimensions"][key] for key in DIMENSION_KEYS}, enumerate_grid({key: campaign.grid["dimensions"][key] for key in DIMENSION_KEYS}))
+    keys = dimension_keys(campaign.protocol_version)
+    declared = {key: campaign.grid["dimensions"][key] for key in keys}
+    grid = _grid_record(declared, enumerate_grid(declared))
     recomputed = _fingerprint(session.get(Dataset, campaign.dataset_id), campaign.registry_fingerprint, grid, campaign.calibration_disclosure)
     trials = list(session.scalars(select(EdgeSearchTrial).where(EdgeSearchTrial.campaign_id == campaign.id)))
     known = {item["contract_fingerprint"] for item in campaign.grid["trials"]}
@@ -414,7 +573,7 @@ def verify(session: Session, campaign: EdgeSearchCampaign) -> dict[str, Any]:
     }
     passed = all(item["status"] == "PASS" for item in checks.values())
     return {
-        "campaign_id": campaign.id, "fingerprint": campaign.fingerprint, "protocol_version": PROTOCOL_VERSION,
+        "campaign_id": campaign.id, "fingerprint": campaign.fingerprint, "protocol_version": campaign.protocol_version,
         "status": "PASSED" if passed else "FAILED", "recomputed_fingerprint": recomputed,
         "checks": checks, "selection_disclosure": selection_disclosure(session, campaign),
         # Recorded, not hidden: the registry did change, and the campaign is
