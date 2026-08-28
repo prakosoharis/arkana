@@ -72,10 +72,28 @@ class CompletedCandleEvaluator:
             return {"block_id": block, "timeframe": timeframe, "truth": truth, "fast_sma": round(fast, 10), "slow_sma": round(slow, 10), "completed_bar_timestamp": str(available[-1]["timestamp"])}
         raise ValueError(f"CAPABILITY_NOT_SUPPORTED: evaluator cannot execute {block}")
 
+    def _session(self, signal_m1: dict) -> dict[str, Any] | None:
+        """ARK-S24-01. Absent block means no filter, so legacy contracts are
+        byte-identical. Judged on the completed signal bar, never on entry."""
+        block = next((item for item in self.contract.get("no_trade_conditions", [])
+                      if isinstance(item, dict) and item.get("block_id") == "SESSION_WINDOW"), None)
+        if not block:
+            return None
+        hour = signal_m1["timestamp"].hour
+        inside = any(window["start_hour"] <= hour <= window["end_hour"] for window in block["windows"])
+        return {"block_id": "SESSION_WINDOW", "clock": block["clock"], "signal_broker_hour": hour,
+                "windows": block["windows"], "truth": inside}
+
     def decide(self, previous_m1: dict, signal_m1: dict) -> dict[str, Any]:
         sections = {key: [self._rule(rule, previous_m1, signal_m1) for rule in self.contract[key]] for key in ("context_rules", "setup_rules", "trigger_rules")}
         truth = all(item["truth"] for items in sections.values() for item in items)
-        return {"eligible": truth, "decision_timestamp": str(signal_m1["timestamp"]), "sections": sections, "asset_lineage": self.asset_lineage}
+        session = self._session(signal_m1)
+        if session is not None:
+            truth = truth and session["truth"]
+        result = {"eligible": truth, "decision_timestamp": str(signal_m1["timestamp"]), "sections": sections, "asset_lineage": self.asset_lineage}
+        if session is not None:
+            result["session_window"] = session
+        return result
 
 
 class StreamingCompletedCandleEvaluator(CompletedCandleEvaluator):

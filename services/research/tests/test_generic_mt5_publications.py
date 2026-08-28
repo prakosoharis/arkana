@@ -175,10 +175,14 @@ def test_ea_declares_bounded_generic_adapter_and_keeps_on_tick_local():
     source = (Path(__file__).parents[3] / "mt5" / "Experts" / "ARKANA_ENGINE.mq5").read_text()
     for token in (
         "GENERIC_MT5_DEMO_PUBLICATION_V1", "GENERIC_STRATEGY_MT5_COMPILER_V1",
-        "GENERIC_SMA_REVERSAL_LONG_M1_V1", "CRYPT_HASH_SHA256", "ACCOUNT_TRADE_MODE_DEMO",
+        "GENERIC_SMA_REVERSAL_LONG_M1_V2", "CRYPT_HASH_SHA256", "ACCOUNT_TRADE_MODE_DEMO",
         "GENERIC_CONFIG_LOADED", "SMA_RELATION", "TWO_BAR_REVERSAL", "CANDLE_DIRECTION",
         "NEXT_BAR_OPEN", "ARKANA_EMERGENCY_STOP",
+        # ARK-S24-01: the terminal must enforce the session window, not merely
+        # parse it, or the backtest population and live population diverge.
+        "ParseSessionWindows", "SessionAllows", "SESSION_WINDOW_CLOSED",
     ):
         assert token in source
+    assert "GENERIC_SMA_REVERSAL_LONG_M1_V1\"" not in source, "the superseded V1 capability must not be accepted"
     on_tick = source.split("void OnTick()", 1)[1]
     assert "WebRequest" not in on_tick and "http" not in on_tick.lower()

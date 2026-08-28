@@ -26,14 +26,25 @@ def _compiled_source(session, monkeypatch):
     return item, sources
 
 
+def test_the_accepted_v1_capability_fingerprint_is_preserved_as_history():
+    """ARK-S20-02 accepted V1 with this fingerprint. ARK-S24-01 added a new
+    capability rather than editing V1, so the accepted record stays true."""
+    assert compiler.ACCEPTED_V1_REGISTRY_FINGERPRINT == "868ff4dbdf190850a4f9308b23acd8d3871b2b88c28178367cc4f61ba3ce0cea"
+    assert compiler.ADAPTER_CAPABILITY_ID.endswith("_V2")
+    assert compiler.adapter_registry()["fingerprint"] != compiler.ACCEPTED_V1_REGISTRY_FINGERPRINT
+
+
 def test_frozen_registry_and_wire_golden_checksums_are_exact():
-    assert compiler.adapter_registry()["fingerprint"] == "868ff4dbdf190850a4f9308b23acd8d3871b2b88c28178367cc4f61ba3ce0cea"
+    assert compiler.adapter_registry()["fingerprint"] == "8838ee05bb0df4b3bf1c5591ee387ddf42e56ac865f308ab4c6e90d2d94077a7"
     source = SimpleNamespace(id="11111111-1111-1111-1111-111111111111", fingerprint="a" * 64, contract={"identity": {"canonical_instrument": "XAUUSD", "broker_symbol": "XAUUSD.m"}})
     strategy = SimpleNamespace(id="22222222-2222-2222-2222-222222222222", checksum="b" * 64)
     configuration = compiler._configuration(source, strategy, deepcopy(GENERIC_CONTRACT))
     text, checksum = compiler.canonical_config(configuration)
-    assert checksum == "f024915c765be5285b22299562dc4c4164642eb864a2562574d3b28b03507a6a"
-    assert __import__("hashlib").sha256(text.encode()).hexdigest() == "cc4a32f6eabd73bc9da4a90c404e054916e7ba7c7d73da4906018a32a209e75d"
+    assert checksum == "8a6aac71554a4a26b6f66ab67b73625e97c8c1e965c4c9c0a216422d81aeec43"
+    # A contract with no SESSION_WINDOW writes an explicit absence, never an
+    # empty string, so the EA can tell "no filter" from "field lost".
+    assert configuration["session_clock"] == "NONE" and configuration["session_windows"] == "NONE"
+    assert __import__("hashlib").sha256(text.encode()).hexdigest() == "45e6aeedc193597f4451b20352fb24de576275d12f7dd8024a2fcfac9f5ac7f0"
 
 
 def test_registry_and_exact_compilation_are_stable_lineaged_and_inert(tmp_path, monkeypatch):

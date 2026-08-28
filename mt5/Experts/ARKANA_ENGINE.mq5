@@ -117,7 +117,7 @@ bool ReadGenericPublication(GenericPublication &item) {
   string required[]={"publication_protocol_version","publication_id","target_environment","target_account_login","target_account_server","target_reference","broker_symbol","strategy_version_id","compiler_protocol_version","adapter_capability_id","config_checksum","config_file","published_at","publication_checksum"};
   if(!HasFields(seen,required)) return false;
   if(item.publication_protocol_version!="GENERIC_MT5_DEMO_PUBLICATION_V1" || item.target_environment!="DEMO") return false;
-  if(item.compiler_protocol_version!="GENERIC_STRATEGY_MT5_COMPILER_V1" || item.adapter_capability_id!="GENERIC_SMA_REVERSAL_LONG_M1_V1") return false;
+  if(item.compiler_protocol_version!="GENERIC_STRATEGY_MT5_COMPILER_V1" || item.adapter_capability_id!="GENERIC_SMA_REVERSAL_LONG_M1_V2") return false;
   if(item.broker_symbol!=_Symbol || item.target_account_login!=IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN))) return false;
   if(item.target_account_server!=AccountInfoString(ACCOUNT_SERVER) || !IsDemoAccount()) return false;
   if(item.config_file!="ARKANA/generic/config-"+item.config_checksum+".ini") return false;
@@ -125,7 +125,7 @@ bool ReadGenericPublication(GenericPublication &item) {
   return true;
 }
 string GenericConfigPayload(const GenericConfig &cfg) {
-  return "schema_version="+cfg.schema_version+"\ncompiler_protocol_version="+cfg.compiler_protocol_version+"\nadapter_capability_id="+cfg.adapter_capability_id+"\ngeneric_demo_contract_id="+cfg.generic_demo_contract_id+"\ngeneric_demo_contract_fingerprint="+cfg.generic_demo_contract_fingerprint+"\nstrategy_version_id="+cfg.strategy_version_id+"\nstrategy_checksum="+cfg.strategy_checksum+"\ncanonical_instrument="+cfg.canonical_instrument+"\nbroker_symbol="+cfg.broker_symbol+"\nenabled="+cfg.enabled+"\nallowed_environment="+cfg.allowed_environment+"\ndirection="+cfg.direction+"\nexecution_timeframe="+cfg.execution_timeframe+"\ncontext_rule="+cfg.context_rule+"\ncontext_timeframe="+cfg.context_timeframe+"\nsma_fast_period="+cfg.sma_fast_period+"\nsma_slow_period="+cfg.sma_slow_period+"\nsma_relation="+cfg.sma_relation+"\nsetup_rule="+cfg.setup_rule+"\nsetup_timeframe="+cfg.setup_timeframe+"\nsetup_direction="+cfg.setup_direction+"\ntrigger_rule="+cfg.trigger_rule+"\ntrigger_timeframe="+cfg.trigger_timeframe+"\ntrigger_direction="+cfg.trigger_direction+"\nentry_rule="+cfg.entry_rule+"\nentry_price_source="+cfg.entry_price_source+"\nuses_completed_candles="+cfg.uses_completed_candles+"\nuses_future_ohlc="+cfg.uses_future_ohlc+"\ninvalidation_rule="+cfg.invalidation_rule+"\nvolume="+cfg.volume+"\nstop_rule="+cfg.stop_rule+"\nstop_distance="+cfg.stop_distance+"\ntarget_rule="+cfg.target_rule+"\ntarget_distance="+cfg.target_distance+"\nspread_guard="+cfg.spread_guard+"\nmax_spread_price="+cfg.max_spread_price+"\nmax_open_positions="+cfg.max_open_positions+"\nambiguity_policy="+cfg.ambiguity_policy+"\nemergency_stop_source="+cfg.emergency_stop_source+"\nemergency_stop_variable="+cfg.emergency_stop_variable+"\nemergency_stop_condition="+cfg.emergency_stop_condition+"\nemergency_stop_action="+cfg.emergency_stop_action+"\nforce_close_positions="+cfg.force_close_positions+"\n";
+  return "schema_version="+cfg.schema_version+"\ncompiler_protocol_version="+cfg.compiler_protocol_version+"\nadapter_capability_id="+cfg.adapter_capability_id+"\ngeneric_demo_contract_id="+cfg.generic_demo_contract_id+"\ngeneric_demo_contract_fingerprint="+cfg.generic_demo_contract_fingerprint+"\nstrategy_version_id="+cfg.strategy_version_id+"\nstrategy_checksum="+cfg.strategy_checksum+"\ncanonical_instrument="+cfg.canonical_instrument+"\nbroker_symbol="+cfg.broker_symbol+"\nenabled="+cfg.enabled+"\nallowed_environment="+cfg.allowed_environment+"\ndirection="+cfg.direction+"\nexecution_timeframe="+cfg.execution_timeframe+"\ncontext_rule="+cfg.context_rule+"\ncontext_timeframe="+cfg.context_timeframe+"\nsma_fast_period="+cfg.sma_fast_period+"\nsma_slow_period="+cfg.sma_slow_period+"\nsma_relation="+cfg.sma_relation+"\nsetup_rule="+cfg.setup_rule+"\nsetup_timeframe="+cfg.setup_timeframe+"\nsetup_direction="+cfg.setup_direction+"\ntrigger_rule="+cfg.trigger_rule+"\ntrigger_timeframe="+cfg.trigger_timeframe+"\ntrigger_direction="+cfg.trigger_direction+"\nentry_rule="+cfg.entry_rule+"\nentry_price_source="+cfg.entry_price_source+"\nuses_completed_candles="+cfg.uses_completed_candles+"\nuses_future_ohlc="+cfg.uses_future_ohlc+"\ninvalidation_rule="+cfg.invalidation_rule+"\nvolume="+cfg.volume+"\nstop_rule="+cfg.stop_rule+"\nstop_distance="+cfg.stop_distance+"\ntarget_rule="+cfg.target_rule+"\ntarget_distance="+cfg.target_distance+"\nspread_guard="+cfg.spread_guard+"\nmax_spread_price="+cfg.max_spread_price+"\nmax_open_positions="+cfg.max_open_positions+"\nsession_clock="+cfg.session_clock+"\nsession_windows="+cfg.session_windows+"\nambiguity_policy="+cfg.ambiguity_policy+"\nemergency_stop_source="+cfg.emergency_stop_source+"\nemergency_stop_variable="+cfg.emergency_stop_variable+"\nemergency_stop_condition="+cfg.emergency_stop_condition+"\nemergency_stop_action="+cfg.emergency_stop_action+"\nforce_close_positions="+cfg.force_close_positions+"\n";
 }
 bool AssignGenericField(GenericConfig &cfg,const string key,const string value) {
   if(key=="schema_version") cfg.schema_version=value; else if(key=="compiler_protocol_version") cfg.compiler_protocol_version=value;
@@ -141,23 +141,56 @@ bool AssignGenericField(GenericConfig &cfg,const string key,const string value) 
   else if(key=="uses_completed_candles") cfg.uses_completed_candles=value; else if(key=="uses_future_ohlc") cfg.uses_future_ohlc=value; else if(key=="invalidation_rule") cfg.invalidation_rule=value;
   else if(key=="volume") cfg.volume=value; else if(key=="stop_rule") cfg.stop_rule=value; else if(key=="stop_distance") cfg.stop_distance=value;
   else if(key=="target_rule") cfg.target_rule=value; else if(key=="target_distance") cfg.target_distance=value; else if(key=="spread_guard") cfg.spread_guard=value;
-  else if(key=="max_spread_price") cfg.max_spread_price=value; else if(key=="max_open_positions") cfg.max_open_positions=value; else if(key=="ambiguity_policy") cfg.ambiguity_policy=value;
+  else if(key=="max_spread_price") cfg.max_spread_price=value; else if(key=="max_open_positions") cfg.max_open_positions=value; else if(key=="session_clock") cfg.session_clock=value;
+  else if(key=="session_windows") cfg.session_windows=value; else if(key=="ambiguity_policy") cfg.ambiguity_policy=value;
   else if(key=="emergency_stop_source") cfg.emergency_stop_source=value; else if(key=="emergency_stop_variable") cfg.emergency_stop_variable=value; else if(key=="emergency_stop_condition") cfg.emergency_stop_condition=value;
   else if(key=="emergency_stop_action") cfg.emergency_stop_action=value; else if(key=="force_close_positions") cfg.force_close_positions=value; else if(key=="checksum") cfg.checksum=value;
   else return false; return true;
+}
+// ARK-S24-01. Windows are broker-time, which is the same clock TimeCurrent()
+// reports, so no offset conversion is performed or needed.
+int g_session_start[]; int g_session_end[]; int g_session_count=0;
+bool ParseSessionWindows(const string clock,const string windows) {
+  g_session_count=0; ArrayResize(g_session_start,0); ArrayResize(g_session_end,0);
+  if(clock=="NONE") return windows=="NONE";
+  if(clock!="BROKER_TIME" || windows=="NONE" || windows=="") return false;
+  string parts[]; int count=StringSplit(windows,',',parts);
+  if(count<1) return false;
+  int previous_end=-1;
+  for(int index=0;index<count;index++) {
+    string part=parts[index];
+    if(StringLen(part)!=5 || StringGetCharacter(part,2)!='-') return false;
+    string a=StringSubstr(part,0,2), b=StringSubstr(part,3,2);
+    if(!IsDecimalDigits(a) || !IsDecimalDigits(b)) return false;
+    int start=(int)StringToInteger(a), end=(int)StringToInteger(b);
+    if(start<0 || start>23 || end<0 || end>23 || start>end) return false;
+    if(start<=previous_end) return false;   // ascending and non-overlapping
+    previous_end=end;
+    ArrayResize(g_session_start,g_session_count+1); ArrayResize(g_session_end,g_session_count+1);
+    g_session_start[g_session_count]=start; g_session_end[g_session_count]=end; g_session_count++;
+  }
+  return g_session_count>0;
+}
+bool SessionAllows(const datetime moment) {
+  if(g_session_count==0) return true;
+  MqlDateTime parts; TimeToStruct(moment,parts);
+  for(int index=0;index<g_session_count;index++)
+    if(parts.hour>=g_session_start[index] && parts.hour<=g_session_end[index]) return true;
+  return false;
 }
 bool ReadGenericConfig(const string file,GenericConfig &cfg) {
   ZeroMemory(cfg); int handle=FileOpen(file,FILE_READ|FILE_TXT|FILE_COMMON|FILE_ANSI); if(handle==INVALID_HANDLE) return false;
   string seen="|";
   while(!FileIsEnding(handle)) { string key="",value=""; if(!ReadLineField(handle,seen,key,value)) continue; if(!AssignGenericField(cfg,key,value)) { FileClose(handle); return false; } }
   FileClose(handle);
-  string required[]={"schema_version","compiler_protocol_version","adapter_capability_id","generic_demo_contract_id","generic_demo_contract_fingerprint","strategy_version_id","strategy_checksum","canonical_instrument","broker_symbol","enabled","allowed_environment","direction","execution_timeframe","context_rule","context_timeframe","sma_fast_period","sma_slow_period","sma_relation","setup_rule","setup_timeframe","setup_direction","trigger_rule","trigger_timeframe","trigger_direction","entry_rule","entry_price_source","uses_completed_candles","uses_future_ohlc","invalidation_rule","volume","stop_rule","stop_distance","target_rule","target_distance","spread_guard","max_spread_price","max_open_positions","ambiguity_policy","emergency_stop_source","emergency_stop_variable","emergency_stop_condition","emergency_stop_action","force_close_positions","checksum"};
+  string required[]={"schema_version","compiler_protocol_version","adapter_capability_id","generic_demo_contract_id","generic_demo_contract_fingerprint","strategy_version_id","strategy_checksum","canonical_instrument","broker_symbol","enabled","allowed_environment","direction","execution_timeframe","context_rule","context_timeframe","sma_fast_period","sma_slow_period","sma_relation","setup_rule","setup_timeframe","setup_direction","trigger_rule","trigger_timeframe","trigger_direction","entry_rule","entry_price_source","uses_completed_candles","uses_future_ohlc","invalidation_rule","volume","stop_rule","stop_distance","target_rule","target_distance","spread_guard","max_spread_price","max_open_positions","session_clock","session_windows","ambiguity_policy","emergency_stop_source","emergency_stop_variable","emergency_stop_condition","emergency_stop_action","force_close_positions","checksum"};
   if(!HasFields(seen,required) || Sha256Hex(GenericConfigPayload(cfg))!=cfg.checksum) return false;
-  if(cfg.schema_version!="2" || cfg.compiler_protocol_version!="GENERIC_STRATEGY_MT5_COMPILER_V1" || cfg.adapter_capability_id!="GENERIC_SMA_REVERSAL_LONG_M1_V1") return false;
+  if(cfg.schema_version!="2" || cfg.compiler_protocol_version!="GENERIC_STRATEGY_MT5_COMPILER_V1" || cfg.adapter_capability_id!="GENERIC_SMA_REVERSAL_LONG_M1_V2") return false;
   if(cfg.canonical_instrument!="XAUUSD" || cfg.broker_symbol!=_Symbol || cfg.enabled!="true" || cfg.allowed_environment!="DEMO" || cfg.direction!="LONG" || cfg.execution_timeframe!="M1") return false;
   if(cfg.context_rule!="SMA_RELATION" || cfg.context_timeframe!="M1" || cfg.sma_relation!="ABOVE" || cfg.setup_rule!="TWO_BAR_REVERSAL" || cfg.setup_timeframe!="M1" || cfg.setup_direction!="BULLISH") return false;
   if(cfg.trigger_rule!="CANDLE_DIRECTION" || cfg.trigger_timeframe!="M1" || cfg.trigger_direction!="BULLISH" || cfg.entry_rule!="NEXT_BAR_OPEN" || cfg.entry_price_source!="MT5_ASK_FIRST_TICK_NEXT_M1") return false;
   if(cfg.uses_completed_candles!="true" || cfg.uses_future_ohlc!="false" || cfg.invalidation_rule!="ALWAYS" || cfg.stop_rule!="FIXED_PRICE_DISTANCE_SL" || cfg.target_rule!="FIXED_PRICE_DISTANCE_TP") return false;
+  if(!ParseSessionWindows(cfg.session_clock,cfg.session_windows)) return false;
   if(cfg.spread_guard!="FIXED_SPREAD_GUARD" || cfg.max_open_positions!="1" || cfg.ambiguity_policy!="STOP_FIRST" || cfg.emergency_stop_variable!="ARKANA_EMERGENCY_STOP" || cfg.force_close_positions!="false") return false;
   int fast=(int)StringToInteger(cfg.sma_fast_period),slow=(int)StringToInteger(cfg.sma_slow_period);
   if(fast<=0 || slow<=fast || slow>1000 || DoubleToString(StringToDouble(cfg.volume),8)!=cfg.volume || DoubleToString(StringToDouble(cfg.stop_distance),8)!=cfg.stop_distance || DoubleToString(StringToDouble(cfg.target_distance),8)!=cfg.target_distance || DoubleToString(StringToDouble(cfg.max_spread_price),8)!=cfg.max_spread_price) return false;
@@ -336,6 +369,8 @@ void GenericOnNewBar() {
   if(spread>StringToDouble(active_generic.max_spread_price)) { EmitGenericEvent("BLOCKER","SPREAD_GUARD","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",DoubleToString(spread,8),"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED"); return; }
   int fast=(int)StringToInteger(active_generic.sma_fast_period),slow=(int)StringToInteger(active_generic.sma_slow_period);
   MqlRates rates[]; ArraySetAsSeries(rates,true); if(CopyRates(_Symbol,PERIOD_M1,0,slow+2,rates)<slow+2) { EmitGenericSimple("BLOCKER","COMPLETED_BARS_UNAVAILABLE"); return; }
+  // Judged on the completed signal bar, matching the evaluator exactly.
+  if(!SessionAllows(rates[1].time)) { EmitGenericSimple("BLOCKER","SESSION_WINDOW_CLOSED"); return; }
   double fast_sum=0.0,slow_sum=0.0;
   for(int index=1;index<=slow;index++) { slow_sum+=rates[index].close; if(index<=fast) fast_sum+=rates[index].close; }
   bool context=(fast_sum/(double)fast)>(slow_sum/(double)slow);

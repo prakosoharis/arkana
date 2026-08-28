@@ -42,6 +42,9 @@ _BLOCKS = (
     {"id": "NOT", "category": "BOOLEAN", "execution": GENERIC, "completed_candles": True, "parameters": {"child": "RULE_OBJECT"}},
     {"id": "SMA_RELATION", "category": "CONTEXT", "execution": GENERIC, "completed_candles": True, "parameters": {"fast_period": "POSITIVE_INTEGER", "slow_period": "POSITIVE_INTEGER", "relation": ["ABOVE", "BELOW"]}},
     {"id": "TWO_BAR_REVERSAL", "category": "SETUP", "execution": GENERIC, "completed_candles": True, "parameters": {"direction": ["BULLISH", "BEARISH"]}},
+    # ARK-S24-01.  Windows are broker-time because that is the clock the bars
+    # are already labelled in and the clock the terminal enforces with.
+    {"id": "SESSION_WINDOW", "category": "NO_TRADE", "execution": GENERIC, "completed_candles": True, "parameters": {"clock": ["BROKER_TIME"], "windows": "BROKER_HOUR_WINDOW_LIST"}},
 )
 BLOCKS = {item["id"]: item for item in _BLOCKS}
 _TOP_LEVEL = set(REQUIRED) | {"schema_version"}
@@ -50,7 +53,35 @@ _REQUIRED_PARAMETERS = {
     "FIXED_PRICE_DISTANCE_SL": {"unit", "distance"}, "FIXED_PRICE_DISTANCE_TP": {"unit", "distance"},
     "FIXED_SPREAD_GUARD": {"unit", "maximum"}, "MAX_OPEN_POSITIONS": {"maximum"}, "FIXED_LOT_DEMO": {"volume"},
     "SMA_RELATION": {"fast_period", "slow_period", "relation"},
+    "SESSION_WINDOW": {"clock", "windows"},
 }
+
+
+def session_window_issues(block: dict[str, Any]) -> list[str]:
+    """Windows must be ascending, non-overlapping, whole broker hours."""
+    windows = block.get("windows")
+    if not isinstance(windows, list) or not windows:
+        return ["SESSION_WINDOW.windows must be a non-empty list."]
+    issues: list[str] = []
+    bounds: list[tuple[int, int]] = []
+    for item in windows:
+        if not isinstance(item, dict) or set(item) != {"start_hour", "end_hour"}:
+            issues.append("SESSION_WINDOW.windows entries must declare exactly start_hour and end_hour.")
+            continue
+        start, end = item["start_hour"], item["end_hour"]
+        if not all(isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 23 for value in (start, end)):
+            issues.append("SESSION_WINDOW window hours must be integers in 0..23.")
+            continue
+        if start > end:
+            # A window that wraps midnight would silently span the rollover gap.
+            issues.append("SESSION_WINDOW windows must not wrap past hour 23.")
+            continue
+        bounds.append((start, end))
+    for earlier, later in zip(sorted(bounds), sorted(bounds)[1:]):
+        if later[0] <= earlier[1]:
+            issues.append("SESSION_WINDOW windows must be non-overlapping.")
+            break
+    return issues
 
 
 def _rule_nodes(value: Any):
@@ -143,6 +174,8 @@ def normalize(contract: object) -> tuple[dict[str, Any], list[str], list[str]]:
                 issues.append(f"{block_id}.children must be a non-empty rule list.")
             if block_id == "NOT" and not isinstance(block.get("child"), dict):
                 issues.append("NOT.child must be a rule object.")
+            if block_id == "SESSION_WINDOW":
+                issues.extend(session_window_issues(block))
     return normalized, issues, sorted(set(declared))
 
 

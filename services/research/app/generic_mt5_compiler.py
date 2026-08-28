@@ -27,8 +27,13 @@ from .strategy_contracts import canonical_json
 
 
 COMPILER_VERSION = "GENERIC_STRATEGY_MT5_COMPILER_V1"
-ADAPTER_REGISTRY_VERSION = "GENERIC_MT5_ADAPTER_REGISTRY_V1"
-ADAPTER_CAPABILITY_ID = "GENERIC_SMA_REVERSAL_LONG_M1_V1"
+# ARK-S24-01 bumps both. The V1 capability was accepted at ARK-S20-02 with
+# registry fingerprint 868ff4dbdf190850a4f9308b23acd8d3871b2b88c28178367cc4f61ba3ce0cea;
+# extending it in place would have made that accepted record untrue. V2 is a
+# genuinely different capability and is named as one.
+ADAPTER_REGISTRY_VERSION = "GENERIC_MT5_ADAPTER_REGISTRY_V2"
+ADAPTER_CAPABILITY_ID = "GENERIC_SMA_REVERSAL_LONG_M1_V2"
+ACCEPTED_V1_REGISTRY_FINGERPRINT = "868ff4dbdf190850a4f9308b23acd8d3871b2b88c28178367cc4f61ba3ce0cea"
 STATUS_READY = "MT5_CONFIGURATION_READY"
 STATUS_INELIGIBLE = "INELIGIBLE"
 DECIMAL_PLACES = 8
@@ -44,7 +49,7 @@ WIRE_FIELDS = (
     "entry_price_source", "uses_completed_candles", "uses_future_ohlc",
     "invalidation_rule", "volume", "stop_rule", "stop_distance",
     "target_rule", "target_distance", "spread_guard", "max_spread_price",
-    "max_open_positions", "ambiguity_policy", "emergency_stop_source",
+    "max_open_positions", "session_clock", "session_windows", "ambiguity_policy", "emergency_stop_source",
     "emergency_stop_variable", "emergency_stop_condition",
     "emergency_stop_action", "force_close_positions",
 )
@@ -60,6 +65,7 @@ def adapter_registry() -> dict[str, Any]:
             "instrument": "XAUUSD", "direction": "LONG",
             "execution_timeframe": "M1", "context_timeframes": ["M1"],
             "context": "SMA_RELATION", "sma_relation": ["ABOVE"], "setup": "TWO_BAR_REVERSAL",
+            "session_clock": ["BROKER_TIME", "NONE"],
             "trigger": "CANDLE_DIRECTION", "entry": "NEXT_BAR_OPEN",
             "risk": ["FIXED_LOT_DEMO", "FIXED_PRICE_DISTANCE_SL", "FIXED_PRICE_DISTANCE_TP"],
             "guards": ["FIXED_SPREAD_GUARD", "MAX_OPEN_POSITIONS", "STOP_FIRST"],
@@ -67,6 +73,21 @@ def adapter_registry() -> dict[str, Any]:
         }],
     }
     return {**value, "fingerprint": sha256(canonical_json(value).encode()).hexdigest()}
+
+
+def _session_fields(contract: dict[str, Any]) -> dict[str, str]:
+    """Canonical wire form for SESSION_WINDOW, or an explicit absence.
+
+    `NONE` is written rather than an empty string so the EA can tell "no
+    filter declared" from "field lost in transport".
+    """
+    block = next((item for item in contract.get("no_trade_conditions", [])
+                  if isinstance(item, dict) and item.get("block_id") == "SESSION_WINDOW"), None)
+    if not block:
+        return {"session_clock": "NONE", "session_windows": "NONE"}
+    windows = ",".join(f"{item['start_hour']:02d}-{item['end_hour']:02d}"
+                       for item in sorted(block["windows"], key=lambda value: value["start_hour"]))
+    return {"session_clock": block["clock"], "session_windows": windows}
 
 
 def _decimal(value: object, name: str) -> str:
@@ -193,6 +214,7 @@ def _field_lineage(item: GenericDemoContract) -> dict[str, dict[str, str]]:
         "setup_timeframe": "setup_rules[0].timeframe", "setup_direction": "setup_rules[0].direction",
         "trigger_rule": "trigger_rules[0].block_id", "trigger_timeframe": "trigger_rules[0].timeframe",
         "trigger_direction": "trigger_rules[0].direction", "entry_rule": "entry_rule.block_id",
+        "session_clock": "no_trade_conditions[SESSION_WINDOW].clock", "session_windows": "no_trade_conditions[SESSION_WINDOW].windows",
         "invalidation_rule": "invalidation_rule.block_id", "volume": "position_sizing_rule.volume",
         "stop_rule": "stop_loss_rule.block_id", "stop_distance": "stop_loss_rule.distance",
         "target_rule": "take_profit_rule.block_id", "target_distance": "take_profit_rule.distance",
@@ -229,7 +251,7 @@ def _configuration(item: GenericDemoContract, strategy: StrategyVersion, contrac
         "stop_rule": "FIXED_PRICE_DISTANCE_SL", "stop_distance": _decimal(contract["stop_loss_rule"].get("distance"), "stop_distance"),
         "target_rule": "FIXED_PRICE_DISTANCE_TP", "target_distance": _decimal(contract["take_profit_rule"].get("distance"), "target_distance"),
         "spread_guard": "FIXED_SPREAD_GUARD", "max_spread_price": _decimal(spread.get("maximum"), "max_spread_price"),
-        "max_open_positions": str(positions.get("maximum")), "ambiguity_policy": "STOP_FIRST",
+        "max_open_positions": str(positions.get("maximum")), **_session_fields(contract), "ambiguity_policy": "STOP_FIRST",
         "emergency_stop_source": EMERGENCY_POLICY["source"], "emergency_stop_variable": EMERGENCY_POLICY["variable"],
         "emergency_stop_condition": EMERGENCY_POLICY["blocked_when"], "emergency_stop_action": EMERGENCY_POLICY["action"],
         "force_close_positions": "false",
@@ -295,6 +317,25 @@ def parse_config(text: object) -> dict[str, str]:
             raise ValueError(f"{name} is not a canonical positive integer")
     if int(configuration["sma_fast_period"]) >= int(configuration["sma_slow_period"]) or int(configuration["sma_slow_period"]) > 1000:
         raise ValueError("SMA periods are outside the bounded adapter capability")
+    clock, windows = configuration["session_clock"], configuration["session_windows"]
+    if (clock == "NONE") != (windows == "NONE"):
+        raise ValueError("session_clock and session_windows must both be present or both be NONE")
+    if clock != "NONE":
+        if clock != "BROKER_TIME":
+            raise ValueError("session_clock must be BROKER_TIME")
+        bounds = []
+        for part in windows.split(","):
+            if len(part) != 5 or part[2] != "-" or not (part[:2].isdigit() and part[3:].isdigit()):
+                raise ValueError("session_windows must be canonical HH-HH entries")
+            start, end = int(part[:2]), int(part[3:])
+            if not (0 <= start <= 23 and 0 <= end <= 23) or start > end:
+                raise ValueError("session_windows hours must be 0..23 and must not wrap")
+            bounds.append((start, end))
+        if bounds != sorted(bounds):
+            raise ValueError("session_windows must be ascending")
+        for earlier, later in zip(bounds, bounds[1:]):
+            if later[0] <= earlier[1]:
+                raise ValueError("session_windows must be non-overlapping")
     if configuration["sma_relation"] != "ABOVE":
         raise ValueError("SMA relation is unsupported")
     if not configuration["broker_symbol"] or not configuration["strategy_version_id"] or len(configuration["strategy_checksum"]) != 64 or len(configuration["generic_demo_contract_fingerprint"]) != 64:
