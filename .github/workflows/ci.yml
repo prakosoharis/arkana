@@ -66,11 +66,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: No LIVE route may exist
-        # Anchored so the legitimate /api/v1/live-readiness governance routes
-        # are not mistaken for a LIVE execution path.
+        # Matches route *definitions*, not mentions. An earlier version grepped
+        # for the path anywhere and flagged the verifier that detects LIVE
+        # routes, which is the detector, not a route.
+        # `/api/v1/live-readiness/...` is legitimate governance and is excluded.
         run: |
-          if grep -rnE '"/api/v1/live(/[^-]|")' services/research/app apps/web/app; then
-            echo "::error::a LIVE route was introduced; this requires a separately authorized product and safety design"
+          if grep -rnE '@app\.(get|post|put|patch|delete)\("/api/v1/live(/[^-]|")' services/research/app; then
+            echo "::error::a LIVE API route was introduced; this requires a separately authorized product and safety design"
+            exit 1
+          fi
+          if [ -d "apps/web/app/api/v1/live" ]; then
+            echo "::error::a LIVE BFF route directory was introduced"
             exit 1
           fi
       - name: Backtest V1 must remain the only simulation kernel
