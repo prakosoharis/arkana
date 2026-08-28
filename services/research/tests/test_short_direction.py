@@ -4,6 +4,7 @@ The first obligation is that LONG did not move. The second is that SHORT is a
 faithful mirror rather than an approximation.
 """
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -173,7 +174,7 @@ def test_the_compiler_refuses_a_direction_that_contradicts_the_setup():
 
 def test_the_ea_source_mirrors_the_execution_path():
     """The terminal must sell, not merely record a SHORT label."""
-    source = open("/workspace/project/mt5/Experts/ARKANA_ENGINE.mq5").read()
+    source = (Path(__file__).parents[3] / "mt5" / "Experts" / "ARKANA_ENGINE.mq5").read_text()
     block = source.split("void GenericOnNewBar()", 1)[1].split("void ReloadConfig", 1)[0]
     assert "trade.Sell" in block and "trade.Buy" in block
     assert "tick.bid" in block, "a sell must enter at the bid"
