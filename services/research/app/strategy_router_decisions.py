@@ -25,8 +25,10 @@ def decision_contract() -> dict[str, Any]:
         "protocol_version": PROTOCOL_VERSION,
         "candidate_cohort": "EXPLICIT_EXACT_ELIGIBILITY_IDS",
         "selection": "EXACTLY_ONE_SIGNAL_ELSE_NO_TRADE",
-        "supported_directions": ["LONG"],
-        "declared_but_unsupported_directions": ["SHORT"],
+        # ARK-S24-02 removed the SHORT blocker only after evaluator, kernel,
+        # compiler, and EA all supported it end to end.
+        "supported_directions": ["LONG", "SHORT"],
+        "declared_but_unsupported_directions": [],
         "least_bad_fallback": False,
         "completed_candles_only": True,
         "authority": {"direction_evidence": True, "entry_sl_tp_size": False, "deployment": False, "capital": False, "mt5": False, "order_or_trade": False},
@@ -142,7 +144,6 @@ def materialize(session: Session, eligibility_ids: object, evaluated_at: datetim
     if not signals and not blockers: blockers.append("NO_CANDIDATE_SIGNAL")
     decision = selected["direction"] if selected else "NO_TRADE"
     if decision not in OUTCOMES: decision, selected = "NO_TRADE", None; blockers.append("UNSUPPORTED_DIRECTION")
-    if decision == "SHORT": decision, selected = "NO_TRADE", None; blockers.append("SHORT_CAPABILITY_UNAVAILABLE")
     blockers = sorted(set(blockers))
     contract = decision_contract()
     source = {"protocol_version": PROTOCOL_VERSION, "decision_contract": contract, "policy": {"id": policy.id, "fingerprint": policy.fingerprint, "policy": policy.policy}, "evaluated_at": _iso(evaluated_at), "candidates": source_candidates}

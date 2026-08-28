@@ -62,7 +62,7 @@ def adapter_registry() -> dict[str, Any]:
         "version": ADAPTER_REGISTRY_VERSION,
         "capabilities": [{
             "id": ADAPTER_CAPABILITY_ID,
-            "instrument": "XAUUSD", "direction": "LONG",
+            "instrument": "XAUUSD", "direction": ["LONG", "SHORT"],
             "execution_timeframe": "M1", "context_timeframes": ["M1"],
             "context": "SMA_RELATION", "sma_relation": ["ABOVE"], "setup": "TWO_BAR_REVERSAL",
             "session_clock": ["BROKER_TIME", "NONE"],
@@ -140,15 +140,19 @@ def _adapter_issues(contract: object) -> list[str]:
     context = exact_list("context_rules", "SMA_RELATION")
     setup = exact_list("setup_rules", "TWO_BAR_REVERSAL")
     trigger = exact_list("trigger_rules", "CANDLE_DIRECTION")
-    if contract.get("instrument") != "XAUUSD" or contract.get("direction_eligibility") != "LONG" or contract.get("execution_timeframe") != "M1":
-        issues.append("adapter supports only XAUUSD LONG with M1 execution")
+    if contract.get("instrument") != "XAUUSD" or contract.get("direction_eligibility") not in {"LONG", "SHORT"} or contract.get("execution_timeframe") != "M1":
+        issues.append("adapter supports only XAUUSD LONG or SHORT with M1 execution")
     context_timeframe = context.get("timeframe")
     if context_timeframe != "M1" or contract.get("context_timeframes") != ["M1"]:
         issues.append("context timeframe must be explicit M1 and match context_timeframes")
     if setup.get("timeframe") != "M1" or contract.get("setup_timeframes") != ["M1"] or trigger.get("timeframe") != "M1":
         issues.append("setup and trigger timeframes must be explicit M1")
-    if setup.get("direction") != "BULLISH" or trigger.get("direction") != "BULLISH":
-        issues.append("adapter supports only BULLISH setup and trigger")
+    # ARK-S24-02: setup and trigger must agree with each other, not with a
+    # fixed polarity.  The old BULLISH-only rule also blocked the BEARISH LONG
+    # variant that Sprint 22 found survives, and a contradictory pair produces
+    # no trades at all, so coherence loses nothing real.
+    if setup.get("direction") not in {"BULLISH", "BEARISH"} or setup.get("direction") != trigger.get("direction"):
+        issues.append("adapter requires setup and trigger directions to be declared and identical")
     fast, slow = context.get("fast_period"), context.get("slow_period")
     if not isinstance(fast, int) or isinstance(fast, bool) or not isinstance(slow, int) or isinstance(slow, bool) or fast <= 0 or fast >= slow or slow > 1000:
         issues.append("SMA periods must be positive bounded integers with fast smaller than slow and slow at most 1000")
@@ -239,7 +243,7 @@ def _configuration(item: GenericDemoContract, strategy: StrategyVersion, contrac
         "generic_demo_contract_id": item.id, "generic_demo_contract_fingerprint": item.fingerprint,
         "strategy_version_id": strategy.id, "strategy_checksum": strategy.checksum,
         "canonical_instrument": identity["canonical_instrument"], "broker_symbol": identity["broker_symbol"],
-        "enabled": "true", "allowed_environment": "DEMO", "direction": "LONG",
+        "enabled": "true", "allowed_environment": "DEMO", "direction": contract["direction_eligibility"],
         "execution_timeframe": "M1", "context_rule": "SMA_RELATION",
         "context_timeframe": context["timeframe"], "sma_fast_period": str(context["fast_period"]),
         "sma_slow_period": str(context["slow_period"]), "sma_relation": context["relation"],
@@ -287,7 +291,7 @@ def parse_config(text: object) -> dict[str, str]:
         raise ValueError("MT5 configuration protocol or adapter is unsupported")
     frozen = {
         "canonical_instrument": "XAUUSD", "enabled": "true",
-        "allowed_environment": "DEMO", "direction": "LONG",
+        "allowed_environment": "DEMO",
         "execution_timeframe": "M1", "context_rule": "SMA_RELATION",
         "context_timeframe": "M1", "setup_rule": "TWO_BAR_REVERSAL",
         "setup_timeframe": "M1", "setup_direction": "BULLISH",
@@ -317,6 +321,8 @@ def parse_config(text: object) -> dict[str, str]:
             raise ValueError(f"{name} is not a canonical positive integer")
     if int(configuration["sma_fast_period"]) >= int(configuration["sma_slow_period"]) or int(configuration["sma_slow_period"]) > 1000:
         raise ValueError("SMA periods are outside the bounded adapter capability")
+    if configuration["direction"] not in {"LONG", "SHORT"}:
+        raise ValueError("direction must be LONG or SHORT")
     clock, windows = configuration["session_clock"], configuration["session_windows"]
     if (clock == "NONE") != (windows == "NONE"):
         raise ValueError("session_clock and session_windows must both be present or both be NONE")

@@ -47,6 +47,8 @@ def validate_backtest_config(payload: dict[str, Any]) -> dict[str, Any]:
     for key in ("stop_distance", "target_distance"):
         if not isinstance(config[key], (int, float)) or config[key] <= 0:
             raise ValueError(f"{key} must be a positive explicit price-unit value")
+    if "direction" in config and config["direction"] not in {"LONG", "SHORT"}:
+        raise ValueError("direction must be LONG or SHORT")
     for key in ("spread_price", "commission_price"):
         if not isinstance(config[key], (int, float)) or config[key] < 0:
             raise ValueError(f"{key} must be a non-negative explicit price-unit value")
@@ -75,7 +77,25 @@ def _metrics(trades: list[dict]) -> dict[str, Any]:
 
 
 def simulate_kernel(chunks: Any, config: dict[str, Any], on_trade: Any = None, on_candle: Any = None, on_entry: Any = None, on_signal: Any = None, signal_decider: Any = None) -> list[dict]:
-    """Single stateful execution kernel; chunk boundaries have no trading meaning."""
+    """Single stateful execution kernel; chunk boundaries have no trading meaning.
+
+    ARK-S24-02 adds SHORT as a sign flip rather than a second code path.  The
+    key is `config.get("direction")`: an absent key means LONG, so every stored
+    LONG config, its evidence, and its fingerprint stay byte-identical.
+    """
+    side = config.get("direction", "LONG")
+    sign = 1 if side == "LONG" else -1
+
+    def hits(candle: dict, stop: float, target: float) -> tuple[bool, bool]:
+        if sign == 1:
+            return candle["low"] <= stop, candle["high"] >= target
+        return candle["high"] >= stop, candle["low"] <= target
+
+    def excursions(low: float, high: float, entry: float) -> tuple[float, float]:
+        """Adverse and favourable, signed from the position's own perspective."""
+        adverse, favourable = (low, high) if sign == 1 else (high, low)
+        return sign * (adverse - entry), sign * (favourable - entry)
+
     trades: list[dict] = []; before_signal = None; signal = None; active = None
     def record(trade: dict) -> None:
         if on_trade:
@@ -89,10 +109,10 @@ def simulate_kernel(chunks: Any, config: dict[str, Any], on_trade: Any = None, o
         closed_this_candle = False
         if active:
             active["max_high"] = max(active["max_high"], candle["high"]); active["min_low"] = min(active["min_low"], candle["low"])
-            stop_hit, target_hit = candle["low"] <= active["stop"], candle["high"] >= active["target"]
+            stop_hit, target_hit = hits(candle, active["stop"], active["target"])
             if stop_hit or target_hit:
                 exit_price, reason = (active["stop"], "AMBIGUOUS_STOP_FIRST" if target_hit else "STOP_LOSS") if stop_hit else (active["target"], "TAKE_PROFIT")
-                gross = exit_price-active["entry"]; record({"signal_timestamp":str(active["signal"]["timestamp"]),"entry_timestamp":str(active["entry_bar"]["timestamp"]),"exit_timestamp":str(candle["timestamp"]),"side":"LONG","entry_price":round(active["entry"],6),"stop_price":round(active["stop"],6),"target_price":round(active["target"],6),"exit_price":round(exit_price,6),"exit_reason":reason,"gross_pnl_price":round(gross,6),"net_pnl_price":round(gross-config["commission_price"],6),"mae_price":round(active["min_low"]-active["entry"],6),"mfe_price":round(active["max_high"]-active["entry"],6),**({"rule_evaluation":active["rule_evaluation"]} if signal_decider else {})})
+                gross = sign*(exit_price-active["entry"]); mae, mfe = excursions(active["min_low"], active["max_high"], active["entry"]); record({"signal_timestamp":str(active["signal"]["timestamp"]),"entry_timestamp":str(active["entry_bar"]["timestamp"]),"exit_timestamp":str(candle["timestamp"]),"side":side,"entry_price":round(active["entry"],6),"stop_price":round(active["stop"],6),"target_price":round(active["target"],6),"exit_price":round(exit_price,6),"exit_reason":reason,"gross_pnl_price":round(gross,6),"net_pnl_price":round(gross-config["commission_price"],6),"mae_price":round(mae,6),"mfe_price":round(mfe,6),**({"rule_evaluation":active["rule_evaluation"]} if signal_decider else {})})
                 active=None
                 closed_this_candle = True
         elif before_signal and signal:
@@ -103,14 +123,14 @@ def simulate_kernel(chunks: Any, config: dict[str, Any], on_trade: Any = None, o
                 continue
             if on_signal:
                 on_signal(signal)
-            entry=candle["open"]+config["spread_price"]; active={"signal":signal,"entry_bar":candle,"entry":entry,"stop":entry-config["stop_distance"],"target":entry+config["target_distance"],"max_high":candle["high"],"min_low":candle["low"],"rule_evaluation":rule_evaluation}
+            entry=candle["open"]+sign*config["spread_price"]; active={"signal":signal,"entry_bar":candle,"entry":entry,"stop":entry-sign*config["stop_distance"],"target":entry+sign*config["target_distance"],"max_high":candle["high"],"min_low":candle["low"],"rule_evaluation":rule_evaluation}
             if on_entry:
                 on_entry(candle)
             # The entry candle participates in STOP_FIRST just as the original loop did.
-            stop_hit, target_hit=candle["low"]<=active["stop"],candle["high"]>=active["target"]
+            stop_hit, target_hit=hits(candle, active["stop"], active["target"])
             if stop_hit or target_hit:
-                exit_price,reason=(active["stop"],"AMBIGUOUS_STOP_FIRST" if target_hit else "STOP_LOSS") if stop_hit else (active["target"],"TAKE_PROFIT"); gross=exit_price-entry
-                record({"signal_timestamp":str(signal["timestamp"]),"entry_timestamp":str(candle["timestamp"]),"exit_timestamp":str(candle["timestamp"]),"side":"LONG","entry_price":round(entry,6),"stop_price":round(active["stop"],6),"target_price":round(active["target"],6),"exit_price":round(exit_price,6),"exit_reason":reason,"gross_pnl_price":round(gross,6),"net_pnl_price":round(gross-config["commission_price"],6),"mae_price":round(candle["low"]-entry,6),"mfe_price":round(candle["high"]-entry,6),**({"rule_evaluation":rule_evaluation} if signal_decider else {})}); active=None
+                exit_price,reason=(active["stop"],"AMBIGUOUS_STOP_FIRST" if target_hit else "STOP_LOSS") if stop_hit else (active["target"],"TAKE_PROFIT"); gross=sign*(exit_price-entry); mae, mfe = excursions(candle["low"], candle["high"], entry)
+                record({"signal_timestamp":str(signal["timestamp"]),"entry_timestamp":str(candle["timestamp"]),"exit_timestamp":str(candle["timestamp"]),"side":side,"entry_price":round(entry,6),"stop_price":round(active["stop"],6),"target_price":round(active["target"],6),"exit_price":round(exit_price,6),"exit_reason":reason,"gross_pnl_price":round(gross,6),"net_pnl_price":round(gross-config["commission_price"],6),"mae_price":round(mae,6),"mfe_price":round(mfe,6),**({"rule_evaluation":rule_evaluation} if signal_decider else {})}); active=None
                 closed_this_candle = True
         # Legacy sets index = exit_index + 1.  Resetting the two-candle
         # signal window means the exit candle cannot become a signal itself;
@@ -120,7 +140,7 @@ def simulate_kernel(chunks: Any, config: dict[str, Any], on_trade: Any = None, o
         else:
             before_signal, signal = signal, candle
     if active:
-        candle = signal; gross=candle["close"]-active["entry"]; record({"signal_timestamp":str(active["signal"]["timestamp"]),"entry_timestamp":str(active["entry_bar"]["timestamp"]),"exit_timestamp":str(candle["timestamp"]),"side":"LONG","entry_price":round(active["entry"],6),"stop_price":round(active["stop"],6),"target_price":round(active["target"],6),"exit_price":round(candle["close"],6),"exit_reason":"DATA_END","gross_pnl_price":round(gross,6),"net_pnl_price":round(gross-config["commission_price"],6),"mae_price":round(active["min_low"]-active["entry"],6),"mfe_price":round(active["max_high"]-active["entry"],6),**({"rule_evaluation":active["rule_evaluation"]} if signal_decider else {})})
+        candle = signal; gross=sign*(candle["close"]-active["entry"]); mae, mfe = excursions(active["min_low"], active["max_high"], active["entry"]); record({"signal_timestamp":str(active["signal"]["timestamp"]),"entry_timestamp":str(active["entry_bar"]["timestamp"]),"exit_timestamp":str(candle["timestamp"]),"side":side,"entry_price":round(active["entry"],6),"stop_price":round(active["stop"],6),"target_price":round(active["target"],6),"exit_price":round(candle["close"],6),"exit_reason":"DATA_END","gross_pnl_price":round(gross,6),"net_pnl_price":round(gross-config["commission_price"],6),"mae_price":round(mae,6),"mfe_price":round(mfe,6),**({"rule_evaluation":active["rule_evaluation"]} if signal_decider else {})})
     return trades
 
 def _simulate(bars: list[dict], config: dict[str, Any], signal_decider: Any = None) -> list[dict]:

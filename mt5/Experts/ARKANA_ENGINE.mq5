@@ -186,9 +186,9 @@ bool ReadGenericConfig(const string file,GenericConfig &cfg) {
   string required[]={"schema_version","compiler_protocol_version","adapter_capability_id","generic_demo_contract_id","generic_demo_contract_fingerprint","strategy_version_id","strategy_checksum","canonical_instrument","broker_symbol","enabled","allowed_environment","direction","execution_timeframe","context_rule","context_timeframe","sma_fast_period","sma_slow_period","sma_relation","setup_rule","setup_timeframe","setup_direction","trigger_rule","trigger_timeframe","trigger_direction","entry_rule","entry_price_source","uses_completed_candles","uses_future_ohlc","invalidation_rule","volume","stop_rule","stop_distance","target_rule","target_distance","spread_guard","max_spread_price","max_open_positions","session_clock","session_windows","ambiguity_policy","emergency_stop_source","emergency_stop_variable","emergency_stop_condition","emergency_stop_action","force_close_positions","checksum"};
   if(!HasFields(seen,required) || Sha256Hex(GenericConfigPayload(cfg))!=cfg.checksum) return false;
   if(cfg.schema_version!="2" || cfg.compiler_protocol_version!="GENERIC_STRATEGY_MT5_COMPILER_V1" || cfg.adapter_capability_id!="GENERIC_SMA_REVERSAL_LONG_M1_V2") return false;
-  if(cfg.canonical_instrument!="XAUUSD" || cfg.broker_symbol!=_Symbol || cfg.enabled!="true" || cfg.allowed_environment!="DEMO" || cfg.direction!="LONG" || cfg.execution_timeframe!="M1") return false;
-  if(cfg.context_rule!="SMA_RELATION" || cfg.context_timeframe!="M1" || cfg.sma_relation!="ABOVE" || cfg.setup_rule!="TWO_BAR_REVERSAL" || cfg.setup_timeframe!="M1" || cfg.setup_direction!="BULLISH") return false;
-  if(cfg.trigger_rule!="CANDLE_DIRECTION" || cfg.trigger_timeframe!="M1" || cfg.trigger_direction!="BULLISH" || cfg.entry_rule!="NEXT_BAR_OPEN" || cfg.entry_price_source!="MT5_ASK_FIRST_TICK_NEXT_M1") return false;
+  if(cfg.canonical_instrument!="XAUUSD" || cfg.broker_symbol!=_Symbol || cfg.enabled!="true" || cfg.allowed_environment!="DEMO" || (cfg.direction!="LONG" && cfg.direction!="SHORT") || cfg.execution_timeframe!="M1") return false;
+  if(cfg.context_rule!="SMA_RELATION" || cfg.context_timeframe!="M1" || cfg.sma_relation!="ABOVE" || cfg.setup_rule!="TWO_BAR_REVERSAL" || cfg.setup_timeframe!="M1" || (cfg.setup_direction!="BULLISH" && cfg.setup_direction!="BEARISH")) return false;
+  if(cfg.trigger_rule!="CANDLE_DIRECTION" || cfg.trigger_timeframe!="M1" || cfg.trigger_direction!=cfg.setup_direction || cfg.entry_rule!="NEXT_BAR_OPEN" || cfg.entry_price_source!="MT5_ASK_FIRST_TICK_NEXT_M1") return false;
   if(cfg.uses_completed_candles!="true" || cfg.uses_future_ohlc!="false" || cfg.invalidation_rule!="ALWAYS" || cfg.stop_rule!="FIXED_PRICE_DISTANCE_SL" || cfg.target_rule!="FIXED_PRICE_DISTANCE_TP") return false;
   if(!ParseSessionWindows(cfg.session_clock,cfg.session_windows)) return false;
   if(cfg.spread_guard!="FIXED_SPREAD_GUARD" || cfg.max_open_positions!="1" || cfg.ambiguity_policy!="STOP_FIRST" || cfg.emergency_stop_variable!="ARKANA_EMERGENCY_STOP" || cfg.force_close_positions!="false") return false;
@@ -374,24 +374,36 @@ void GenericOnNewBar() {
   double fast_sum=0.0,slow_sum=0.0;
   for(int index=1;index<=slow;index++) { slow_sum+=rates[index].close; if(index<=fast) fast_sum+=rates[index].close; }
   bool context=(fast_sum/(double)fast)>(slow_sum/(double)slow);
-  bool setup=rates[2].close<rates[2].open && rates[1].close>rates[1].open;
-  bool trigger=rates[1].close>rates[1].open;
+  // ARK-S24-02: the reversal and trigger polarity follow the declared setup
+  // direction, which the config validator has already forced to match trigger.
+  bool bullish_setup=active_generic.setup_direction=="BULLISH";
+  bool setup=bullish_setup ? (rates[2].close<rates[2].open && rates[1].close>rates[1].open)
+                           : (rates[2].close>rates[2].open && rates[1].close<rates[1].open);
+  bool trigger=bullish_setup ? rates[1].close>rates[1].open : rates[1].close<rates[1].open;
+  bool is_short=active_generic.direction=="SHORT";
+  string side_text=is_short?"SHORT":"LONG";
   string context_text=context?"true":"false",setup_text=setup?"true":"false",trigger_text=trigger?"true":"false";
   EmitGenericEvent("DECISION",context&&setup&&trigger?"SIGNAL_TRUE":"NO_TRADE",context_text,setup_text,trigger_text,"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",DoubleToString(spread,8),"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED");
   if(!context || !setup || !trigger) return;
-  EmitGenericEvent("SIGNAL","LONG_SIGNAL",context_text,setup_text,trigger_text,"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","LONG","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",active_generic.volume,DoubleToString(spread,8),"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED");
-  // NEXT_BAR_OPEN means the first available ASK tick after the completed M1 signal.
-  double ask=tick.ask,sl=NormalizeDouble(ask-StringToDouble(active_generic.stop_distance),_Digits),tp=NormalizeDouble(ask+StringToDouble(active_generic.target_distance),_Digits);
-  string ask_text=DoubleToString(ask,_Digits),sl_text=DoubleToString(sl,_Digits),tp_text=DoubleToString(tp,_Digits);
-  EmitGenericEvent("ORDER_REQUEST","BUY_REQUEST","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","LONG",ask_text,"NOT_REPORTED",sl_text,tp_text,active_generic.volume,DoubleToString(spread,8),"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED");
-  bool accepted=trade.Buy(StringToDouble(active_generic.volume),_Symbol,ask,sl,tp,"ARKANA generic "+active_generic.strategy_version_id);
+  EmitGenericEvent("SIGNAL",side_text+"_SIGNAL",context_text,setup_text,trigger_text,"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",side_text,"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",active_generic.volume,DoubleToString(spread,8),"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED");
+  // NEXT_BAR_OPEN means the first available tick after the completed M1 signal:
+  // the ASK for a buy, the BID for a sell.
+  double entry=is_short?tick.bid:tick.ask;
+  double stop_distance=StringToDouble(active_generic.stop_distance), target_distance=StringToDouble(active_generic.target_distance);
+  double sl=NormalizeDouble(is_short?entry+stop_distance:entry-stop_distance,_Digits);
+  double tp=NormalizeDouble(is_short?entry-target_distance:entry+target_distance,_Digits);
+  string ask_text=DoubleToString(entry,_Digits),sl_text=DoubleToString(sl,_Digits),tp_text=DoubleToString(tp,_Digits);
+  EmitGenericEvent("ORDER_REQUEST",is_short?"SELL_REQUEST":"BUY_REQUEST","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",side_text,ask_text,"NOT_REPORTED",sl_text,tp_text,active_generic.volume,DoubleToString(spread,8),"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED");
+  bool accepted=is_short ? trade.Sell(StringToDouble(active_generic.volume),_Symbol,entry,sl,tp,"ARKANA generic "+active_generic.strategy_version_id)
+                         : trade.Buy(StringToDouble(active_generic.volume),_Symbol,entry,sl,tp,"ARKANA generic "+active_generic.strategy_version_id);
   string order_ticket=trade.ResultOrder()>0?(string)trade.ResultOrder():"NOT_REPORTED";
   string filled=trade.ResultPrice()>0?DoubleToString(trade.ResultPrice(),_Digits):"NOT_REPORTED";
-  string slippage=trade.ResultPrice()>0?DoubleToString(trade.ResultPrice()-ask,_Digits):"NOT_REPORTED";
+  // Slippage is signed against the position: worse fill is negative either way.
+  string slippage=trade.ResultPrice()>0?DoubleToString(is_short?entry-trade.ResultPrice():trade.ResultPrice()-entry,_Digits):"NOT_REPORTED";
   // Rejected orders have no broker ticket, so use retcode as the exact result identity.
   if(order_ticket=="NOT_REPORTED") order_ticket="RETCODE_"+IntegerToString((int)trade.ResultRetcode());
-  EmitGenericEvent("ORDER_RESULT",accepted?"ORDER_ACCEPTED":"ORDER_REJECTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",order_ticket,"NOT_REPORTED","LONG",ask_text,filled,sl_text,tp_text,active_generic.volume,DoubleToString(spread,8),"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",slippage);
-  EmitGenericEvent("COST_AVAILABILITY",slippage=="NOT_REPORTED"?"SLIPPAGE_NOT_REPORTED":"SLIPPAGE_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",order_ticket,"NOT_REPORTED","LONG",ask_text,filled,"NOT_REPORTED","NOT_REPORTED",active_generic.volume,DoubleToString(spread,8),"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",slippage);
+  EmitGenericEvent("ORDER_RESULT",accepted?"ORDER_ACCEPTED":"ORDER_REJECTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",order_ticket,"NOT_REPORTED",side_text,ask_text,filled,sl_text,tp_text,active_generic.volume,DoubleToString(spread,8),"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",slippage);
+  EmitGenericEvent("COST_AVAILABILITY",slippage=="NOT_REPORTED"?"SLIPPAGE_NOT_REPORTED":"SLIPPAGE_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",order_ticket,"NOT_REPORTED",side_text,ask_text,filled,"NOT_REPORTED","NOT_REPORTED",active_generic.volume,DoubleToString(spread,8),"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",slippage);
 }
 void ReloadConfig() {
   GenericPublication publication; GenericConfig generic_candidate;
@@ -422,8 +434,8 @@ void OnTradeTransaction(const MqlTradeTransaction &transaction,const MqlTradeReq
       string code=entry==DEAL_ENTRY_IN?"DEAL_ENTRY":"DEAL_EXIT",position_id=(string)HistoryDealGetInteger(transaction.deal,DEAL_POSITION_ID),order_ticket=(string)HistoryDealGetInteger(transaction.deal,DEAL_ORDER),deal_ticket=(string)transaction.deal;
       double commission=HistoryDealGetDouble(transaction.deal,DEAL_COMMISSION),swap=HistoryDealGetDouble(transaction.deal,DEAL_SWAP),profit=HistoryDealGetDouble(transaction.deal,DEAL_PROFIT);
       string commission_text=DoubleToString(commission,2),swap_text=DoubleToString(swap,2),pnl_text=entry==DEAL_ENTRY_IN?"NOT_REPORTED":DoubleToString(profit+commission+swap,2);
-      EmitGenericEvent("DEAL",code,"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",position_id,order_ticket,deal_ticket,"LONG","NOT_REPORTED",DoubleToString(HistoryDealGetDouble(transaction.deal,DEAL_PRICE),_Digits),"NOT_REPORTED","NOT_REPORTED",DoubleToString(HistoryDealGetDouble(transaction.deal,DEAL_VOLUME),2),"NOT_REPORTED",commission_text,swap_text,pnl_text,"NOT_REPORTED");
-      EmitGenericEvent("COST_AVAILABILITY","DEAL_COSTS_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",position_id,order_ticket,deal_ticket,"LONG","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",DoubleToString(HistoryDealGetDouble(transaction.deal,DEAL_VOLUME),2),"NOT_REPORTED",commission_text,swap_text,pnl_text,"NOT_REPORTED");
+      EmitGenericEvent("DEAL",code,"NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",position_id,order_ticket,deal_ticket,active_generic.direction=="SHORT"?"SHORT":"LONG","NOT_REPORTED",DoubleToString(HistoryDealGetDouble(transaction.deal,DEAL_PRICE),_Digits),"NOT_REPORTED","NOT_REPORTED",DoubleToString(HistoryDealGetDouble(transaction.deal,DEAL_VOLUME),2),"NOT_REPORTED",commission_text,swap_text,pnl_text,"NOT_REPORTED");
+      EmitGenericEvent("COST_AVAILABILITY","DEAL_COSTS_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",position_id,order_ticket,deal_ticket,active_generic.direction=="SHORT"?"SHORT":"LONG","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED","NOT_REPORTED",DoubleToString(HistoryDealGetDouble(transaction.deal,DEAL_VOLUME),2),"NOT_REPORTED",commission_text,swap_text,pnl_text,"NOT_REPORTED");
     }
   } else if(has_config) WriteTradeTelemetry(transaction.deal);
 }

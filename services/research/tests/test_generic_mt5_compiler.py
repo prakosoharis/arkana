@@ -35,7 +35,7 @@ def test_the_accepted_v1_capability_fingerprint_is_preserved_as_history():
 
 
 def test_frozen_registry_and_wire_golden_checksums_are_exact():
-    assert compiler.adapter_registry()["fingerprint"] == "8838ee05bb0df4b3bf1c5591ee387ddf42e56ac865f308ab4c6e90d2d94077a7"
+    assert compiler.adapter_registry()["fingerprint"] == "f267c5b0de3d635dc77e6a3ccc45fdca0a29ef2b24bdfcdb98f14844672477a8"
     source = SimpleNamespace(id="11111111-1111-1111-1111-111111111111", fingerprint="a" * 64, contract={"identity": {"canonical_instrument": "XAUUSD", "broker_symbol": "XAUUSD.m"}})
     strategy = SimpleNamespace(id="22222222-2222-2222-2222-222222222222", checksum="b" * 64)
     configuration = compiler._configuration(source, strategy, deepcopy(GENERIC_CONTRACT))
@@ -75,7 +75,7 @@ def test_registry_and_exact_compilation_are_stable_lineaged_and_inert(tmp_path, 
 
 @pytest.mark.parametrize("mutation,expected", [
     ("unknown", "context_rules must contain exactly one SMA_RELATION"),
-    ("short", "only XAUUSD LONG"),
+    ("direction_mismatch", "setup and trigger directions to be declared and identical"),
     ("missing_timeframe", "context timeframe"),
     ("unsupported_timeframe", "context timeframe"),
     ("unsupported_relation", "only SMA relation ABOVE"),
@@ -87,7 +87,7 @@ def test_registry_and_exact_compilation_are_stable_lineaged_and_inert(tmp_path, 
 def test_unsupported_or_implicit_capability_fails_closed(tmp_path, monkeypatch, mutation, expected):
     contract = deepcopy(GENERIC_CONTRACT)
     if mutation == "unknown": contract["context_rules"][0]["block_id"] = "UNREGISTERED"
-    elif mutation == "short": contract["direction_eligibility"] = "SHORT"
+    elif mutation == "direction_mismatch": contract["trigger_rules"][0]["direction"] = "BEARISH"
     elif mutation == "missing_timeframe": contract["context_rules"][0].pop("timeframe")
     elif mutation == "unsupported_timeframe": contract["context_rules"][0]["timeframe"] = "H1"; contract["context_timeframes"] = ["H1"]
     elif mutation == "unsupported_relation": contract["context_rules"][0]["relation"] = "BELOW"
@@ -98,10 +98,28 @@ def test_unsupported_or_implicit_capability_fails_closed(tmp_path, monkeypatch, 
     issues = compiler._adapter_issues(contract)
     if mutation not in {"invalid_size", "precision"}:
         assert any(expected in issue for issue in issues)
+
     else:
         fake = type("Source", (), {"id": "source", "fingerprint": "f", "contract": {"identity": {"canonical_instrument": "XAUUSD", "broker_symbol": "XAUUSD.m"}}})()
         strategy = type("Strategy", (), {"id": "strategy", "checksum": "s"})()
         with pytest.raises(ValueError, match=expected): compiler._configuration(fake, strategy, contract)
+def test_a_coherent_short_contract_is_now_accepted():
+    """ARK-S24-02: SHORT is supported once the whole chain supports it."""
+    contract = deepcopy(GENERIC_CONTRACT)
+    contract["direction_eligibility"] = "SHORT"
+    contract["setup_rules"][0]["direction"] = "BEARISH"
+    contract["trigger_rules"][0]["direction"] = "BEARISH"
+    assert compiler._adapter_issues(contract) == []
+
+
+def test_a_bearish_long_contract_is_now_accepted():
+    """The old BULLISH-only rule blocked a variant Sprint 22 found survives."""
+    contract = deepcopy(GENERIC_CONTRACT)
+    contract["setup_rules"][0]["direction"] = "BEARISH"
+    contract["trigger_rules"][0]["direction"] = "BEARISH"
+    assert compiler._adapter_issues(contract) == []
+
+
 
 
 def test_source_and_wire_tampering_fail_without_artifact(tmp_path, monkeypatch):

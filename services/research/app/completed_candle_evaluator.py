@@ -205,7 +205,12 @@ def _validated_artifact(
 
 def kernel_config(contract: dict[str, Any]) -> dict[str, Any]:
     guards = {item["block_id"]: item for item in contract["no_trade_conditions"]}
+    # ARK-S24-02: the key is omitted for LONG so every stored LONG config and
+    # its evidence fingerprint stay byte-identical.
+    direction = contract.get("direction_eligibility", "LONG")
+    extra = {"direction": direction} if direction != "LONG" else {}
     return validate_backtest_config({
+        **extra,
         "candidate_id": "BULLISH_REVERSAL_M1", "candidate_version": 1, "symbol": "XAUUSD", "timeframe": "M1",
         "stop_distance": contract["stop_loss_rule"]["distance"], "target_distance": contract["take_profit_rule"]["distance"],
         "spread_price": guards["FIXED_SPREAD_GUARD"]["maximum"], "commission_price": contract["cost_assumptions"]["commission_price"],

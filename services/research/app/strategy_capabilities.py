@@ -218,8 +218,8 @@ def assess(contract: object) -> dict[str, Any]:
     if not generic:
         issues.extend(item for item in _legacy_shape_issues(normalized) if item not in issues)
     if generic:
-        if normalized.get("instrument") != "XAUUSD" or normalized.get("execution_timeframe") != "M1" or normalized.get("direction_eligibility") != "LONG":
-            issues.append("CAPABILITY_NOT_SUPPORTED: generic V1 is XAUUSD M1 LONG only.")
+        if normalized.get("instrument") != "XAUUSD" or normalized.get("execution_timeframe") != "M1" or normalized.get("direction_eligibility") not in {"LONG", "SHORT"}:
+            issues.append("CAPABILITY_NOT_SUPPORTED: generic V1 is XAUUSD M1 with LONG or SHORT direction.")
         if not isinstance(normalized.get("cost_assumptions"), dict) or not isinstance(normalized["cost_assumptions"].get("commission_price"), (int, float)):
             issues.append("cost_assumptions.commission_price is required for generic V1.")
     executable = not issues and (generic or legacy["ready"])

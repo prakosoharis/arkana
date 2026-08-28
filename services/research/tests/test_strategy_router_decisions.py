@@ -42,7 +42,9 @@ def test_one_exact_signal_materializes_long_and_exact_retry(tmp_path):
         assert item.selected_strategy_version_id == strategy.id and item.result["selected"]["eligibility_id"] == eligibility.id
         assert item.result["candidates"][0]["rule_evaluation"]["eligible"] is True
         assert item.result["reason_codes"] == [] and item.result["decision_semantics"]["least_bad_fallback"] is False
-        assert item.result["decision_contract"]["supported_directions"] == ["LONG"]
+        # ARK-S24-02: SHORT joined only once the whole chain supported it.
+        assert item.result["decision_contract"]["supported_directions"] == ["LONG", "SHORT"]
+        assert item.result["decision_contract"]["declared_but_unsupported_directions"] == []
         assert item.result["safety_boundary"]["entry_sl_tp_size_created"] is False
         assert session.query(Deployment).count() == deployments and session.query(StrategyRouterDecision).count() == 1
 
