@@ -35,16 +35,19 @@ def test_the_accepted_v1_capability_fingerprint_is_preserved_as_history():
 
 
 def test_frozen_registry_and_wire_golden_checksums_are_exact():
-    assert compiler.adapter_registry()["fingerprint"] == "f267c5b0de3d635dc77e6a3ccc45fdca0a29ef2b24bdfcdb98f14844672477a8"
+    assert compiler.adapter_registry()["fingerprint"] == "4ede222b059686a03ded9d0854d1a4fe7a701b75e9fea86134eca76587304b46"
     source = SimpleNamespace(id="11111111-1111-1111-1111-111111111111", fingerprint="a" * 64, contract={"identity": {"canonical_instrument": "XAUUSD", "broker_symbol": "XAUUSD.m"}})
     strategy = SimpleNamespace(id="22222222-2222-2222-2222-222222222222", checksum="b" * 64)
     configuration = compiler._configuration(source, strategy, deepcopy(GENERIC_CONTRACT))
     text, checksum = compiler.canonical_config(configuration)
-    assert checksum == "8a6aac71554a4a26b6f66ab67b73625e97c8c1e965c4c9c0a216422d81aeec43"
+    assert checksum == "0bbf1916f7ad6dffb6eb7940c22226c0c2770290505603359c5c0db8dec72503"
     # A contract with no SESSION_WINDOW writes an explicit absence, never an
     # empty string, so the EA can tell "no filter" from "field lost".
     assert configuration["session_clock"] == "NONE" and configuration["session_windows"] == "NONE"
-    assert __import__("hashlib").sha256(text.encode()).hexdigest() == "45e6aeedc193597f4451b20352fb24de576275d12f7dd8024a2fcfac9f5ac7f0"
+    # ARK-S24-03: the same convention for the distance model not in force.
+    assert configuration["atr_period"] == "NONE"
+    assert configuration["stop_atr_multiplier"] == "NONE" and configuration["target_atr_multiplier"] == "NONE"
+    assert __import__("hashlib").sha256(text.encode()).hexdigest() == "b26884cf4ce1c73dfc8cf535821e4633eec9eae14437eb301206c98de97ad6c0"
 
 
 def test_registry_and_exact_compilation_are_stable_lineaged_and_inert(tmp_path, monkeypatch):

@@ -44,6 +44,9 @@ _BLOCKS = (
     {"id": "TWO_BAR_REVERSAL", "category": "SETUP", "execution": GENERIC, "completed_candles": True, "parameters": {"direction": ["BULLISH", "BEARISH"]}},
     # ARK-S24-01.  Windows are broker-time because that is the clock the bars
     # are already labelled in and the clock the terminal enforces with.
+    # ARK-S24-03.  Distance becomes a function of recent completed candles.
+    {"id": "ATR_SCALED_SL", "category": "STOP_LOSS", "execution": GENERIC, "completed_candles": True, "parameters": {"unit": ["ATR"], "period": "POSITIVE_INTEGER", "multiplier": "POSITIVE_FINITE"}},
+    {"id": "ATR_SCALED_TP", "category": "TAKE_PROFIT", "execution": GENERIC, "completed_candles": True, "parameters": {"unit": ["ATR"], "period": "POSITIVE_INTEGER", "multiplier": "POSITIVE_FINITE"}},
     {"id": "SESSION_WINDOW", "category": "NO_TRADE", "execution": GENERIC, "completed_candles": True, "parameters": {"clock": ["BROKER_TIME"], "windows": "BROKER_HOUR_WINDOW_LIST"}},
 )
 BLOCKS = {item["id"]: item for item in _BLOCKS}
@@ -54,6 +57,7 @@ _REQUIRED_PARAMETERS = {
     "FIXED_SPREAD_GUARD": {"unit", "maximum"}, "MAX_OPEN_POSITIONS": {"maximum"}, "FIXED_LOT_DEMO": {"volume"},
     "SMA_RELATION": {"fast_period", "slow_period", "relation"},
     "SESSION_WINDOW": {"clock", "windows"},
+    "ATR_SCALED_SL": {"unit", "period", "multiplier"}, "ATR_SCALED_TP": {"unit", "period", "multiplier"},
 }
 
 

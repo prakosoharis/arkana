@@ -96,6 +96,20 @@ def simulate_kernel(chunks: Any, config: dict[str, Any], on_trade: Any = None, o
         adverse, favourable = (low, high) if sign == 1 else (high, low)
         return sign * (adverse - entry), sign * (favourable - entry)
 
+    def distance(rule_evaluation: Any, key: str) -> float:
+        """ARK-S24-03 volatility-scaled stops.
+
+        An absent key means the config's fixed distance, so every fixed-distance
+        contract produces a byte-identical ledger.  This is one path, not two:
+        the kernel always reads a distance here, and only the source differs.
+        """
+        if not rule_evaluation or key not in rule_evaluation:
+            return config[key]
+        value = rule_evaluation[key]
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
+            raise ValueError(f"rule evaluation {key} must be a positive price-unit value")
+        return float(value)
+
     trades: list[dict] = []; before_signal = None; signal = None; active = None
     def record(trade: dict) -> None:
         if on_trade:
@@ -123,7 +137,8 @@ def simulate_kernel(chunks: Any, config: dict[str, Any], on_trade: Any = None, o
                 continue
             if on_signal:
                 on_signal(signal)
-            entry=candle["open"]+sign*config["spread_price"]; active={"signal":signal,"entry_bar":candle,"entry":entry,"stop":entry-sign*config["stop_distance"],"target":entry+sign*config["target_distance"],"max_high":candle["high"],"min_low":candle["low"],"rule_evaluation":rule_evaluation}
+            entry=candle["open"]+sign*config["spread_price"]; stop_distance=distance(rule_evaluation,"stop_distance"); target_distance=distance(rule_evaluation,"target_distance")
+            active={"signal":signal,"entry_bar":candle,"entry":entry,"stop":entry-sign*stop_distance,"target":entry+sign*target_distance,"max_high":candle["high"],"min_low":candle["low"],"rule_evaluation":rule_evaluation}
             if on_entry:
                 on_entry(candle)
             # The entry candle participates in STOP_FIRST just as the original loop did.

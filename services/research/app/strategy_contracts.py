@@ -59,6 +59,7 @@ def validate(contract: object) -> dict[str, Any]:
         issues.append("NEXT_BAR_OPEN cannot read future OHLC for signal creation.")
     for key in ("stop_loss_rule", "take_profit_rule"):
         value = contract.get(key)
-        if isinstance(value, dict) and value.get("unit") != "PRICE":
+        # ARK-S24-03: an ATR-scaled block declares ATR, not PRICE.
+        if isinstance(value, dict) and str(value.get("block_id", "")).startswith("FIXED_") and value.get("unit") != "PRICE":
             issues.append(f"{key} must state PRICE as its numeric unit.")
     return {"ready": not issues, "status": "CONTRACT_VALID" if not issues else ("CAPABILITY_NOT_SUPPORTED" if any("CAPABILITY_NOT_SUPPORTED" in item for item in issues) else "INVALID_CONTRACT"), "issues": issues, "fingerprint": fingerprint(contract)}

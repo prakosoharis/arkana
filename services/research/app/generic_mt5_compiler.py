@@ -48,13 +48,21 @@ WIRE_FIELDS = (
     "trigger_timeframe", "trigger_direction", "entry_rule",
     "entry_price_source", "uses_completed_candles", "uses_future_ohlc",
     "invalidation_rule", "volume", "stop_rule", "stop_distance",
-    "target_rule", "target_distance", "spread_guard", "max_spread_price",
+    "target_rule", "target_distance", "atr_period", "stop_atr_multiplier",
+    "target_atr_multiplier", "spread_guard", "max_spread_price",
     "max_open_positions", "session_clock", "session_windows", "ambiguity_policy", "emergency_stop_source",
     "emergency_stop_variable", "emergency_stop_condition",
     "emergency_stop_action", "force_close_positions",
 )
-DECIMAL_FIELDS = ("volume", "stop_distance", "target_distance", "max_spread_price")
-INTEGER_FIELDS = ("schema_version", "sma_fast_period", "sma_slow_period", "max_open_positions")
+DECIMAL_FIELDS = ("volume", "stop_distance", "target_distance", "stop_atr_multiplier", "target_atr_multiplier", "max_spread_price")
+INTEGER_FIELDS = ("schema_version", "sma_fast_period", "sma_slow_period", "max_open_positions", "atr_period")
+# ARK-S24-03. The adapter carries either both fixed distances or both scaled
+# ones. A mixed pair is expressible in the evaluator, but the terminal would
+# have to run two distance models at once and no golden vector covers that, so
+# the adapter refuses it rather than shipping an unproven execution path.
+FIXED_DISTANCE_PAIR = ("FIXED_PRICE_DISTANCE_SL", "FIXED_PRICE_DISTANCE_TP")
+SCALED_DISTANCE_PAIR = ("ATR_SCALED_SL", "ATR_SCALED_TP")
+MAX_ATR_PERIOD = 1000
 
 
 def adapter_registry() -> dict[str, Any]:
@@ -67,7 +75,9 @@ def adapter_registry() -> dict[str, Any]:
             "context": "SMA_RELATION", "sma_relation": ["ABOVE"], "setup": "TWO_BAR_REVERSAL",
             "session_clock": ["BROKER_TIME", "NONE"],
             "trigger": "CANDLE_DIRECTION", "entry": "NEXT_BAR_OPEN",
-            "risk": ["FIXED_LOT_DEMO", "FIXED_PRICE_DISTANCE_SL", "FIXED_PRICE_DISTANCE_TP"],
+            "risk": ["FIXED_LOT_DEMO", "FIXED_PRICE_DISTANCE_SL", "FIXED_PRICE_DISTANCE_TP",
+                     "ATR_SCALED_SL", "ATR_SCALED_TP"],
+            "distance_units": ["PRICE", "ATR"],
             "guards": ["FIXED_SPREAD_GUARD", "MAX_OPEN_POSITIONS", "STOP_FIRST"],
             "completed_candles_only": True, "future_ohlc": False,
         }],
@@ -162,14 +172,13 @@ def _adapter_issues(contract: object) -> list[str]:
         "entry_rule": ("NEXT_BAR_OPEN", {"uses_future_ohlc": False}),
         "invalidation_rule": ("ALWAYS", {}),
         "position_sizing_rule": ("FIXED_LOT_DEMO", {}),
-        "stop_loss_rule": ("FIXED_PRICE_DISTANCE_SL", {"unit": "PRICE"}),
-        "take_profit_rule": ("FIXED_PRICE_DISTANCE_TP", {"unit": "PRICE"}),
     }
     for section, (block, fields) in expected_single.items():
         value = contract.get(section)
         if not isinstance(value, dict) or value.get("block_id") != block or any(value.get(key) != expected for key, expected in fields.items()):
             issues.append(f"{section} is outside adapter capability {block}")
-    all_rules = [context, setup, trigger] + [contract.get(key) for key in expected_single]
+    issues += _distance_issues(contract.get("stop_loss_rule"), contract.get("take_profit_rule"))
+    all_rules = [context, setup, trigger] + [contract.get(key) for key in (*expected_single, "stop_loss_rule", "take_profit_rule")]
     guards = contract.get("no_trade_conditions")
     if not isinstance(guards, list) or {item.get("block_id") for item in guards if isinstance(item, dict)} != {"FIXED_SPREAD_GUARD", "MAX_OPEN_POSITIONS", "STOP_FIRST"} or len(guards) != 3:
         issues.append("no_trade_conditions must be the exact fixed spread/one-position/STOP_FIRST set")
@@ -178,6 +187,47 @@ def _adapter_issues(contract: object) -> list[str]:
     if any(not isinstance(item, dict) or item.get("uses_completed_candles") is not True for item in all_rules):
         issues.append("every supported rule must explicitly use completed candles")
     return issues
+
+
+def _distance_issues(stop: object, target: object) -> list[str]:
+    """ARK-S24-03. Both distances fixed, or both ATR-scaled on one period."""
+    if not isinstance(stop, dict) or not isinstance(target, dict):
+        return ["stop_loss_rule and take_profit_rule must both be declared"]
+    pair = (stop.get("block_id"), target.get("block_id"))
+    if pair == FIXED_DISTANCE_PAIR:
+        if stop.get("unit") != "PRICE" or target.get("unit") != "PRICE":
+            return ["fixed distance blocks must declare PRICE units"]
+        return []
+    if pair != SCALED_DISTANCE_PAIR:
+        return ["adapter requires both distances fixed or both ATR-scaled"]
+    if stop.get("unit") != "ATR" or target.get("unit") != "ATR":
+        return ["ATR-scaled distance blocks must declare ATR units"]
+    period = stop.get("period")
+    if not isinstance(period, int) or isinstance(period, bool) or not 0 < period <= MAX_ATR_PERIOD:
+        return [f"ATR period must be a positive integer of at most {MAX_ATR_PERIOD}"]
+    if target.get("period") != period:
+        # One period keeps the terminal to a single ATR series, which is what
+        # the golden vectors and the EA can be held to.
+        return ["adapter requires one ATR period shared by both distances"]
+    return []
+
+
+def _distance_fields(contract: dict[str, Any]) -> dict[str, str]:
+    """`NONE` marks the model that is not in force, matching the session fields."""
+    stop, target = contract["stop_loss_rule"], contract["take_profit_rule"]
+    if stop["block_id"] == "ATR_SCALED_SL":
+        return {
+            "stop_rule": "ATR_SCALED_SL", "stop_distance": "NONE",
+            "target_rule": "ATR_SCALED_TP", "target_distance": "NONE",
+            "atr_period": str(int(stop["period"])),
+            "stop_atr_multiplier": _decimal(stop.get("multiplier"), "stop_atr_multiplier"),
+            "target_atr_multiplier": _decimal(target.get("multiplier"), "target_atr_multiplier"),
+        }
+    return {
+        "stop_rule": "FIXED_PRICE_DISTANCE_SL", "stop_distance": _decimal(stop.get("distance"), "stop_distance"),
+        "target_rule": "FIXED_PRICE_DISTANCE_TP", "target_distance": _decimal(target.get("distance"), "target_distance"),
+        "atr_period": "NONE", "stop_atr_multiplier": "NONE", "target_atr_multiplier": "NONE",
+    }
 
 
 def _guard(contract: dict[str, Any], block_id: str) -> dict[str, Any]:
@@ -222,6 +272,8 @@ def _field_lineage(item: GenericDemoContract) -> dict[str, dict[str, str]]:
         "invalidation_rule": "invalidation_rule.block_id", "volume": "position_sizing_rule.volume",
         "stop_rule": "stop_loss_rule.block_id", "stop_distance": "stop_loss_rule.distance",
         "target_rule": "take_profit_rule.block_id", "target_distance": "take_profit_rule.distance",
+        "atr_period": "stop_loss_rule.period", "stop_atr_multiplier": "stop_loss_rule.multiplier",
+        "target_atr_multiplier": "take_profit_rule.multiplier",
         "spread_guard": "no_trade_conditions.FIXED_SPREAD_GUARD.block_id",
         "max_spread_price": "no_trade_conditions.FIXED_SPREAD_GUARD.maximum",
         "max_open_positions": "no_trade_conditions.MAX_OPEN_POSITIONS.maximum",
@@ -252,8 +304,7 @@ def _configuration(item: GenericDemoContract, strategy: StrategyVersion, contrac
         "entry_rule": "NEXT_BAR_OPEN", "entry_price_source": "MT5_ASK_FIRST_TICK_NEXT_M1",
         "uses_completed_candles": "true", "uses_future_ohlc": "false", "invalidation_rule": "ALWAYS",
         "volume": _decimal(contract["position_sizing_rule"].get("volume"), "volume"),
-        "stop_rule": "FIXED_PRICE_DISTANCE_SL", "stop_distance": _decimal(contract["stop_loss_rule"].get("distance"), "stop_distance"),
-        "target_rule": "FIXED_PRICE_DISTANCE_TP", "target_distance": _decimal(contract["take_profit_rule"].get("distance"), "target_distance"),
+        **_distance_fields(contract),
         "spread_guard": "FIXED_SPREAD_GUARD", "max_spread_price": _decimal(spread.get("maximum"), "max_spread_price"),
         "max_open_positions": str(positions.get("maximum")), **_session_fields(contract), "ambiguity_policy": "STOP_FIRST",
         "emergency_stop_source": EMERGENCY_POLICY["source"], "emergency_stop_variable": EMERGENCY_POLICY["variable"],
@@ -294,13 +345,12 @@ def parse_config(text: object) -> dict[str, str]:
         "allowed_environment": "DEMO",
         "execution_timeframe": "M1", "context_rule": "SMA_RELATION",
         "context_timeframe": "M1", "setup_rule": "TWO_BAR_REVERSAL",
-        "setup_timeframe": "M1", "setup_direction": "BULLISH",
+        "setup_timeframe": "M1",
         "trigger_rule": "CANDLE_DIRECTION", "trigger_timeframe": "M1",
-        "trigger_direction": "BULLISH", "entry_rule": "NEXT_BAR_OPEN",
+        "entry_rule": "NEXT_BAR_OPEN",
         "entry_price_source": "MT5_ASK_FIRST_TICK_NEXT_M1",
         "uses_completed_candles": "true", "uses_future_ohlc": "false",
-        "invalidation_rule": "ALWAYS", "stop_rule": "FIXED_PRICE_DISTANCE_SL",
-        "target_rule": "FIXED_PRICE_DISTANCE_TP", "spread_guard": "FIXED_SPREAD_GUARD",
+        "invalidation_rule": "ALWAYS", "spread_guard": "FIXED_SPREAD_GUARD",
         "max_open_positions": "1", "ambiguity_policy": "STOP_FIRST",
         "emergency_stop_source": "MT5_GLOBAL_VARIABLE",
         "emergency_stop_variable": "ARKANA_EMERGENCY_STOP",
@@ -309,10 +359,27 @@ def parse_config(text: object) -> dict[str, str]:
     }
     if any(configuration[key] != expected for key, expected in frozen.items()):
         raise ValueError("MT5 configuration safety enum differs")
+    # ARK-S24-02 widened the adapter to either polarity but left this validator
+    # frozen at BULLISH, so a coherent BEARISH or SHORT config compiled and was
+    # then refused by its own parser. The rule is coherence, as the EA enforces.
+    if configuration["setup_direction"] not in {"BULLISH", "BEARISH"} or configuration["trigger_direction"] != configuration["setup_direction"]:
+        raise ValueError("setup and trigger directions must be declared and identical")
+    # ARK-S24-03: exactly one distance model is in force; the other is NONE.
+    pair = (configuration["stop_rule"], configuration["target_rule"])
+    if pair not in {FIXED_DISTANCE_PAIR, SCALED_DISTANCE_PAIR}:
+        raise ValueError("stop and target rules must be the fixed pair or the ATR-scaled pair")
+    scaled = pair == SCALED_DISTANCE_PAIR
+    inactive = ("stop_distance", "target_distance") if scaled else ("atr_period", "stop_atr_multiplier", "target_atr_multiplier")
+    if any(configuration[name] != "NONE" for name in inactive):
+        raise ValueError("the distance model that is not in force must be NONE")
     for name in DECIMAL_FIELDS:
+        if name in inactive:
+            continue
         if configuration[name] != _decimal(configuration[name], name):
             raise ValueError(f"{name} is not canonically serialized")
     for name in INTEGER_FIELDS:
+        if name in inactive:
+            continue
         try:
             number = int(configuration[name])
         except ValueError as error:
@@ -321,6 +388,8 @@ def parse_config(text: object) -> dict[str, str]:
             raise ValueError(f"{name} is not a canonical positive integer")
     if int(configuration["sma_fast_period"]) >= int(configuration["sma_slow_period"]) or int(configuration["sma_slow_period"]) > 1000:
         raise ValueError("SMA periods are outside the bounded adapter capability")
+    if scaled and int(configuration["atr_period"]) > MAX_ATR_PERIOD:
+        raise ValueError("ATR period is outside the bounded adapter capability")
     if configuration["direction"] not in {"LONG", "SHORT"}:
         raise ValueError("direction must be LONG or SHORT")
     clock, windows = configuration["session_clock"], configuration["session_windows"]
@@ -460,6 +529,22 @@ def list_all(session: Session) -> list[GenericMt5Compilation]:
     return list(session.scalars(select(GenericMt5Compilation).order_by(GenericMt5Compilation.created_at.desc(), GenericMt5Compilation.id.desc())))
 
 
+def _golden_distances(configuration: dict[str, str], m1: list[dict[str, Any]]) -> tuple[float, float] | None:
+    """The exact distances the terminal would use, or None when ATR is short.
+
+    The evaluator's `_atr` is reused rather than reimplemented, so a divergence
+    between research and the golden vector is impossible by construction.
+    """
+    if configuration["stop_rule"] != "ATR_SCALED_SL":
+        return float(configuration["stop_distance"]), float(configuration["target_distance"])
+    from .completed_candle_evaluator import _atr
+    period = int(configuration["atr_period"])
+    atr = _atr([{key: float(bar[key]) for key in ("high", "low", "close")} for bar in m1], period)
+    if atr is None or atr <= 0:
+        return None
+    return float(configuration["stop_atr_multiplier"]) * atr, float(configuration["target_atr_multiplier"]) * atr
+
+
 def evaluate_golden_vector(configuration: dict[str, str], completed: dict[str, list[dict[str, Any]]], *, spread_price: float, open_positions: int, next_bar_ask: float | None = None, next_bar_high: float | None = None, next_bar_low: float | None = None) -> dict[str, Any]:
     """Independent bounded adapter semantics used by Python/EA golden vectors."""
     text, _ = canonical_config(configuration)
@@ -471,21 +556,35 @@ def evaluate_golden_vector(configuration: dict[str, str], completed: dict[str, l
     fast_sma = fmean(float(item["close"]) for item in context[-fast:]) if enough else None
     slow_sma = fmean(float(item["close"]) for item in context[-slow:]) if enough else None
     relation = enough and (fast_sma > slow_sma if configuration["sma_relation"] == "ABOVE" else fast_sma < slow_sma)
-    reversal = enough and float(m1[-2]["close"]) < float(m1[-2]["open"]) and float(m1[-1]["close"]) > float(m1[-1]["open"])
-    trigger = enough and float(m1[-1]["close"]) > float(m1[-1]["open"])
+    # ARK-S24-02 widened the adapter to either polarity and ARK-S24-03 to either
+    # distance model; the golden vector must follow both, or parity with the EA
+    # is asserted against semantics the EA no longer has.
+    bullish_setup = configuration["setup_direction"] == "BULLISH"
+    if bullish_setup:
+        reversal = enough and float(m1[-2]["close"]) < float(m1[-2]["open"]) and float(m1[-1]["close"]) > float(m1[-1]["open"])
+        trigger = enough and float(m1[-1]["close"]) > float(m1[-1]["open"])
+    else:
+        reversal = enough and float(m1[-2]["close"]) > float(m1[-2]["open"]) and float(m1[-1]["close"]) < float(m1[-1]["open"])
+        trigger = enough and float(m1[-1]["close"]) < float(m1[-1]["open"])
     spread_ok = isinstance(spread_price, (int, float)) and not isinstance(spread_price, bool) and math.isfinite(spread_price) and 0 <= spread_price <= float(configuration["max_spread_price"])
     positions_ok = isinstance(open_positions, int) and not isinstance(open_positions, bool) and 0 <= open_positions < int(configuration["max_open_positions"])
     signal = bool(relation and reversal and trigger)
+    distances = _golden_distances(configuration, m1)
+    if distances is None:
+        signal = False
     eligible = signal and spread_ok and positions_ok
     order = None
-    if eligible and next_bar_ask is not None:
-        entry = float(next_bar_ask); stop = entry - float(configuration["stop_distance"]); target = entry + float(configuration["target_distance"])
-        stop_hit = next_bar_low is not None and float(next_bar_low) <= stop
-        target_hit = next_bar_high is not None and float(next_bar_high) >= target
+    if eligible and next_bar_ask is not None and distances is not None:
+        sign = 1 if configuration["direction"] == "LONG" else -1
+        entry = float(next_bar_ask); stop = entry - sign * distances[0]; target = entry + sign * distances[1]
+        low_hit = next_bar_low is not None and float(next_bar_low) <= (stop if sign == 1 else target)
+        high_hit = next_bar_high is not None and float(next_bar_high) >= (target if sign == 1 else stop)
+        stop_hit, target_hit = (low_hit, high_hit) if sign == 1 else (high_hit, low_hit)
         exit_reason = "AMBIGUOUS_STOP_FIRST" if stop_hit and target_hit else "STOP_LOSS" if stop_hit else "TAKE_PROFIT" if target_hit else None
-        order = {"side": "LONG", "entry_price_source": "MT5_ASK_FIRST_TICK_NEXT_M1", "entry": entry, "stop_loss": stop, "take_profit": target, "volume": float(configuration["volume"]), "same_bar_exit": exit_reason}
+        order = {"side": configuration["direction"], "entry_price_source": "MT5_ASK_FIRST_TICK_NEXT_M1", "entry": entry, "stop_loss": stop, "take_profit": target, "volume": float(configuration["volume"]), "same_bar_exit": exit_reason}
     return {
-        "eligible": eligible, "signal": signal, "checks": {"sma_relation": relation, "two_bar_reversal": reversal, "candle_direction": trigger, "spread_guard": spread_ok, "max_open_positions": positions_ok},
+        "eligible": eligible, "signal": signal, "checks": {"sma_relation": relation, "two_bar_reversal": reversal, "candle_direction": trigger, "spread_guard": spread_ok, "max_open_positions": positions_ok, "distances_available": distances is not None},
+        "distances": None if distances is None else {"stop": distances[0], "target": distances[1]},
         "timing": {"signal_uses_completed_candles": True, "uses_future_ohlc": False, "entry": "NEXT_BAR_OPEN", "entry_price_source": "MT5_ASK_FIRST_TICK_NEXT_M1"},
         "sma": {"fast": None if fast_sma is None else round(fast_sma, 10), "slow": None if slow_sma is None else round(slow_sma, 10)},
         "order": order, "ambiguity_policy": "STOP_FIRST",

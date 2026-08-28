@@ -72,6 +72,30 @@ class CompletedCandleEvaluator:
             return {"block_id": block, "timeframe": timeframe, "truth": truth, "fast_sma": round(fast, 10), "slow_sma": round(slow, 10), "completed_bar_timestamp": str(available[-1]["timestamp"])}
         raise ValueError(f"CAPABILITY_NOT_SUPPORTED: evaluator cannot execute {block}")
 
+    def _distances(self, signal_m1: dict) -> dict[str, Any] | None:
+        """ARK-S24-03. Absent for fixed-distance contracts, so their configs,
+        evidence, and fingerprints are untouched."""
+        rules = {key: self.contract.get(key) for key in ("stop_loss_rule", "take_profit_rule")}
+        scaled = {key: rule for key, rule in rules.items()
+                  if isinstance(rule, dict) and str(rule.get("block_id", "")).startswith("ATR_SCALED")}
+        if not scaled:
+            return None
+        bars = self._available("M1", signal_m1)
+        evidence: dict[str, Any] = {"block_ids": {key: rule["block_id"] for key, rule in scaled.items()}}
+        for key, rule in scaled.items():
+            period, multiplier = int(rule["period"]), float(rule["multiplier"])
+            atr = _atr(bars, period)
+            if atr is None or atr <= 0:
+                return {**evidence, "sufficient": False, "reason": "INSUFFICIENT_COMPLETED_CONTEXT",
+                        "required_bars": period + 1, "available_bars": len(bars)}
+            name = "stop_distance" if key == "stop_loss_rule" else "target_distance"
+            evidence[name] = multiplier * atr
+            evidence[f"{name}_atr"] = atr
+            evidence[f"{name}_period"] = period
+            evidence[f"{name}_multiplier"] = multiplier
+        evidence["sufficient"] = True
+        return evidence
+
     def _session(self, signal_m1: dict) -> dict[str, Any] | None:
         """ARK-S24-01. Absent block means no filter, so legacy contracts are
         byte-identical. Judged on the completed signal bar, never on entry."""
@@ -90,9 +114,19 @@ class CompletedCandleEvaluator:
         session = self._session(signal_m1)
         if session is not None:
             truth = truth and session["truth"]
+        distances = self._distances(signal_m1)
+        if distances is not None and not distances["sufficient"]:
+            truth = False
         result = {"eligible": truth, "decision_timestamp": str(signal_m1["timestamp"]), "sections": sections, "asset_lineage": self.asset_lineage}
         if session is not None:
             result["session_window"] = session
+        if distances is not None:
+            result["scaled_distances"] = distances
+            # Only the scaled side is overridden.  A contract that scales one
+            # side and fixes the other leaves the fixed side to the config.
+            for name in ("stop_distance", "target_distance"):
+                if distances["sufficient"] and name in distances:
+                    result[name] = distances[name]
         return result
 
 
@@ -208,14 +242,37 @@ def kernel_config(contract: dict[str, Any]) -> dict[str, Any]:
     # ARK-S24-02: the key is omitted for LONG so every stored LONG config and
     # its evidence fingerprint stay byte-identical.
     direction = contract.get("direction_eligibility", "LONG")
-    extra = {"direction": direction} if direction != "LONG" else {}
+    extra: dict[str, Any] = {"direction": direction} if direction != "LONG" else {}
+    # ARK-S24-03: a scaled side has no fixed distance.  The declared scaling is
+    # carried in the config so two ATR contracts differing only in period or
+    # multiplier cannot share a backtest fingerprint, and the placeholder is
+    # never mistaken for the distance actually used.
+    scaling = {name: {"block_id": rule["block_id"], "unit": rule["unit"],
+                      "period": int(rule["period"]), "multiplier": float(rule["multiplier"])}
+               for name, key in (("stop_distance", "stop_loss_rule"), ("target_distance", "take_profit_rule"))
+               for rule in [contract[key]]
+               if str(rule.get("block_id", "")).startswith("ATR_SCALED")}
+    if scaling:
+        extra["distance_scaling"] = scaling
     return validate_backtest_config({
         **extra,
         "candidate_id": "BULLISH_REVERSAL_M1", "candidate_version": 1, "symbol": "XAUUSD", "timeframe": "M1",
-        "stop_distance": contract["stop_loss_rule"]["distance"], "target_distance": contract["take_profit_rule"]["distance"],
+        "stop_distance": _fixed(contract["stop_loss_rule"]), "target_distance": _fixed(contract["take_profit_rule"]),
         "spread_price": guards["FIXED_SPREAD_GUARD"]["maximum"], "commission_price": contract["cost_assumptions"]["commission_price"],
         "ambiguity_policy": "STOP_FIRST", "execution_resolution": "M1_BROAD",
     })
+
+
+# A scaled side still needs a positive value to satisfy the kernel's validation.
+# It is a placeholder that the evaluator overrides on every eligible signal; a
+# scaled signal that cannot produce a distance is refused, never defaulted.
+SCALED_DISTANCE_PLACEHOLDER = 1.0
+
+
+def _fixed(rule: dict[str, Any]) -> float:
+    if str(rule.get("block_id", "")).startswith("ATR_SCALED"):
+        return SCALED_DISTANCE_PLACEHOLDER
+    return rule["distance"]
 
 
 def _rule_timeframes(rule: dict[str, Any]) -> set[str]:
@@ -246,7 +303,30 @@ def _required_lookbacks(contract: dict[str, Any]) -> dict[str, int]:
         for rule in contract[section]:
             for timeframe, count in _rule_lookbacks(rule).items():
                 result[timeframe] = max(result.get(timeframe, 0), count)
+    # ARK-S24-03: true range needs one bar before the window for the previous
+    # close, so the ATR period is widened by one.
+    for key in ("stop_loss_rule", "take_profit_rule"):
+        rule = contract.get(key)
+        if isinstance(rule, dict) and str(rule.get("block_id", "")).startswith("ATR_SCALED"):
+            result["M1"] = max(result["M1"], int(rule["period"]) + 1)
     return result
+
+
+def _atr(bars: list[dict], period: int) -> float | None:
+    """Simple mean true range over completed candles only.
+
+    `bars` ends at the signal bar, which is closed before the entry bar opens,
+    so no future information can reach the distance.
+    """
+    if len(bars) < period + 1:
+        return None
+    total = 0.0
+    for index in range(len(bars) - period, len(bars)):
+        current, previous = bars[index], bars[index - 1]
+        total += max(current["high"] - current["low"],
+                     abs(current["high"] - previous["close"]),
+                     abs(current["low"] - previous["close"]))
+    return total / period
 
 
 def _flatten(chunks: Iterable[list[dict]]) -> Iterator[dict]:
