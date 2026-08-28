@@ -116,6 +116,37 @@ def test_stale_heartbeat_without_an_active_deployment_is_only_a_warning(session)
     assert report["checks"]["heartbeat"]["evidence"]["active_demo_deployments"] == 0
 
 
+def _fixture_deployment(identifier="dep-fix"):
+    item = _active_deployment(identifier)
+    item.config_path = "/tmp/pytest-of-root/pytest-0/test_demo_deployment_0/ARKANA/strategy.ini"
+    return item
+
+
+def test_a_pytest_artifact_deployment_never_raises_a_real_alert(session):
+    """A leaked test artifact produces an alert nobody can act on."""
+    session.add(_heartbeat_event("hb-x", "2026.08.27 11:00:00", NOW - timedelta(hours=1)))
+    session.add(_fixture_deployment())
+    session.commit()
+    report = operational_health.assess(session, now=NOW)
+    condition = next(item for item in report["conditions"] if item["code"] == "HEARTBEAT_STALE")
+    assert condition["severity"] == operational_health.WARNING
+    evidence = report["checks"]["heartbeat"]["evidence"]
+    assert evidence["active_demo_deployments"] == 0
+    assert evidence["fixture_deployments_excluded"] == 1
+
+
+def test_a_real_deployment_alongside_a_fixture_still_raises_critical(session):
+    session.add(_heartbeat_event("hb-y", "2026.08.27 11:00:00", NOW - timedelta(hours=1)))
+    session.add(_fixture_deployment())
+    session.add(_active_deployment("dep-real"))
+    session.commit()
+    report = operational_health.assess(session, now=NOW)
+    condition = next(item for item in report["conditions"] if item["code"] == "HEARTBEAT_STALE")
+    assert condition["severity"] == operational_health.CRITICAL
+    evidence = report["checks"]["heartbeat"]["evidence"]
+    assert evidence["active_demo_deployments"] == 1 and evidence["fixture_deployments_excluded"] == 1
+
+
 def test_stale_heartbeat_with_an_active_deployment_is_critical(session):
     session.add(_heartbeat_event("hb-stale", "2026.08.27 11:00:00", NOW - timedelta(hours=1)))
     session.add(_active_deployment())

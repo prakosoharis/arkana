@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from hashlib import sha256
 from datetime import datetime, timedelta
 from uuid import uuid4
 
@@ -40,7 +41,13 @@ GENERIC_CONTRACT = {
 EVALUATED_AT = datetime(2026, 8, 25, 10, 0)
 
 
-def _router_ready(session, *, exact_contract_checksum=False):
+def _router_ready(session, *, exact_contract_checksum=False, realistic_dataset=False):
+    """`realistic_dataset` opts into a digest-shaped dataset fingerprint.
+
+    The default is deliberately obviously synthetic, which is what the lineage
+    classifier refuses. A test that exercises the *eligible* path must opt in,
+    because it is asserting what happens with evidence that looks real.
+    """
     suffix = uuid4().hex
     report = assess_capability(deepcopy(GENERIC_CONTRACT)); assert report["status"] == "CONTRACT_VALID"
     capability = session.query(StrategyContractAssessment).filter_by(fingerprint=report["fingerprint"]).one_or_none()
@@ -50,7 +57,8 @@ def _router_ready(session, *, exact_contract_checksum=False):
     strategy_checksum = report["strategy_contract_fingerprint"] if exact_contract_checksum else f"router-ready-checksum-{suffix}"
     strategy_contract_value = deepcopy(report["normalized_contract"] if exact_contract_checksum else GENERIC_CONTRACT)
     strategy = StrategyVersion(strategy_key=f"router-ready-{suffix}", version=1, name="Router ready", status="CONTRACT_VALID", strategy_contract=strategy_contract_value, configuration={}, checksum=strategy_checksum)
-    dataset = Dataset(fingerprint=f"router-ready-dataset-{suffix}", symbol="XAUUSD", source="TEST", timezone_status="VERIFIED_UTC")
+    dataset_fingerprint = sha256(f"router-ready-dataset-{suffix}".encode()).hexdigest() if realistic_dataset else f"router-ready-dataset-{suffix}"
+    dataset = Dataset(fingerprint=dataset_fingerprint, symbol="XAUUSD", source="MT5" if realistic_dataset else "TEST", timezone_status="VERIFIED_UTC")
     session.add_all([strategy, dataset]); session.flush()
     strategy.configuration = {"strategy_contract_fingerprint": strategy_checksum, "strategy_capability_assessment": {"id": capability.id, "fingerprint": capability.fingerprint, "registry_version": capability.registry_version, "registry_fingerprint": capability.registry_fingerprint, "evaluator_capability_id": capability.evaluator_capability_id}}
     market_at = EVALUATED_AT - timedelta(seconds=60)

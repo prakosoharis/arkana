@@ -78,6 +78,16 @@ def _backup(now: datetime) -> dict[str, Any]:
     return {"status": "FRESH", "condition": None, "evidence": evidence}
 
 
+# A deployment whose config was written into a pytest temporary directory is a
+# test artifact that leaked into the runtime. Counting it as "something that
+# should be running" produces an alert nobody can act on.
+_PYTEST_ARTIFACT = "/tmp/pytest-"
+
+
+def _is_fixture_deployment(deployment: Deployment) -> bool:
+    return _PYTEST_ARTIFACT in (deployment.config_path or "")
+
+
 def _heartbeat(session: Session, now: datetime) -> dict[str, Any]:
     """A silently dead EA wastes an entire forward-evidence window.
 
@@ -86,11 +96,13 @@ def _heartbeat(session: Session, now: datetime) -> dict[str, Any]:
     means something that should be running is not. Alerting that cries wolf
     when nothing is deployed gets muted, and then it protects nothing.
     """
-    active = list(session.scalars(select(Deployment).where(Deployment.status == "DEMO_ACTIVE")))
+    declared = list(session.scalars(select(Deployment).where(Deployment.status == "DEMO_ACTIVE")))
+    fixtures = [item for item in declared if _is_fixture_deployment(item)]
+    active = [item for item in declared if not _is_fixture_deployment(item)]
     latest = session.scalar(select(JournalEvent).order_by(JournalEvent.observed_at.desc()))
     if not latest:
         evidence = {"observed_events": 0, "last_observed_at": NOT_REPORTED, "age_seconds": NOT_REPORTED,
-                    "active_demo_deployments": len(active)}
+                    "active_demo_deployments": len(active), "fixture_deployments_excluded": len(fixtures)}
         severity = CRITICAL if active else WARNING
         detail = ("Deployments are DEMO_ACTIVE but no MT5 telemetry has ever been observed."
                   if active else
@@ -102,7 +114,9 @@ def _heartbeat(session: Session, now: datetime) -> dict[str, Any]:
                 "age_seconds": round(age, 1) if age is not None else NOT_REPORTED,
                 "freshness_threshold_seconds": settings.EA_HEARTBEAT_FRESHNESS_SECONDS,
                 "active_demo_deployments": len(active),
-                "active_deployment_ids": [item.id for item in active[:20]]}
+                "active_deployment_ids": [item.id for item in active[:20]],
+                "fixture_deployments_excluded": len(fixtures),
+                "fixture_deployment_ids": [item.id for item in fixtures[:20]]}
     if age is not None and age > settings.EA_HEARTBEAT_FRESHNESS_SECONDS:
         severity = CRITICAL if active else WARNING
         detail = (f"{len(active)} deployment(s) are DEMO_ACTIVE but MT5 telemetry stopped arriving. "

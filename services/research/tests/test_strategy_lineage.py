@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from app import strategy_lineage
 from app.database import Base
 from app.migrations import MIGRATION_055, run_migrations
-from app.models import GenericValidationPromotion, StrategyLineageClassification, StrategyVersion
+from app.models import Dataset, GenericValidationPromotion, OosValidation, StrategyLineageClassification, StrategyVersion
 
 
 DIGEST = "a" * 64
@@ -34,6 +34,52 @@ def _promote(session, strategy):
         strategy_version_id=strategy.id, fingerprint=f"fp-{strategy.id}",
         protocol_version="X", authorization="Y", status="VALIDATED", result={}))
     session.commit()
+
+
+def _evidence_on(session, strategy, *, dataset_id, source, fingerprint):
+    session.add(Dataset(id=dataset_id, fingerprint=fingerprint, symbol="XAUUSD", source=source,
+                        timezone_status="UNVERIFIED_BROKER_TIME"))
+    session.add(OosValidation(id=f"oos-{strategy.id}", strategy_version_id=strategy.id,
+                              dataset_id=dataset_id, fingerprint=f"oosfp-{strategy.id}",
+                              protocol={}, result={}))
+    session.commit()
+
+
+def test_a_real_digest_over_a_fabricated_dataset_is_still_a_fixture(session):
+    """`S13-03 passing lineage`: real checksum, real candidate, fake bars."""
+    strategy = _version(session, identifier="sv-s13", name="S13-03 passing lineage", status="VALIDATED",
+                        checksum=DIGEST, candidate="cand-13", contract={"schema_version": 1})
+    _evidence_on(session, strategy, dataset_id="ds-fake", source="S13-03 pass fixture", fingerprint="3" * 64)
+    result = strategy_lineage.classify(session, strategy)
+    assert result["classification"] == strategy_lineage.SYNTHETIC_EVIDENCE_DATASET
+    assert result["is_fixture"] is True
+    assert result["may_satisfy_generic_gate"] is False
+    assert "repeated character" in result["reasons"][0]
+
+
+def test_a_non_digest_dataset_fingerprint_is_synthetic(session):
+    strategy = _version(session, identifier="sv-rd", name="Router ready", status="VALIDATED",
+                        checksum=DIGEST, candidate="c", contract={"schema_version": 1})
+    _evidence_on(session, strategy, dataset_id="ds-rd", source="TEST", fingerprint="router-ready-dataset-1")
+    assert strategy_lineage.classify(session, strategy)["classification"] == strategy_lineage.SYNTHETIC_EVIDENCE_DATASET
+
+
+def test_a_source_declaring_itself_a_fixture_is_trusted(session):
+    strategy = _version(session, identifier="sv-decl", name="S12-09", status="CONTRACT_VALID",
+                        checksum=DIGEST, candidate="c", contract={"schema_version": 1})
+    _evidence_on(session, strategy, dataset_id="ds-decl", source="S12-09 fixture",
+                 fingerprint="a18aa9e7acbecffa084f" + "1c9b3e7d5f2a6408" * 2 + "b3d7e91f4a2c6805"[:12])
+    result = strategy_lineage.classify(session, strategy)
+    assert result["classification"] == strategy_lineage.SYNTHETIC_EVIDENCE_DATASET
+    assert "declares itself a fixture" in result["reasons"][0]
+
+
+def test_evidence_over_the_real_dataset_stays_real(session):
+    strategy = _version(session, identifier="sv-mt5", name="Real", status="CONTRACT_VALID",
+                        checksum=DIGEST, candidate="c", contract={"schema_version": 1})
+    _evidence_on(session, strategy, dataset_id="ds-mt5", source="MT5",
+                 fingerprint="90607bc61349a86c1767" + "d" * 44)
+    assert strategy_lineage.classify(session, strategy)["classification"] == strategy_lineage.REAL_LINEAGE
 
 
 def test_migration_055_creates_the_classification_ledger(session):

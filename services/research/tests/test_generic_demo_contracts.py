@@ -24,7 +24,7 @@ def _snapshot_fingerprint(value):
 
 
 def _ready_sources(session, monkeypatch):
-    strategy = _router_ready(session, exact_contract_checksum=True)
+    strategy = _router_ready(session, exact_contract_checksum=True, realistic_dataset=True)
     lifecycle = session.query(GenericValidationLifecycleVerification).filter_by(strategy_version_id=strategy.id).order_by(GenericValidationLifecycleVerification.created_at.desc()).first()
     capability_id = strategy.configuration["strategy_capability_assessment"]["id"]
     capability = session.get(StrategyContractAssessment, capability_id)
