@@ -460,7 +460,7 @@ filter, volatility-scaled stops — is unlocked but not authorized. Its real
 scope is a milestone, not a checkpoint: each block requires evaluator,
 compiler, EA, and golden parity work.
 
-## Active milestone — Sprint 23 platform trustworthiness
+## Closed milestone — Sprint 23 platform trustworthiness
 
 [`SPRINT_23_PLATFORM_TRUSTWORTHINESS.md`](SPRINT_23_PLATFORM_TRUSTWORTHINESS.md).
 ARK-S23-01 and ARK-S23-02 are accepted. The research API was reachable without
@@ -468,7 +468,11 @@ any authentication, and a publication write reaches `FILE_COMMON` that the EA
 acts on, so anonymous access could drive real DEMO order placement. Every route
 except `/health` now requires a fail-closed Owner bearer token, ports bind to
 loopback, and CI machine-checks the safety boundaries that were previously only
-prose. ARK-S23-03 through ARK-S23-05 remain unauthorized.
+prose. ARK-S23-03 adds lineage classification so a fixture is refused by rule rather
+than by coincidence, ARK-S23-04 adds host-owned backup with a verified restore
+drill and evidence-derived operational health, and ARK-S23-05 materializes a
+boundary verifier that recomputes all of it from the runtime and passes across
+nine checks.
 
 **No further implementation is authorized.** The next agent must obtain an
 explicitly Owner-accepted contract before changing source. The material blocker

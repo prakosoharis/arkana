@@ -1,9 +1,9 @@
 # ARKANA Current Implementation State (Canonical)
 
 **Status:** Canonical repository current-state document
-**Updated:** 2026-08-27 — Sprint 22 complete at ARK-S22-05; Sprint 23 partially accepted
-**Active milestone:** Sprint 22 — Bounded Edge Search and Honest Exhaustion; Sprint 23 — Platform Trustworthiness (S23-01/02 accepted)
-**Active card:** ARK-S22-05 — campaign verifier, Owner UI, and closure
+**Updated:** 2026-08-27 — Sprint 22 and Sprint 23 both complete and closed
+**Active milestone:** none. Sprints 22 and 23 are closed and no successor contract is accepted.
+**Active card:** none. No implementation is authorized until the Owner accepts a new milestone contract.
 
 This is the only canonical description of ARKANA's current implementation
 state. `ARKANA_Codex_Handoff_v1/docs/CURRENT_STATE.md` is retained as a
@@ -270,12 +270,39 @@ rising gold market, not of an edge.
 That negative result is bounded to its space: six generic blocks over XAUUSD M1
 LONG at the frozen geometry range. It is not evidence that no edge exists.
 
-Sprint 23 — Platform Trustworthiness is recorded in
-`docs/SPRINT_23_PLATFORM_TRUSTWORTHINESS.md`. ARK-S23-01 and ARK-S23-02 are
-accepted at `a3df309`: the research API now requires a fail-closed Owner bearer
-token on every route except `/health`, Compose binds `3000`, `8001`, and `5432`
-to loopback, and GitHub Actions runs the full backend, web, and safety-boundary
-suites on every push. ARK-S23-03 through ARK-S23-05 remain unauthorized.
+Sprint 23 — Platform Trustworthiness is accepted and closed in
+`docs/SPRINT_23_PLATFORM_TRUSTWORTHINESS.md`. ARK-S23-01 and ARK-S23-02 are at
+`a3df309`, ARK-S23-04 at `e2c0331`, and ARK-S23-03 at `d95fd1b`.
+
+The research API now requires a fail-closed Owner bearer token on every route
+except `/health`; an unset token refuses all traffic rather than opening the
+API. Compose binds `3000`, `8001`, and `5432` to loopback. GitHub Actions runs
+backend, web, and safety-boundary suites on every push, machine-checking that
+no LIVE route exists, that exactly one `simulate_kernel` definition exists, and
+that no runtime artifact is tracked.
+
+Host-owned backup and restore-drill scripts exist and were executed: a
+272,914,278-byte dump restored 68 tables with none missing or emptied, verified
+against four negative controls. `OPERATIONAL_HEALTH_V1` reports backup,
+heartbeat, incident, and dataset conditions with severity derived from evidence
+rather than elapsed time alone.
+
+Migration 055 and `STRATEGY_LINEAGE_CLASSIFIER_V1` classify every
+StrategyVersion, so the generic DEMO gate refuses a fixture by rule instead of
+by the coincidence of a mismatched checksum. Runtime lineage is 5
+`REAL_LINEAGE`, 5 `SYNTHETIC_CHECKSUM`, 3 `LEGACY_PRE_GENERIC`, and 1
+`UNVERIFIED_PROMOTION`. Nothing was deleted, retired, or relabelled.
+
+Migration 056 and `SPRINT_23_ACCEPTANCE_VERIFIER_V1` recompute that boundary
+from the runtime. Its materialized verification is `PASSED` across all nine
+checks with fingerprint
+`c9af6e06da1b97bc77a2336ba1b804c0546b8a69a0ef10989f82d96c92e47a68`, identical
+after restart. It names what it does not verify.
+
+Two open operational facts are reported rather than resolved: three
+deployments remain `DEMO_ACTIVE` with no telemetry for over sixteen days, and
+one `VALIDATED` StrategyVersion has no promotion record. Both are Owner
+decisions.
 
 **The single material blocker for every downstream claim remains unchanged:**
 there is no eligible generic strategy, and therefore no real Owner-controlled

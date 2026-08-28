@@ -779,6 +779,19 @@ class StrategyLineageClassification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class Sprint23AcceptanceVerification(Base):
+    """Immutable Sprint 23 boundary snapshot: authentication, lineage, backup
+    observability, and operational health. Integrity only, never LIVE consent."""
+    __tablename__ = "sprint23_acceptance_verifications"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_sprint23_acceptance_verification_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    verifier_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CapitalBrokerContract(Base):
     """Immutable capital/broker assumptions; this is not a simulation result."""
     __tablename__ = "capital_broker_contracts"

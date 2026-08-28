@@ -1,6 +1,10 @@
 # Sprint 23 — Platform Trustworthiness
 
-**Contract status:** DRAFT — awaiting explicit Owner acceptance
+**Contract status:** accepted by the Owner on 2026-08-27
+
+**Sprint status:** COMPLETE at ARK-S23-05. All five checkpoints accepted:
+ARK-S23-01 and ARK-S23-02 at `a3df309`, ARK-S23-04 at `e2c0331`, ARK-S23-03 at
+`d95fd1b`, and ARK-S23-05 pending acceptance.
 
 **Authorization note:** ARK-S23-01 and ARK-S23-02 were implemented on the
 Owner's direct instruction (`kerjakan!`) while the Sprint 22 sweep was running,
@@ -94,7 +98,12 @@ Exit criteria:
 
 ### ARK-S23-03 — Runtime fixture hygiene
 
-**Not implemented. Requires acceptance.**
+**Accepted at `d95fd1b`.** Evidence in
+[`SPRINT_23_03_RUNTIME_FIXTURE_HYGIENE.md`](SPRINT_23_03_RUNTIME_FIXTURE_HYGIENE.md).
+Migration 055 and `STRATEGY_LINEAGE_CLASSIFIER_V1` classify every
+StrategyVersion from stored evidence, and the generic DEMO gate now refuses a
+fixture by rule rather than by the coincidence of a mismatched checksum.
+Nothing was deleted, retired, or relabelled.
 
 PostgreSQL holds five `StrategyVersion` rows named `Router ready` with
 synthetic checksums of the form `router-ready-checksum-*`, all `VALIDATED`,
@@ -117,7 +126,11 @@ Exit criteria:
 
 ### ARK-S23-04 — Backup, retention, and operational alerting
 
-**Not implemented. Requires acceptance.**
+**Accepted at `e2c0331`.** Evidence in
+[`SPRINT_23_04_BACKUP_RETENTION_AND_ALERTING.md`](SPRINT_23_04_BACKUP_RETENTION_AND_ALERTING.md).
+Host-owned backup and restore-drill scripts, verified against four negative
+controls, plus `OPERATIONAL_HEALTH_V1` whose severity depends on evidence
+rather than on elapsed time alone.
 
 There is currently no backup, restore, retention, monitoring, or alerting code
 anywhere in the repository. A Track B DEMO campaign runs for weeks and produces
@@ -130,10 +143,13 @@ incidents.
 
 ### ARK-S23-05 — Verifier and closure
 
-**Not implemented. Requires acceptance.**
-
-A materialized read-only verifier over the Sprint 23 boundary, plus
-documentation closure.
+**Implemented, awaiting acceptance.** Migration 056 and
+`SPRINT_23_ACCEPTANCE_VERIFIER_V1` recompute the Sprint 23 boundary from the
+runtime rather than from the documents asserting it: token required,
+unauthenticated surface minimal, no LIVE route registered, every version
+classified, classifications recompute, no fixture eligible, fixture history
+preserved against deletion or checksum rewriting, backup state knowable, and
+operational health deterministic. It names what it does not verify.
 
 ## Explicitly out of scope
 
