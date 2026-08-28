@@ -37,6 +37,18 @@ MEASURED_SECONDS_PER_TRIAL = 40
 WALL_CLOCK_BUDGET_SECONDS = 8 * 3600
 TRIAL_SPLIT_SCOPE = "TRAIN_AND_HOLDOUT_ONLY"
 
+# ARK-S24-04. The ARK-S22-01 campaign was pre-registered against this
+# whole-registry fingerprint. Sprint 24 added SESSION_WINDOW, ATR_SCALED_SL and
+# ATR_SCALED_TP, which changed it, and the verifier's equality check therefore
+# began to FAIL an accepted record that had not been tampered with.
+#
+# The two values below are recorded as lineage rather than edited away. The
+# dependency fingerprint covers exactly the eleven blocks the Sprint 22 grid
+# uses and was recomputed from the pre-Sprint-24 source at commit 7b4fa21: it
+# is unchanged, so no Sprint 22 contract changed meaning.
+ACCEPTED_V1_REGISTRY_FINGERPRINT = "808d3506e7020b41d977fc8aae94f6cc6eb7a1c9e25a8093ea0bdb402a3b2bfb"
+ACCEPTED_V1_CAPABILITY_DEPENDENCY_FINGERPRINT = "f73b4bd68c5dd0b9d370d40390a81b4c4a5c60b5d2ca24662a4f584ff7a59069"
+
 
 def policy_contract() -> dict[str, Any]:
     """The frozen ARK-S22-00 policy, restated as machine-readable evidence."""
@@ -217,6 +229,9 @@ def create(session: Session, payload: dict[str, Any]) -> tuple[EdgeSearchCampaig
             "VALIDATED, DEMO, LIVE, capital, router, order, or trade authority."
         ),
     }
+    # ARK-S24-04: recorded at pre-registration so a later campaign never needs
+    # a constant pinned in source the way the ARK-S22-01 one does.
+    result["capability_dependency_fingerprint"] = _dependency_fingerprint(_used_block_ids(points))
     item = EdgeSearchCampaign(
         fingerprint=fingerprint, protocol_version=PROTOCOL_VERSION, status="PRE_REGISTERED",
         dataset_id=dataset.id, dataset_fingerprint=dataset.fingerprint, registry_fingerprint=registry_fp,
@@ -319,6 +334,61 @@ def selection_disclosure(session: Session, campaign: EdgeSearchCampaign) -> dict
     }
 
 
+def capability_registry_blocks() -> list[str]:
+    return [item["id"] for item in capability_registry()["blocks"]]
+
+
+def _block_ids(rule: Any) -> set[str]:
+    if not isinstance(rule, dict) or "block_id" not in rule:
+        return set()
+    ids = {rule["block_id"]}
+    for child in rule.get("children", []):
+        ids |= _block_ids(child)
+    ids |= _block_ids(rule.get("child"))
+    return ids
+
+
+def _used_block_ids(points: list[dict[str, Any]]) -> list[str]:
+    used: set[str] = set()
+    for point in points:
+        for value in build_contract(point).values():
+            for item in (value if isinstance(value, list) else [value]):
+                used |= _block_ids(item)
+    return sorted(used)
+
+
+def _dependency_fingerprint(block_ids: list[str]) -> str:
+    wanted = set(block_ids)
+    return sha256(canonical_json([item for item in capability_registry()["blocks"] if item["id"] in wanted]).encode()).hexdigest()
+
+
+def campaign_block_ids(campaign: EdgeSearchCampaign) -> list[str]:
+    """The capability blocks this campaign's frozen grid actually depends on.
+
+    Derived from the stored grid, so a legacy campaign needs no migration and
+    no stored row is edited to answer the question.
+    """
+    return _used_block_ids([entry["parameters"] for entry in campaign.grid["trials"]])
+
+
+def capability_dependency_fingerprint(campaign: EdgeSearchCampaign) -> str:
+    """A fingerprint over exactly the blocks the campaign's contracts use."""
+    return _dependency_fingerprint(campaign_block_ids(campaign))
+
+
+def accepted_dependency_fingerprint(campaign: EdgeSearchCampaign) -> str:
+    """What the campaign's blocks fingerprinted to when it was pre-registered.
+
+    Campaigns recorded from ARK-S24-04 onward carry the value themselves. The
+    one campaign that predates the field falls back to the accepted constant,
+    which was recomputed from the pre-Sprint-24 source rather than assumed.
+    """
+    recorded = (campaign.result or {}).get("capability_dependency_fingerprint")
+    if recorded:
+        return recorded
+    return ACCEPTED_V1_CAPABILITY_DEPENDENCY_FINGERPRINT
+
+
 def verify(session: Session, campaign: EdgeSearchCampaign) -> dict[str, Any]:
     grid = _grid_record({key: campaign.grid["dimensions"][key] for key in DIMENSION_KEYS}, enumerate_grid({key: campaign.grid["dimensions"][key] for key in DIMENSION_KEYS}))
     recomputed = _fingerprint(session.get(Dataset, campaign.dataset_id), campaign.registry_fingerprint, grid, campaign.calibration_disclosure)
@@ -329,7 +399,13 @@ def verify(session: Session, campaign: EdgeSearchCampaign) -> dict[str, Any]:
     checks = {
         "immutable_grid_recomputation": {"status": "PASS" if recomputed == campaign.fingerprint else "FAIL", "observed": campaign.fingerprint, "expected": recomputed},
         "declared_trial_count": {"status": "PASS" if campaign.trial_count == len(campaign.grid["trials"]) else "FAIL", "observed": campaign.trial_count, "expected": len(campaign.grid["trials"])},
-        "registry_fingerprint_current": {"status": "PASS" if campaign.registry_fingerprint == capability_registry()["fingerprint"] else "FAIL", "observed": campaign.registry_fingerprint, "expected": capability_registry()["fingerprint"]},
+        # ARK-S24-04 replaces a whole-registry equality check. That check asked
+        # "has the registry changed at all", which the project's own extension
+        # policy guarantees it eventually will. The question that actually
+        # protects the campaign is whether the blocks its frozen contracts
+        # depend on still mean what they meant, so that is what is asserted.
+        "capability_dependencies_unchanged": {"status": "PASS" if capability_dependency_fingerprint(campaign) == accepted_dependency_fingerprint(campaign) else "FAIL", "observed": capability_dependency_fingerprint(campaign), "expected": accepted_dependency_fingerprint(campaign)},
+        "capability_dependencies_present": {"status": "PASS" if set(campaign_block_ids(campaign)) <= set(capability_registry_blocks()) else "FAIL", "observed": sorted(set(campaign_block_ids(campaign)) - set(capability_registry_blocks())), "expected": "every block the frozen grid uses is still registered"},
         "every_trial_pre_registered": {"status": "PASS" if all(item.contract_fingerprint in known for item in trials) else "FAIL", "observed": len(trials), "expected": "every recorded trial belongs to the frozen grid"},
         "trials_within_grid": {"status": "PASS" if len(trials) <= campaign.trial_count else "FAIL", "observed": len(trials), "expected": campaign.trial_count},
         "final_oos_budget_respected": {"status": "PASS" if consumed <= campaign.final_oos_budget else "FAIL", "observed": consumed, "expected": campaign.final_oos_budget},
@@ -341,6 +417,14 @@ def verify(session: Session, campaign: EdgeSearchCampaign) -> dict[str, Any]:
         "campaign_id": campaign.id, "fingerprint": campaign.fingerprint, "protocol_version": PROTOCOL_VERSION,
         "status": "PASSED" if passed else "FAILED", "recomputed_fingerprint": recomputed,
         "checks": checks, "selection_disclosure": selection_disclosure(session, campaign),
+        # Recorded, not hidden: the registry did change, and the campaign is
+        # unaffected because none of the blocks it uses did.
+        "registry_lineage": {
+            "registry_fingerprint_at_pre_registration": campaign.registry_fingerprint,
+            "registry_fingerprint_now": capability_registry()["fingerprint"],
+            "registry_extended_since_pre_registration": campaign.registry_fingerprint != capability_registry()["fingerprint"],
+            "capability_blocks_used": campaign_block_ids(campaign),
+        },
         "safety_boundary": {"read_only_verifier": True, "grid_mutated": False, "evidence_mutated": False,
                             "second_backtester": False, "live_authorized": False},
         "warning": "Campaign verification proves pre-registration integrity only. It is not evidence that an edge exists.",
