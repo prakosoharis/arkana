@@ -5,13 +5,13 @@ import json, math
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from .models import Dataset
-from .market_data import read_bars
+from .market_data import latest_dataset, read_bars
 
 FEATURE_VERSION="OHLC_FEATURES_V1"; LOOKBACK=10; HORIZON=3; MIN_SUPPORT=8; SIMILARITY_EMBARGO=LOOKBACK+HORIZON
 DISCOVERY_ROW_CAP={"M1":250000,"M5":250000,"M15":250000,"M30":250000,"H1":250000,"H4":250000}
 
 def _asset(session, symbol, timeframe):
-    dataset=session.scalar(select(Dataset).where(Dataset.symbol==symbol).order_by(Dataset.imported_at.desc()))
+    dataset=latest_dataset(session,symbol)
     if not dataset: raise ValueError("Registered OHLC dataset is unavailable")
     asset=next((x for x in dataset.bars if x.timeframe==timeframe),None)
     if not asset: raise ValueError("Required timeframe dataset is unavailable")

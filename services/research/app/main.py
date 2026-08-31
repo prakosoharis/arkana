@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from .database import Base, SessionLocal, engine, get_session
 from .migrations import run_migrations
-from .market_data import TIMEFRAMES, import_csv, read_bars, serialize_dataset
+from .market_data import TIMEFRAMES, import_csv, latest_dataset, read_bars, serialize_dataset
 from .models import AIInteraction, BacktestRun, CapitalBrokerContract, ConstrainedCapitalPoint, ConstrainedCapitalSimulation, ControlledLearningProposal, Dataset, DatasetBarAsset, Deployment, EdgeSearchCampaign, EdgeSearchTrial, FixedLotCapitalSimulation, FixedLotEquityPoint, FractionalRiskCapitalSimulation, FractionalRiskEquityPoint, GenericDemoChainVerification, GenericDemoContract, GenericForwardEvidence, GenericMt5Compilation, GenericMt5Publication, GenericMt5TelemetryEvent, GenericEvidenceDecision, GenericEvidenceOwnerConfirmation, GenericEvidenceVerification, GenericRobustnessEvidence, GenericValidationEligibility, GenericValidationLifecycleVerification, GenericValidationPromotion, GenericValidationRetirement, GovernanceIncident, GovernanceJournalItem, JournalEvent, LiveReadinessAssessment, ResearchHypothesis, ResearchRun, ResearchRuleDefinition, Sprint21AcceptanceVerification, Sprint23AcceptanceVerification, StrategyCandidate, StrategyContractAssessment, StrategyEvaluatorVerification, StrategyRouterDecision, StrategyRouterDecisionParameters, StrategyRouterEligibility, StrategyRouterPolicy, StrategyRouterVerification, StrategyVersion, SupplementalHistoricalValidation, BrokerMetadataSnapshot, OosValidation, VariantExperimentContract, VariantHoldoutRun, VariantRevisionConfirmation, VariantTrainRun
 from .hypotheses import parse_prompt, validate_definition
 from .registries import assess
@@ -209,9 +209,9 @@ def bars(
         raise HTTPException(422, f"Unsupported timeframe. Supported: {', '.join(TIMEFRAMES)}")
     if start and end and start > end:
         raise HTTPException(422, "start must be before end")
-    dataset = session.scalar(
-        dataset_query().where(Dataset.symbol == symbol.upper()).order_by(Dataset.imported_at.desc())
-    )
+    # ARK-S24-04: the same shared selector every computation path uses, so a
+    # fixture cannot shadow real bars here either.
+    dataset = latest_dataset(session, symbol.upper())
     if not dataset:
         return {"bars": [], "meta": {"symbol": symbol.upper(), "timeframe": timeframe, "status": "NO_DATA"}}
     asset = next((item for item in dataset.bars if item.timeframe == timeframe), None)

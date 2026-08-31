@@ -18,6 +18,30 @@ from sqlalchemy.orm import Session
 
 from .models import Dataset, DatasetBarAsset
 
+
+def latest_dataset(session: Session, symbol: str = "XAUUSD") -> Dataset | None:
+    """The newest registered dataset for `symbol`, real evidence first.
+
+    ARK-S24-04. Every caller used to take the newest row outright. The
+    production database holds nine registered XAUUSD datasets of which one is
+    real, seven fixtures are newer than it, and the newest points at a file
+    that does not exist — so the accepted Quick Backtest path failed with a
+    raw DuckDB IOException instead of computing against the 3.96M-bar asset
+    sitting right there.
+
+    A fixture may never shadow real evidence. When only synthetic datasets are
+    registered the newest is still returned, because that is genuinely all a
+    fixture-only environment has; judging whether the *result* is real belongs
+    to the lineage classifier, and duplicating that judgement here would create
+    a second rule for what a fixture is.
+    """
+    from .strategy_lineage import synthetic_dataset_reason
+
+    candidates = list(session.scalars(
+        select(Dataset).where(Dataset.symbol == symbol).order_by(Dataset.imported_at.desc())))
+    real = next((item for item in candidates if not synthetic_dataset_reason(item)), None)
+    return real or (candidates[0] if candidates else None)
+
 TIMEFRAMES = {"M1": "1m", "M5": "5m", "M15": "15m", "M30": "30m", "H1": "1h", "H4": "4h"}
 REQUIRED_COLUMNS = {"timestamp", "open", "high", "low", "close"}
 OPTIONAL_ALIASES = {"tickvol": "tick_volume", "realvol": "real_volume"}

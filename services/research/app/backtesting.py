@@ -13,7 +13,7 @@ from array import array
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .market_data import iter_bars, read_bars
+from .market_data import iter_bars, latest_dataset, read_bars
 from .models import BacktestRun, Dataset, SupplementalHistoricalValidation, StrategyVersion
 from .validation_evidence import REGIME_CONTRACT_VERSION, REGIME_LOOKBACK, REGIME_MIN_SUPPORT, build_historical_regime_validation
 
@@ -374,7 +374,7 @@ def run_supplemental_full_validation(session: Session, strategy: StrategyVersion
     if not original:
         raise ValueError("Original approval evidence is unavailable")
     config = _strategy_config(strategy, original)
-    dataset = session.scalar(select(Dataset).where(Dataset.symbol == "XAUUSD").order_by(Dataset.imported_at.desc()))
+    dataset = latest_dataset(session)
     if not dataset or "fixture" in dataset.source.lower():
         raise ValueError("A registered real MT5 XAUUSD historical dataset is required")
     asset = next((item for item in dataset.bars if item.timeframe == "M1"), None)
@@ -417,7 +417,7 @@ def run_backtest(session: Session, payload: dict[str, Any]) -> tuple[BacktestRun
             config = compiled["kernel_config"]
     else:
         config = validate_backtest_config(payload)
-    dataset = session.scalar(select(Dataset).where(Dataset.symbol == "XAUUSD").order_by(Dataset.imported_at.desc()))
+    dataset = latest_dataset(session)
     if not dataset:
         raise ValueError("Registered XAUUSD dataset is unavailable")
     asset = next((item for item in dataset.bars if item.timeframe == "M1"), None)

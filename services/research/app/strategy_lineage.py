@@ -44,8 +44,13 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _DECLARED_FIXTURE = re.compile(r"fixture|^TEST$", re.IGNORECASE)
 
 
-def _synthetic_dataset(dataset: Dataset) -> str | None:
-    """Why this dataset is not real evidence, or None if it is."""
+def synthetic_dataset_reason(dataset: Dataset) -> str | None:
+    """Why this dataset is not real evidence, or None if it is.
+
+    Public because ARK-S24-04 needs the same judgement when choosing which
+    registered dataset to compute against.  There is exactly one rule for what
+    counts as a fixture, and this is it.
+    """
     fingerprint = dataset.fingerprint or ""
     if not _SHA256.match(fingerprint):
         return f"dataset fingerprint {fingerprint[:32]!r} is not a SHA-256 digest"
@@ -74,7 +79,7 @@ def classify(session: Session, strategy: StrategyVersion) -> dict[str, Any]:
         dataset = session.get(Dataset, evidence.dataset_id)
         if dataset is None:
             continue
-        reason = _synthetic_dataset(dataset)
+        reason = synthetic_dataset_reason(dataset)
         if reason:
             synthetic_datasets.append({"dataset_id": dataset.id, "source": dataset.source,
                                        "fingerprint": dataset.fingerprint, "reason": reason})

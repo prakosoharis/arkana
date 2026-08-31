@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from .market_data import latest_dataset
 from .models import Dataset, EdgeSearchCampaign, EdgeSearchFinalOosOpening, EdgeSearchTrial
 from .oos_validation import PROTOCOL as OOS_PROTOCOL
 from .strategy_capabilities import GENERIC, assess as assess_capability, registry as capability_registry
@@ -333,7 +334,7 @@ def validation_report(session: Session, payload: dict[str, Any]) -> dict[str, An
         issues.append(str(error))
     if not isinstance(calibration, dict) or not calibration.get("observed_holdout_configurations"):
         issues.append("calibration_disclosure must record every configuration whose holdout metrics were observed before pre-registration")
-    dataset = session.get(Dataset, dataset_id) if dataset_id else session.scalar(select(Dataset).where(Dataset.symbol == "XAUUSD").order_by(Dataset.imported_at.desc()))
+    dataset = session.get(Dataset, dataset_id) if dataset_id else latest_dataset(session)
     if not dataset:
         issues.append("a registered XAUUSD dataset is required")
     elif not any(item.timeframe == "M1" for item in dataset.bars):

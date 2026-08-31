@@ -1,6 +1,7 @@
 """Simple in-service registries; no separate infrastructure is required."""
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from .market_data import latest_dataset
 from .models import Dataset, DatasetBarAsset, ResearchRuleDefinition
 
 RESEARCH_CAPABILITIES={
@@ -14,7 +15,7 @@ RESEARCH_CAPABILITIES={
 
 def assess(envelope:dict, session:Session)->dict:
     mode=envelope["research_mode"]; symbol=envelope.get("instrument","XAUUSD")
-    dataset=session.scalar(select(Dataset).where(Dataset.symbol==symbol).order_by(Dataset.imported_at.desc()))
+    dataset=latest_dataset(session,symbol)
     has_prices=dataset is not None
     requirements=[]
     for requirement in envelope.get("data_requirements",[]):

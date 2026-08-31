@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import settings
+from .market_data import latest_dataset
 from .models import (
     Dataset, Deployment, GovernanceIncident, GovernanceIncidentAcknowledgement,
     GovernanceIncidentResolution, JournalEvent,
@@ -147,7 +148,7 @@ def _incidents(session: Session) -> dict[str, Any]:
 
 
 def _dataset(session: Session, now: datetime) -> dict[str, Any]:
-    dataset = session.scalar(select(Dataset).where(Dataset.symbol == "XAUUSD").order_by(Dataset.imported_at.desc()))
+    dataset = latest_dataset(session)
     if not dataset:
         return {"status": "MISSING", "evidence": {}, "condition": _condition(
             "DATASET_MISSING", WARNING, "No registered XAUUSD dataset exists.", {})}

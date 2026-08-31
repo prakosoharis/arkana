@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .backtesting import STRATEGY_EVALUATOR_VERSION, simulate_kernel
-from .market_data import iter_bars
+from .market_data import iter_bars, latest_dataset
 from .models import Dataset, DatasetBarAsset, OosValidation, StrategyVersion, VariantExperimentContract, VariantRevisionConfirmation
 from .strategy_adapters import compile_legacy_bullish_reversal
 from .strategy_capabilities import GENERIC, assess as assess_capability
@@ -501,7 +501,7 @@ def run(
         if dataset_id and dataset_id != experiment.dataset_id:
             raise ValueError("Selected variant final-OOS dataset must match its exact experiment")
         dataset_id = experiment.dataset_id
-    dataset = session.get(Dataset, dataset_id) if dataset_id else session.scalar(select(Dataset).where(Dataset.symbol == "XAUUSD").order_by(Dataset.imported_at.desc()))
+    dataset = session.get(Dataset, dataset_id) if dataset_id else latest_dataset(session)
     asset = next((item for item in dataset.bars if item.timeframe == "M1"), None) if dataset else None
     if not dataset or not asset:
         raise ValueError("Registered M1 dataset is unavailable")

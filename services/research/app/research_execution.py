@@ -2,7 +2,7 @@ from hashlib import sha256
 import json
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from .market_data import iter_bars, read_bars
+from .market_data import iter_bars, latest_dataset, read_bars
 from .models import Dataset, ResearchRun, ResearchRuleDefinition
 
 SUPPORTED_EVENT_PRIMITIVES = {"CANDLE_DIRECTION", "LOCAL_SWING_HIGH", "LOCAL_SWING_LOW"}
@@ -209,7 +209,7 @@ def run_hypothesis(session: Session, hypothesis):
     envelope=hypothesis.definition
     if hypothesis.status!="READY_FOR_RESEARCH" or envelope.get("execution_eligibility")!="ELIGIBLE":
         raise ValueError("Hypothesis is not eligible for research execution")
-    dataset = session.scalar(select(Dataset).where(Dataset.symbol == envelope["instrument"]).order_by(Dataset.imported_at.desc()))
+    dataset = latest_dataset(session, envelope["instrument"])
     if not dataset:
         raise ValueError("Registered dataset is unavailable")
     mode=envelope["research_mode"]; definition=envelope["definition"]
