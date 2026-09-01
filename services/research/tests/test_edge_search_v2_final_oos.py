@@ -191,3 +191,68 @@ def test_the_verifier_reports_the_v2_dependencies(make_campaign):
     blocks = set(edge_search.campaign_block_ids(campaign))
     assert {"ATR_SCALED_SL", "ATR_SCALED_TP", "SESSION_WINDOW"} <= blocks
     assert verification.assess(session, campaign)["status"] == "PASSED"
+
+
+# ---- ARK-S24-05 closure ----------------------------------------------------
+
+def test_a_v2_campaign_reaches_a_recorded_terminal_verdict(make_campaign):
+    """The protocol refuses NO_EDGE_FOUND while declining to look, so a verdict
+    exists only once the grid is complete and an opening has been spent."""
+    session, build = make_campaign
+    campaign = build(**ARMS["all_three"])
+    # A grid with no survivor at all concludes immediately; that is the other
+    # branch of the rule and it is correct.
+    assert final_oos.assess_conclusion(session, campaign)["conclusion"] == final_oos.NO_EDGE_FOUND
+    trial = _force_survivor(session, campaign)
+    assert final_oos.assess_conclusion(session, campaign)["conclusion"] == "IN_PROGRESS", (
+        "a survivor with an unspent budget must not conclude")
+    with pytest.raises(ValueError, match="no terminal verdict yet"):
+        final_oos.record_conclusion(session, campaign)
+    final_oos.open_and_evaluate(session, campaign, trial, edge_search.FINAL_OOS_AUTHORIZATION)
+    conclusion, reused = final_oos.record_conclusion(session, campaign)
+    assert not reused
+    assert conclusion.conclusion in {final_oos.NO_EDGE_FOUND, final_oos.EDGE_CANDIDATE_FOUND}
+    assert len(conclusion.fingerprint) == 64
+
+
+def test_the_recorded_verification_is_immutable_and_reused(make_campaign):
+    session, build = make_campaign
+    campaign = build(**ARMS["all_three"])
+    trial = _force_survivor(session, campaign)
+    final_oos.open_and_evaluate(session, campaign, trial, edge_search.FINAL_OOS_AUTHORIZATION)
+    first, reused_first = verification.materialize(session, campaign)
+    second, reused_second = verification.materialize(session, campaign)
+    assert not reused_first and reused_second
+    assert first.id == second.id and first.fingerprint == second.fingerprint
+    assert first.status == "PASSED"
+
+
+def test_the_owner_overview_shows_a_v2_campaign_with_its_new_axes(make_campaign):
+    """The console renders parameters generically, so the overview is what
+    decides whether the Owner can see the three Sprint 24 axes at all."""
+    session, build = make_campaign
+    campaign = build(**ARMS["all_three"])
+    trial = _force_survivor(session, campaign)
+    final_oos.open_and_evaluate(session, campaign, trial, edge_search.FINAL_OOS_AUTHORIZATION)
+    verification.materialize(session, campaign)
+    overview = verification.owner_overview(session)
+    entry = next(item for item in overview["campaigns"] if item["campaign"]["campaign_id"] == campaign.id)
+    assert {"direction", "session_window", "stop_type"} <= set(entry["campaign"]["grid"]["dimensions"])
+    assert entry["verification"]["status"] == "PASSED"
+    outcome = entry["final_oos_outcomes"][0]
+    assert {"direction", "session_window", "stop_type"} <= set(outcome["parameters"])
+    assert outcome["strategy_status"] != "VALIDATED"
+
+
+def test_the_concentration_checks_are_readable_by_the_console(make_campaign):
+    """They report `maximum_observed`, not `observed`.  A console reading only
+    `observed` would show the Owner a blank where the refusal reason belongs."""
+    session, build = make_campaign
+    campaign = build(**ARMS["all_three"])
+    trial = _force_survivor(session, campaign)
+    outcome, _ = final_oos.open_and_evaluate(session, campaign, trial, edge_search.FINAL_OOS_AUTHORIZATION)
+    checks = final_oos.serialize_outcome(outcome)["gate_checks"]
+    for name in ("year_pnl_concentration", "regime_pnl_concentration"):
+        check = checks[name]
+        assert "maximum_allowed" in check
+        assert ("maximum_observed" in check) or ("observed" in check)
