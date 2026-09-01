@@ -2,7 +2,7 @@
 
 import { ChangeEvent, useCallback, useEffect, useState } from "react";
 import { CandlestickChart } from "./candlestick-chart";
-import { type BarsResponse, type Dataset, displayBrokerTime, displayTime, TIMEFRAMES, type Timeframe } from "../lib/market";
+import { type BarsResponse, type Dataset, displayBrokerTime, displayTime, evidenceDataset, TIMEFRAMES, type Timeframe } from "../lib/market";
 
 
 export function MarketDataWorkspace() {
@@ -47,7 +47,7 @@ export function MarketDataWorkspace() {
     await load();
   }
 
-  const dataset = datasets.find((item) => item.symbol === "XAUUSD");
+  const dataset = evidenceDataset(datasets, "XAUUSD");
   const meta = bars?.meta;
   const visibleStart = bars?.bars[0]?.timestamp; const visibleEnd = bars?.bars[bars.bars.length - 1]?.timestamp;
   return <><header><div><h1>Market &amp; Data</h1><p>Historical XAUUSD from registered MT5 data. No synthetic fallback candles.</p></div></header>

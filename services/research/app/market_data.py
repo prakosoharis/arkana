@@ -290,6 +290,19 @@ def import_csv(
 
 
 def serialize_dataset(dataset: Dataset) -> dict:
+    # ARK-S24-07. The listing is ordered newest-first and deliberately includes
+    # fixtures, so any client that takes the first row takes a fixture -- which
+    # is exactly what the Market & Data page did, reporting the Owner's data
+    # source as "S13-03 pass fixture" with 1,000 rows while the chart drew the
+    # real 3.96M-bar asset.
+    #
+    # The judgement is carried on the wire rather than re-derived by the client.
+    # A second definition of "fixture" in TypeScript would eventually disagree
+    # with the Python one.
+    from .strategy_lineage import synthetic_dataset_reason
+
+    reason = synthetic_dataset_reason(dataset)
+    stale_stamp = future_dated(dataset)
     return {
         "id": dataset.id,
         "fingerprint": dataset.fingerprint,
@@ -297,6 +310,9 @@ def serialize_dataset(dataset: Dataset) -> dict:
         "source": dataset.source,
         "timezone_status": dataset.timezone_status,
         "imported_at": dataset.imported_at.isoformat() + "Z",
+        "synthetic_reason": reason,
+        "future_dated": stale_stamp,
+        "evidence_grade": reason is None and not stale_stamp,
         "timeframes": [
             {
                 "timeframe": asset.timeframe,

@@ -179,3 +179,37 @@ def test_a_future_dated_dataset_is_still_returned_when_it_is_all_there_is(sessio
     the row is absent."""
     _add(session, ident="ds-only", source="MT5", imported=datetime(2099, 1, 1))
     assert latest_dataset(session).id == "ds-only"
+
+
+# ---- ARK-S24-07 the judgement travels on the wire ---------------------------
+
+def test_the_listing_carries_the_evidence_judgement(session):
+    """The registry is newest-first and includes fixtures on purpose, so a
+    client that takes the first row takes a fixture.  It must not have to
+    re-derive the rule to avoid that."""
+    from app.market_data import serialize_dataset
+    real = _add(session, ident="ds-real", source="MT5", fingerprint=REAL_FINGERPRINT,
+                imported=datetime(2026, 8, 11))
+    fixture = _add(session, ident="ds-fixture", source="S13-03 pass fixture", imported=datetime(2026, 9, 5))
+    ahead = _add(session, ident="ds-ahead", source="MT5", imported=datetime(2099, 1, 1))
+
+    assert serialize_dataset(real)["evidence_grade"] is True
+    assert serialize_dataset(real)["synthetic_reason"] is None
+    assert serialize_dataset(real)["future_dated"] is False
+
+    assert serialize_dataset(fixture)["evidence_grade"] is False
+    assert "fixture" in serialize_dataset(fixture)["synthetic_reason"]
+
+    assert serialize_dataset(ahead)["evidence_grade"] is False
+    assert serialize_dataset(ahead)["future_dated"] is True
+
+
+def test_the_flag_agrees_with_the_selector(session):
+    """Two answers to the same question must never diverge."""
+    from app.market_data import serialize_dataset
+    _add(session, ident="ds-fixture", source="S13-03 pass fixture", imported=datetime(2026, 9, 5))
+    real = _add(session, ident="ds-real", source="MT5", fingerprint=REAL_FINGERPRINT,
+                imported=datetime(2026, 8, 11))
+    chosen = latest_dataset(session)
+    assert chosen.id == real.id
+    assert serialize_dataset(chosen)["evidence_grade"] is True
