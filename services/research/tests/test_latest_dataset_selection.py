@@ -148,3 +148,34 @@ def test_the_bars_endpoint_uses_the_shared_selector():
     import inspect
     from app import main
     assert "latest_dataset(session, symbol.upper())" in inspect.getsource(main.bars)
+
+
+# ---- ARK-S24-06 a future-dated record cannot be the latest -----------------
+
+def test_a_future_dated_real_looking_dataset_is_not_selected(session):
+    """The production fixture was stamped five days ahead, which is how it won
+    'latest'.  A row that merely looks real must not win the same way."""
+    real = _add(session, ident="ds-real", source="MT5", fingerprint=REAL_FINGERPRINT,
+                imported=datetime(2026, 8, 11))
+    _add(session, ident="ds-ahead", source="MT5", imported=datetime(2099, 1, 1))
+    assert latest_dataset(session).id == real.id
+
+
+def test_future_dating_is_judged_with_a_skew_tolerance(session):
+    from datetime import timedelta
+    from app.market_data import FUTURE_DATED_TOLERANCE, future_dated
+    now = datetime.utcnow()
+    assert FUTURE_DATED_TOLERANCE == timedelta(hours=1)
+    just_now = _add(session, ident="ds-now", source="MT5", imported=now)
+    slightly_ahead = _add(session, ident="ds-skew", source="MT5", imported=now + timedelta(minutes=5))
+    far_ahead = _add(session, ident="ds-far", source="MT5", imported=now + timedelta(days=5))
+    assert not future_dated(just_now)
+    assert not future_dated(slightly_ahead), "clock skew must not disqualify a real import"
+    assert future_dated(far_ahead)
+
+
+def test_a_future_dated_dataset_is_still_returned_when_it_is_all_there_is(session):
+    """The selector refuses to let it shadow real evidence; it does not pretend
+    the row is absent."""
+    _add(session, ident="ds-only", source="MT5", imported=datetime(2099, 1, 1))
+    assert latest_dataset(session).id == "ds-only"

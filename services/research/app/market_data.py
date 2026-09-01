@@ -39,8 +39,24 @@ def latest_dataset(session: Session, symbol: str = "XAUUSD") -> Dataset | None:
 
     candidates = list(session.scalars(
         select(Dataset).where(Dataset.symbol == symbol).order_by(Dataset.imported_at.desc())))
-    real = next((item for item in candidates if not synthetic_dataset_reason(item)), None)
+    real = next((item for item in candidates
+                 if not synthetic_dataset_reason(item) and not future_dated(item)), None)
     return real or (candidates[0] if candidates else None)
+
+
+# ARK-S24-06. The registered fixture that broke Quick Backtest carried
+# `imported_at = 2026-09-05` on a row written in August, which is how it won
+# "latest" in the first place. A dataset cannot have been imported later than
+# now; the tolerance only absorbs clock skew between the writer and the reader.
+FUTURE_DATED_TOLERANCE = timedelta(hours=1)
+
+
+def future_dated(dataset: Dataset) -> bool:
+    """A dataset stamped after the present cannot be a record of the past."""
+    imported = getattr(dataset, "imported_at", None)
+    if imported is None:
+        return False
+    return imported > datetime.utcnow() + FUTURE_DATED_TOLERANCE
 
 TIMEFRAMES = {"M1": "1m", "M5": "5m", "M15": "15m", "M30": "30m", "H1": "1h", "H4": "4h"}
 REQUIRED_COLUMNS = {"timestamp", "open", "high", "low", "close"}

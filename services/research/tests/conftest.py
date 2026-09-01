@@ -17,19 +17,16 @@ os.environ.setdefault("RESEARCH_API_TOKEN", "arkana-test-owner-token")
 # be registered when only one is real, and how six fixture strategies came to
 # hold VALIDATED status.
 #
-# The suite is redirected to the local SQLite file it has always used by
-# default, unless the caller states in as many words that a real database is
-# intended. The redirect is announced rather than silent.
-#
-# The target is deliberately the historical default rather than a fresh file.
-# The suite turns out to depend on a schema that persists across runs, and
-# repairing that is a separate piece of work; changing the destination here
-# would have meant changing the suite's behaviour while fixing a pollution bug.
-_TEST_DATABASE_URL = "sqlite:///./arkana_metadata.db"
+# The suite binds itself to a disposable SQLite file unless the caller states,
+# in as many words, that a real database is intended. The redirect is announced
+# rather than silent.
+_TEST_DATABASE_URL = "sqlite:////tmp/arkana-pytest.db"
 _ALLOW_REAL = os.environ.get("ARKANA_TEST_ALLOW_REAL_DATABASE") == "1"
 _requested = os.environ.get("DATABASE_URL", "")
 
-if not _ALLOW_REAL and _requested and not _requested.startswith("sqlite"):
+if not _requested:
+    os.environ["DATABASE_URL"] = _TEST_DATABASE_URL
+elif not _ALLOW_REAL and not _requested.startswith("sqlite"):
     print(
         f"conftest: refusing to run the suite against {_requested.split('@')[-1]!r}; "
         f"redirected to {_TEST_DATABASE_URL}. "
@@ -39,7 +36,31 @@ if not _ALLOW_REAL and _requested and not _requested.startswith("sqlite"):
     )
     os.environ["DATABASE_URL"] = _TEST_DATABASE_URL
 
+_OWNS_DATABASE = os.environ["DATABASE_URL"] == _TEST_DATABASE_URL
+
 from fastapi.testclient import TestClient  # noqa: E402  - must follow the env default
+
+# ARK-S24-06. Several modules reach the global SessionLocal before any
+# TestClient startup event creates the tables, and four of them drop the whole
+# schema and rebuild it. That worked only because the suite ran against a
+# committed SQLite file whose tables were already there -- which is also why
+# `arkana_metadata.db` was tracked by git and mutated on every run.
+#
+# Creating the schema here, once, is the explicit form of what the stale file
+# was doing by accident. It runs only against the disposable test database: if
+# the caller opted into a real one, this must not write to it.
+#
+# The file is deliberately NOT deleted first. pytest imports this module more
+# than once in a full run, and unlinking on the second import pulled the file
+# out from under an open connection -- every later write then failed with
+# "attempt to write a readonly database".
+if _OWNS_DATABASE:
+    from app import models as _models  # noqa: F401 - registers every table on Base
+    from app.database import Base, engine
+    from app.migrations import run_migrations
+
+    Base.metadata.create_all(engine)
+    run_migrations(engine)
 
 TEST_OWNER_TOKEN = os.environ["RESEARCH_API_TOKEN"]
 

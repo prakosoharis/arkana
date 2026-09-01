@@ -20,3 +20,8 @@ data/processed/*
 !data/processed/.gitkeep
 
 backups/
+
+# ARK-S24-06: the test suite database. It mutated on every run, which is
+# why it kept appearing in git status; the suite now builds its own schema in
+# /tmp and no longer depends on this file.
+services/research/arkana_metadata.db
