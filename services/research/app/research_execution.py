@@ -220,7 +220,10 @@ def run_hypothesis(session: Session, hypothesis):
     fingerprint=sha256(json.dumps({"hypothesis":hypothesis.id,"version":hypothesis.version,"dataset":dataset.fingerprint,"definition":envelope},sort_keys=True,default=str).encode()).hexdigest()
     existing=session.scalar(select(ResearchRun).where(ResearchRun.fingerprint==fingerprint))
     if existing:return existing,True
-    bars = read_bars(asset, start=None, end=None, limit=5000)
+    # ARK-S24-08: on a fragmented asset an unbounded read runs the
+    # duplicate-resolving window over the whole glob before the limit applies,
+    # and the registered 2.99M-bar M1 asset exhausts DuckDB's memory first.
+    bars = read_bars(asset, start=None, end=None, limit=5000, latest=True)
     samples = []
     if mode == "PRICE_EVENT_TO_PATTERN":
         threshold = float(definition["movement_threshold"])

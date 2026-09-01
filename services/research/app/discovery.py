@@ -17,7 +17,14 @@ def _asset(session, symbol, timeframe):
     if not asset: raise ValueError("Required timeframe dataset is unavailable")
     # Bulk research is separate from the 1,000-bar chart safety boundary.  The cap is explicit
     # and covers every currently registered non-M1 derived dataset in full.
-    bars=read_bars(asset,start=None,end=None,limit=DISCOVERY_ROW_CAP.get(timeframe,250000))
+    #
+    # ARK-S24-08: `latest=True` is load-bearing on a fragmented asset.  Without
+    # it, read_bars runs its duplicate-resolving window over the whole glob
+    # before applying the limit, and the registered 2.99M-bar M1 asset exhausts
+    # DuckDB's memory before returning a row.  The bounded path restricts the
+    # timestamp range first.  A dataset smaller than the cap is still returned
+    # in full, so nothing changes for the derived timeframes.
+    bars=read_bars(asset,start=None,end=None,limit=DISCOVERY_ROW_CAP.get(timeframe,250000),latest=True)
     return dataset,bars
 
 def features(session:Session,symbol="XAUUSD",timeframe="M15"):
