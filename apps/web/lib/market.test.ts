@@ -45,3 +45,20 @@ describe("evidenceDataset", () => {
     expect(evidenceDataset(registry, "GBPUSD")).toBeUndefined();
   });
 });
+
+describe("deployment acknowledgement text", () => {
+  // ARK-S24-09: a partial acknowledgement rendered the literal "undefined".
+  const ackText = (ack: { strategy_version?: string; checksum?: string; broker_symbol?: string }) =>
+    `EA acknowledged ${ack.strategy_version ?? "NOT_REPORTED"} / ${ack.broker_symbol ?? "NOT_REPORTED"} / ${ack.checksum ?? "NOT_REPORTED"}`;
+
+  it("never renders the literal undefined for a partial acknowledgement", () => {
+    const text = ackText({ checksum: "8632" });
+    expect(text).not.toContain("undefined");
+    expect(text).toBe("EA acknowledged NOT_REPORTED / NOT_REPORTED / 8632");
+  });
+
+  it("renders every field when the acknowledgement is complete", () => {
+    expect(ackText({ strategy_version: "1.0.0", broker_symbol: "XAUUSD.m", checksum: "8917" }))
+      .toBe("EA acknowledged 1.0.0 / XAUUSD.m / 8917");
+  });
+});

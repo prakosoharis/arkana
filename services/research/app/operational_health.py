@@ -19,7 +19,7 @@ from . import settings
 from .market_data import latest_dataset
 from .models import (
     Dataset, Deployment, GovernanceIncident, GovernanceIncidentAcknowledgement,
-    GovernanceIncidentResolution, JournalEvent,
+    GovernanceIncidentResolution, HistoricalSyncState, JournalEvent,
 )
 
 PROTOCOL_VERSION = "OPERATIONAL_HEALTH_V1"
@@ -152,10 +152,25 @@ def _dataset(session: Session, now: datetime) -> dict[str, Any]:
     if not dataset:
         return {"status": "MISSING", "evidence": {}, "condition": _condition(
             "DATASET_MISSING", WARNING, "No registered XAUUSD dataset exists.", {})}
-    age = _age_seconds(dataset.imported_at, now)
+    # ARK-S24-09. `imported_at` is when the dataset row was created and an
+    # incremental sync never touches it, so measuring from it asked "how old is
+    # this registration" and answered STALE forever: the Owner synced to the
+    # current minute and the panel still said the data had not been refreshed.
+    #
+    # `last_successful_sync_at` is service-clock UTC and is exactly "when was
+    # this dataset last refreshed".  `latest_market_timestamp` is deliberately
+    # not used: it is broker-time-naive, and comparing it to a UTC clock is the
+    # timestamp assumption this project refuses to make.
+    synced = session.scalar(select(HistoricalSyncState.last_successful_sync_at)
+                            .where(HistoricalSyncState.canonical_instrument == dataset.symbol))
+    refreshed_at = max(filter(None, (dataset.imported_at, synced)), default=None)
+    age = _age_seconds(refreshed_at, now)
     evidence = {"dataset_id": dataset.id, "fingerprint": dataset.fingerprint,
                 "timezone_status": dataset.timezone_status,
                 "imported_at": dataset.imported_at.isoformat() + "Z" if dataset.imported_at else NOT_REPORTED,
+                "last_successful_sync_at": synced.isoformat() + "Z" if synced else NOT_REPORTED,
+                "refreshed_at": refreshed_at.isoformat() + "Z" if refreshed_at else NOT_REPORTED,
+                "age_measured_from": "last_successful_sync_at" if synced and (not dataset.imported_at or synced > dataset.imported_at) else "imported_at",
                 "age_seconds": round(age, 1) if age is not None else NOT_REPORTED,
                 "maximum_age_seconds": settings.DATASET_MAX_AGE_SECONDS}
     if age is not None and age > settings.DATASET_MAX_AGE_SECONDS:

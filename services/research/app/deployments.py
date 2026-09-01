@@ -79,4 +79,10 @@ def rollback(session: Session, deployment: Deployment) -> Deployment:
     deployment.status="ROLLED_BACK"; deployment.acknowledgement={"rollback_to":previous.id,"checksum":previous.config_checksum}; session.commit(); session.refresh(deployment); return deployment
 
 def serialize(item: Deployment) -> dict:
-    return {"id":item.id,"strategy_version_id":item.strategy_version_id,"target_environment":item.target_environment,"target_reference":item.target_reference,"broker_symbol":item.broker_symbol,"status":item.status,"config_checksum":item.config_checksum,"config_path":item.config_path,"acknowledgement":item.acknowledgement,"previous_deployment_id":item.previous_deployment_id,"deployed_at":item.deployed_at.isoformat()+"Z" if item.deployed_at else None,"acknowledged_at":item.acknowledged_at.isoformat()+"Z" if item.acknowledged_at else None,"created_at":item.created_at.isoformat()+"Z"}
+    # ARK-S24-09: the operational-health check already knows a pytest artifact
+    # when it sees one, and excludes it from "things that should be running".
+    # The deployment list showed it as an ordinary deployment, so the two
+    # surfaces disagreed about the same rows.  One rule, stated on the wire.
+    from .operational_health import _is_fixture_deployment
+    return {"fixture_artifact": _is_fixture_deployment(item),
+            "id":item.id,"strategy_version_id":item.strategy_version_id,"target_environment":item.target_environment,"target_reference":item.target_reference,"broker_symbol":item.broker_symbol,"status":item.status,"config_checksum":item.config_checksum,"config_path":item.config_path,"acknowledgement":item.acknowledgement,"previous_deployment_id":item.previous_deployment_id,"deployed_at":item.deployed_at.isoformat()+"Z" if item.deployed_at else None,"acknowledged_at":item.acknowledged_at.isoformat()+"Z" if item.acknowledged_at else None,"created_at":item.created_at.isoformat()+"Z"}
