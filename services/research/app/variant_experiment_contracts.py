@@ -245,13 +245,18 @@ def fingerprint(
     dataset: Dataset,
     contract: dict[str, Any],
     assessment: dict[str, Any],
+    *,
+    dataset_id: str | None = None,
+    dataset_fingerprint: str | None = None,
 ) -> str:
+    # ARK-S25-04: a verifier supplies what the record was written against.
+    # Writers pass nothing and keep the live row.
     payload = {
         "protocol_version": PROTOCOL_VERSION,
         "strategy_version_id": strategy.id,
         "strategy_checksum": strategy.checksum,
-        "dataset_id": dataset.id,
-        "dataset_fingerprint": dataset.fingerprint,
+        "dataset_id": dataset_id if dataset_id is not None else dataset.id,
+        "dataset_fingerprint": dataset_fingerprint if dataset_fingerprint is not None else dataset.fingerprint,
         "contract": contract,
         "lineage": assessment["lineage"],
     }

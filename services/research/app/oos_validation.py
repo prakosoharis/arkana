@@ -239,11 +239,22 @@ def evidence_fingerprint(
     config: dict[str, Any],
     evaluator: dict[str, Any] | None = None,
     protocol: dict[str, Any] | None = None,
+    *,
+    dataset_id: str | None = None,
+    dataset_fingerprint: str | None = None,
+    asset_snapshot: dict[str, Any] | None = None,
 ) -> str:
+    # ARK-S25-04: a verifier recomputing this must be able to supply the values
+    # the record was written against.  A registered dataset grows, and reading
+    # the live row made an untouched record fail to reproduce its own
+    # fingerprint.  Absent an override the live row is used, so writers are
+    # unchanged.
     payload = {
-        "dataset_id": dataset.id,
-        "dataset_fingerprint": dataset.fingerprint,
-        "asset": {"timeframe": asset.timeframe, "rows": asset.row_count, "start": asset.range_start.isoformat(), "end": asset.range_end.isoformat()},
+        "dataset_id": dataset_id if dataset_id is not None else dataset.id,
+        "dataset_fingerprint": dataset_fingerprint if dataset_fingerprint is not None else dataset.fingerprint,
+        "asset": asset_snapshot if asset_snapshot is not None else {
+            "timeframe": asset.timeframe, "rows": asset.row_count,
+            "start": asset.range_start.isoformat(), "end": asset.range_end.isoformat()},
         "strategy_version_id": strategy.id,
         "strategy_checksum": strategy.checksum,
         "strategy_contract_fingerprint": strategy.configuration.get("strategy_contract_fingerprint"),

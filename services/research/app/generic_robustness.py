@@ -77,13 +77,16 @@ def neighborhood(contract: object) -> list[dict[str, Any]]:
     return output
 
 
-def evidence_fingerprint(strategy: StrategyVersion, dataset: Dataset, baseline: OosValidation) -> str:
+def evidence_fingerprint(strategy: StrategyVersion, dataset: Dataset, baseline: OosValidation,
+                         *, dataset_id: str | None = None, dataset_fingerprint: str | None = None) -> str:
+    # ARK-S25-04: see oos_validation.evidence_fingerprint. A verifier supplies
+    # what the record recorded; writers keep the live row.
     return sha256(canonical_json({
         "protocol": POLICY,
         "strategy_version_id": strategy.id,
         "strategy_checksum": strategy.checksum,
-        "dataset_id": dataset.id,
-        "dataset_fingerprint": dataset.fingerprint,
+        "dataset_id": dataset_id if dataset_id is not None else dataset.id,
+        "dataset_fingerprint": dataset_fingerprint if dataset_fingerprint is not None else dataset.fingerprint,
         "baseline_oos_validation_id": baseline.id,
         "baseline_oos_fingerprint": baseline.fingerprint,
     }).encode()).hexdigest()

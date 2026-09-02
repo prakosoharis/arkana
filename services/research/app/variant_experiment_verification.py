@@ -46,7 +46,14 @@ def verify(session: Session, experiment: VariantExperimentContract) -> dict:
     dataset = session.get(Dataset, experiment.dataset_id)
     asset = next((item for item in dataset.bars if item.timeframe == "M1"), None) if dataset else None
     current_assessment = assess(strategy, dataset, experiment.contract) if strategy and dataset else {"ready": False, "issues": ["missing lineage"]}
-    contract_ok = bool(strategy and dataset and asset) and experiment.status == READY and experiment.protocol_version == CONTRACT_PROTOCOL_VERSION and current_assessment["ready"] and experiment_fingerprint(strategy, dataset, experiment.contract, current_assessment) == experiment.fingerprint
+    # ARK-S25-04: the fingerprint is recomputed from the assessment the record
+    # stored and the dataset fingerprint that assessment names, not from a
+    # fresh assessment over a grown dataset.  `current_assessment["ready"]`
+    # still has to hold, so a contract that stopped being executable under the
+    # present registry is still refused.
+    recorded_assessment = experiment.assessment or {}
+    recorded_dataset_fingerprint = (recorded_assessment.get("lineage") or {}).get("dataset_fingerprint")
+    contract_ok = bool(strategy and dataset and asset) and experiment.status == READY and experiment.protocol_version == CONTRACT_PROTOCOL_VERSION and current_assessment["ready"] and experiment_fingerprint(strategy, dataset, experiment.contract, recorded_assessment, dataset_fingerprint=recorded_dataset_fingerprint) == experiment.fingerprint
 
     trains = session.scalars(select(VariantTrainRun).where(VariantTrainRun.experiment_contract_id == experiment.id)).all()
     train = next((item for item in trains if item.status == TRAIN_COMPLETED), None)
@@ -55,7 +62,19 @@ def verify(session: Session, experiment: VariantExperimentContract) -> dict:
     generated_identity = [{key: deepcopy(item.get(key)) for key in ("ordinal", "fingerprint", "parameters", "strategy_contract_fingerprint", "baseline")} for item in generated]
     stored_train = train.result.get("matrix", {}).get("variants", []) if train else []
     train_identity = [{key: deepcopy(item.get(key)) for key in ("ordinal", "fingerprint", "parameters", "strategy_contract_fingerprint", "baseline")} for item in stored_train]
-    bounds = split_bounds(asset.row_count) if asset else {}
+    # ARK-S25-04: derived from the row count the baseline evidence itself was
+    # written against, not from the live asset.  A registered dataset grows and
+    # `split_bounds(asset.row_count)` then describes a partition this experiment
+    # never ran on, failing an untouched record.  The 60/20/20 property is still
+    # checked -- against the record's own row count, which its final_oos bound
+    # states.
+    recorded_rows = (((baseline_evidence.result if baseline_evidence else {})
+                      .get("cost_stress", {}).get("scenarios", {}).get("baseline", {})
+                      .get("splits", {}).get("final_oos") or {}).get("index_range") or {}).get("end_exclusive")
+    # No fallback to the live asset: a record that did not state its own row
+    # count cannot have its 60/20/20 property verified, and the check must fail
+    # closed rather than silently judge it against today's partition.
+    bounds = split_bounds(recorded_rows) if recorded_rows else {}
     train_range = bounds.get("train")
     train_ranges_ok = bool(train and train_range) and all(
         variant.get("scenarios", {}).get(name, {}).get("train", {}).get("index_range") == {"start_inclusive": train_range[0], "end_exclusive": train_range[1]}

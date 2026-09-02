@@ -27,7 +27,10 @@ def _chain(session, *, selected=False):
     dataset = Dataset(fingerprint="verify-dataset", symbol="XAUUSD", source="TEST", timezone_status="UNVERIFIED_BROKER_TIME")
     dataset.bars.append(DatasetBarAsset(timeframe="M1", path="/tmp/verify.parquet", row_count=100, range_start=datetime(2026, 1, 1), range_end=datetime(2026, 1, 2)))
     session.add_all([strategy, dataset]); session.flush()
-    baseline_oos = OosValidation(strategy_version_id=strategy.id, dataset_id=dataset.id, fingerprint="verify-baseline-oos", protocol={"version": oos.PROTOCOL_VERSION}, result={})
+    # ARK-S25-04: a real OosValidation records the partition it ran on, and the
+    # verifier now derives the 60/20/20 bounds from that rather than from the
+    # live asset.  The fixture omitted it, which made the split unverifiable.
+    baseline_oos = OosValidation(strategy_version_id=strategy.id, dataset_id=dataset.id, fingerprint="verify-baseline-oos", protocol={"version": oos.PROTOCOL_VERSION}, result={"cost_stress": {"scenarios": {"baseline": {"splits": {"final_oos": {"index_range": {"start_inclusive": 80, "end_exclusive": 100}}}}}}})
     session.add(baseline_oos); session.commit()
     experiment, _ = contracts.create(session, strategy.id, dataset.id, {"schema_version": 1, "axes": {"stop_loss_rule.distance": [.1, .2], "take_profit_rule.distance": [.4]}, "maximum_combinations": 25, "cost_scenarios": deepcopy(contracts.COST_SCENARIOS), "partition_policy": deepcopy(contracts.PARTITION_POLICY), "selection_policy": deepcopy(contracts.SELECTION_POLICY)})
     generated = generate_matrix(experiment, strategy)
