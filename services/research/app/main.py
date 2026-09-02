@@ -44,6 +44,8 @@ from .live_readiness import list_all as list_live_readiness_assessments, materia
 from .sprint21_acceptance import latest as latest_sprint21_acceptance, materialize as materialize_sprint21_acceptance, owner_overview as sprint21_owner_overview, serialize as serialize_sprint21_acceptance, verify as verify_sprint21_acceptance
 from .edge_search import create as create_edge_search_campaign, list_all as list_edge_search_campaigns, list_trials as list_edge_search_trials, policy_contract as edge_search_policy_contract, serialize as serialize_edge_search_campaign, validation_report as edge_search_validation_report, verify as verify_edge_search_campaign
 from .edge_search_execution import execute as execute_edge_search_campaign, progress as edge_search_progress, survivors as edge_search_survivors
+from .market_explorer import (TIMEFRAMES as MARKET_EXPLORER_TIMEFRAMES, existing as market_exploration_cached,
+                              measure as measure_market, serialize as serialize_market_exploration)
 from .operational_health import assess as assess_operational_health
 from .sprint23_acceptance import latest as latest_sprint23_acceptance, materialize as materialize_sprint23_acceptance, serialize as serialize_sprint23_acceptance, verify as verify_sprint23_acceptance
 from .strategy_lineage import materialize_all as materialize_strategy_lineage, overview as strategy_lineage_overview, serialize as serialize_strategy_lineage, latest_for as latest_strategy_lineage, summary as lineage_summary
@@ -1167,6 +1169,33 @@ def get_strategy_lineage(strategy_version_id: str, session: Session = Depends(ge
 @app.get("/api/v1/operational-health")
 def get_operational_health(session: Session = Depends(get_session)) -> dict:
     return assess_operational_health(session)
+
+
+@app.get("/api/v1/market-explorer/timeframes")
+def get_market_explorer_timeframes(session: Session = Depends(get_session)) -> dict:
+    """Which timeframes can actually be measured, and which are already cached.
+
+    Listing every timeframe the protocol names would offer the Owner buttons
+    that fail: only the ones registered for the dataset can be read.
+    """
+    dataset = latest_dataset(session)
+    if dataset is None:
+        return {"symbol": "XAUUSD", "dataset": None, "timeframes": []}
+    registered = {asset.timeframe: asset for asset in dataset.bars}
+    return {"symbol": dataset.symbol, "dataset": {"id": dataset.id, "fingerprint": dataset.fingerprint,
+                                                  "source": dataset.source, "timezone_status": dataset.timezone_status},
+            "timeframes": [{"timeframe": timeframe, "rows": registered[timeframe].row_count,
+                            "measured": market_exploration_cached(session, dataset, timeframe) is not None}
+                           for timeframe in MARKET_EXPLORER_TIMEFRAMES if timeframe in registered]}
+
+
+@app.get("/api/v1/market-explorer/{timeframe}")
+def get_market_exploration(timeframe: str, refresh: bool = False, session: Session = Depends(get_session)) -> dict:
+    try:
+        record, reused = measure_market(session, timeframe=timeframe.upper(), refresh=refresh)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    return {**serialize_market_exploration(record, session.get(Dataset, record.dataset_id)), "reused": reused}
 
 
 @app.get("/api/v1/edge-search/owner-overview")

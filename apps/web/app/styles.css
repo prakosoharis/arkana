@@ -19,3 +19,24 @@
 .nav-advanced{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
 .nav-advanced summary{cursor:pointer;color:var(--muted);font-size:10px;letter-spacing:.11em;padding:2px 10px 6px;text-transform:uppercase}
 .nav-advanced .nav{font-size:12px;color:#93a9b6}
+
+/* ARK-S26-01 Eksplorasi Market. */
+.explorer-actions{margin-top:14px}
+.explorer-controls{display:grid;gap:12px;padding:16px;border-bottom:1px solid var(--line)}
+.explorer-filter{display:flex;gap:8px;align-items:center;color:#a7bdc8;font-size:12px}
+.explorer-filter input[type=text],.explorer-filter input:not([type]){background:#07151e;border:1px solid #315566;color:#eaf4f7;border-radius:8px;padding:7px 10px;font:13px inherit;width:110px}
+.explorer-table{overflow:auto}
+.explorer-table td small{display:block;color:var(--muted);font-size:10px;margin-top:3px;line-height:1.35}
+.explorer-verdict{font-size:10px;font-weight:800;letter-spacing:.05em;border-radius:999px;padding:3px 8px;border:1px solid #337184;background:#102d39;color:#a8edf7}
+.explorer-verdict.strong{border-color:#2c8564;background:#0c2b25;color:#5de4a2}
+.explorer-verdict.medium{border-color:#a06a20;background:#33240c;color:#ffcf7a}
+.explorer-verdict.weak{border-color:#80504e;background:#2a191d;color:#ff8993}
+.explorer-detail>td{background:#07151e;padding:0 16px 14px}
+.explorer-detail table{min-width:420px}
+.explorer-more{padding:12px 16px}
+.explorer-note{padding:14px 16px;line-height:1.55}
+.explorer-runs{display:grid;grid-template-columns:1fr 1fr;gap:18px;padding:16px}
+.explorer-runs h3{font-size:14px;margin:0 0 6px}
+.explorer-runs table{margin-top:10px}
+.timeframes button small{color:var(--muted);font-size:9px}
+@media(max-width:850px){.explorer-runs{grid-template-columns:1fr}}

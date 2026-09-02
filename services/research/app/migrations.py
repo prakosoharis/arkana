@@ -57,6 +57,7 @@ MIGRATION_054 = "054_edge_search_campaign_verification"
 MIGRATION_055 = "055_strategy_lineage_classification"
 MIGRATION_056 = "056_sprint23_acceptance_verifier"
 MIGRATION_057 = "057_edge_search_trial_breadth"
+MIGRATION_058 = "058_market_explorations"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -930,6 +931,26 @@ def _migration_057(connection) -> None:
         connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_edge_search_trial_breadth_{column} ON edge_search_trial_breadth({column})"))
 
 
+
+def _migration_058(connection) -> None:
+    """ARK-S26-01 cache for descriptive market measurements.
+
+    Unique on (dataset_fingerprint, timeframe, protocol) rather than on
+    dataset_id: a sync appends bars and rewrites the fingerprint, and the point
+    of the key is that the old row stops matching instead of being served for
+    data it never read.
+    """
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS market_explorations (
+        id VARCHAR(36) PRIMARY KEY, dataset_id VARCHAR(36) NOT NULL,
+        dataset_fingerprint VARCHAR(64) NOT NULL, timeframe VARCHAR(8) NOT NULL,
+        protocol_version VARCHAR(64) NOT NULL, fingerprint VARCHAR(64) NOT NULL UNIQUE,
+        bars_measured INTEGER NOT NULL, result JSON NOT NULL, created_at TIMESTAMP NOT NULL,
+        CONSTRAINT uq_market_exploration_lineage UNIQUE (dataset_fingerprint, timeframe, protocol_version),
+        FOREIGN KEY(dataset_id) REFERENCES datasets(id))"""))
+    for column in ("dataset_id", "dataset_fingerprint", "timeframe", "fingerprint"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_market_explorations_{column} ON market_explorations({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -976,8 +997,8 @@ MIGRATIONS = (
     (MIGRATION_055, _migration_055),
     (MIGRATION_056, _migration_056),
     (MIGRATION_057, _migration_057),
+    (MIGRATION_058, _migration_058),
 )
-
 
 def run_migrations(engine: Engine) -> None:
     """Apply each migration once and record it only after it succeeds."""
