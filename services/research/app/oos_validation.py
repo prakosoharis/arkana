@@ -444,7 +444,9 @@ def generic_replay_plan(
     capability = assess_capability(contract)
     if capability["status"] != "CONTRACT_VALID" or capability["evaluator_capability_id"] != GENERIC:
         raise ValueError("Strategy Contract has no executable generic completed-candle capability")
-    required = {"M1"}
+    # ARK-S27-02: the split stream is the timeframe the contract executes on.
+    execution = capability["normalized_contract"].get("execution_timeframe", "M1")
+    required = {execution}
 
     def collect(rule: dict[str, Any]) -> None:
         if rule["block_id"] in {"ALL_OF", "ANY_OF"}:
@@ -453,7 +455,7 @@ def generic_replay_plan(
         elif rule["block_id"] == "NOT":
             collect(rule["child"])
         else:
-            required.add(rule.get("timeframe", "M1"))
+            required.add(rule.get("timeframe", execution))
 
     for section in ("context_rules", "setup_rules", "trigger_rules"):
         for rule in capability["normalized_contract"][section]:
@@ -477,7 +479,7 @@ def generic_replay_plan(
 
     def factory() -> Any:
         sources = {
-            timeframe: (() if timeframe == "M1" else iter_bars(assets[timeframe], chunk_size=chunk_size))
+            timeframe: (() if timeframe == execution else iter_bars(assets[timeframe], chunk_size=chunk_size))
             for timeframe in required
         }
         return build_streaming(capability["normalized_contract"], sources, lineage_assets)[0]
@@ -513,12 +515,15 @@ def run(
             raise ValueError("Selected variant final-OOS dataset must match its exact experiment")
         dataset_id = experiment.dataset_id
     dataset = session.get(Dataset, dataset_id) if dataset_id else latest_dataset(session)
-    asset = next((item for item in dataset.bars if item.timeframe == "M1"), None) if dataset else None
-    if not dataset or not asset:
-        raise ValueError("Registered M1 dataset is unavailable")
     capability = assess_capability(strategy.strategy_contract)
     if capability["status"] != "CONTRACT_VALID":
         raise ValueError("Strategy Contract is not executable for OOS evidence")
+    # ARK-S27-02: the partitions are counted in the bars the strategy trades on,
+    # so the split arithmetic and the evaluator read the same asset.
+    execution = capability["normalized_contract"].get("execution_timeframe", "M1")
+    asset = next((item for item in dataset.bars if item.timeframe == execution), None) if dataset else None
+    if not dataset or not asset:
+        raise ValueError(f"Registered {execution} dataset is unavailable")
     generic = capability["evaluator_capability_id"] == GENERIC
     evaluator_artifact = None
     evaluator_factory = None

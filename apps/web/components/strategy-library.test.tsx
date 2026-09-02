@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { GenericDecision, GenericEvidenceChain, GenericEvidenceVerification, latestRenderableOosEvidence, LifecycleGovernance, LifecycleVerification, OosEvidence, RobustnessEvidence, StrategyLibrary } from "./strategy-library";
+import { GenericDecision, GenericEvidenceChain, supportsChoices, GenericEvidenceVerification, latestRenderableOosEvidence, LifecycleGovernance, LifecycleVerification, OosEvidence, RobustnessEvidence, StrategyLibrary } from "./strategy-library";
 
 const split = (trade_count: number, net_pnl_price: number, profit_factor: number) => ({ metrics: { trade_count, net_pnl_price, profit_factor } });
 
@@ -83,5 +83,25 @@ describe("StrategyLibrary", () => {
     const markup = renderToStaticMarkup(<LifecycleGovernance verification={verification} />);
     expect(markup).toContain(status); expect(markup).toContain(claim); expect(markup).toContain(eligibilityStatus);
     expect(markup).toContain("profitability is not proven"); expect(markup).toContain("trade authority are all false");
+  });
+});
+
+describe("Strategy Factory choices (ARK-S27)", () => {
+  it("offers direction and execution timeframe, and says when they do not apply", () => {
+    const markup = renderToStaticMarkup(<StrategyLibrary />);
+    expect(markup).toContain("Arah");
+    expect(markup).toContain("Timeframe eksekusi");
+    expect(markup).toContain("LONG (beli)");
+    expect(markup).toContain("SHORT (jual)");
+    expect(markup).toContain("Harga vs EMA 31 + range minimal");
+    // The legacy expression is selected first, and it cannot honour either
+    // choice, so the controls must read as disabled rather than as ignored.
+    expect(markup).toContain("terkunci di XAUUSD LONG M1");
+  });
+
+  it("keeps the legacy expression out of the generic choices", () => {
+    expect(supportsChoices("LEGACY")).toBe(false);
+    expect(supportsChoices("M1_M5_COMPLETED")).toBe(true);
+    expect(supportsChoices("EMA_MINIMUM_RANGE")).toBe(true);
   });
 });

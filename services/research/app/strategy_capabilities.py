@@ -23,6 +23,9 @@ from .strategy_contracts import REQUIRED, canonical_json, fingerprint as contrac
 
 REGISTRY_VERSION = "STRATEGY_CAPABILITY_REGISTRY_V2"
 EXECUTABLE = "LEGACY_BULLISH_REVERSAL_M1_V1"
+# ARK-S27-02.  The registered assets the evaluator and the kernel can both read.
+# The legacy envelope stays M1-only; only generic contracts may choose.
+TIMEFRAMES = ("M1", "M5", "M15", "M30", "H1", "H4")
 GENERIC = "GENERIC_COMPLETED_CANDLE_V1"
 DECLARATIVE = "GENERIC_COMPLETED_CANDLE_V1_DECLARATIVE_ONLY"  # Historical S16-01 label.
 
@@ -165,7 +168,7 @@ def normalize(contract: object) -> tuple[dict[str, Any], list[str], list[str]]:
                 declared.append(block_id)
             if block.get("uses_completed_candles") is not True:
                 issues.append(f"{block_id} must explicitly use completed candles only.")
-            if block.get("timeframe", "M1") not in {"M1", "M5", "M15", "H1"}:
+            if block.get("timeframe", "M1") not in TIMEFRAMES:
                 issues.append(f"CAPABILITY_NOT_SUPPORTED: {block_id}.timeframe is outside the completed-candle V1 envelope.")
             for parameter in _REQUIRED_PARAMETERS.get(block_id, set()):
                 if parameter not in block:
@@ -243,8 +246,8 @@ def assess(contract: object) -> dict[str, Any]:
     if not generic:
         issues.extend(item for item in _legacy_shape_issues(normalized) if item not in issues)
     if generic:
-        if normalized.get("instrument") != "XAUUSD" or normalized.get("execution_timeframe") != "M1" or normalized.get("direction_eligibility") not in {"LONG", "SHORT"}:
-            issues.append("CAPABILITY_NOT_SUPPORTED: generic V1 is XAUUSD M1 with LONG or SHORT direction.")
+        if normalized.get("instrument") != "XAUUSD" or normalized.get("execution_timeframe") not in TIMEFRAMES or normalized.get("direction_eligibility") not in {"LONG", "SHORT"}:
+            issues.append(f"CAPABILITY_NOT_SUPPORTED: generic V1 is XAUUSD on {'/'.join(TIMEFRAMES)} with LONG or SHORT direction.")
         if not isinstance(normalized.get("cost_assumptions"), dict) or not isinstance(normalized["cost_assumptions"].get("commission_price"), (int, float)):
             issues.append("cost_assumptions.commission_price is required for generic V1.")
     executable = not issues and (generic or legacy["ready"])

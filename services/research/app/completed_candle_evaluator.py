@@ -14,7 +14,7 @@ from .backtesting import validate_backtest_config
 
 
 EVALUATOR_VERSION = "COMPLETED_CANDLE_MULTI_TIMEFRAME_EVALUATOR_V1"
-_MINUTES = {"M1": 1, "M5": 5, "M15": 15, "H1": 60}
+_MINUTES = {"M1": 1, "M5": 5, "M15": 15, "M30": 30, "H1": 60, "H4": 240}
 
 # ARK-S27-01.  A textbook EMA or Wilder RSI is recursive over all history. The
 # streaming evaluator keeps a bounded deque, so "all history" is not available
@@ -83,17 +83,26 @@ def bollinger_bands(closes: list[float], period: int, deviations: float) -> dict
 
 
 class CompletedCandleEvaluator:
+    # ARK-S27-02.  The execution timeframe used to be the literal string "M1" in
+    # a dozen places. It is now a parameter that still defaults to M1, so every
+    # stored contract, config and evidence fingerprint is byte-identical.
     def __init__(self, contract: dict[str, Any], bars_by_timeframe: dict[str, list[dict]], asset_lineage: dict[str, dict[str, Any]]) -> None:
         self.contract = contract
+        self.execution_timeframe = contract.get("execution_timeframe", "M1")
         self.bars = {key: sorted(value, key=lambda item: item["timestamp"]) for key, value in bars_by_timeframe.items()}
         self.close_times = {key: [item["timestamp"] + timedelta(minutes=_MINUTES[key]) for item in value] for key, value in self.bars.items()}
         self.asset_lineage = asset_lineage
 
+    def _decision_close(self, decision_bar: dict):
+        """The instant the signal bar closed, which is what a context bar must
+        not outlive. On M1 this is +1 minute; on M15 it is +15, and reading it
+        as +1 there would admit context that had not finished forming."""
+        return decision_bar["timestamp"] + timedelta(minutes=_MINUTES[self.execution_timeframe])
+
     def _available(self, timeframe: str, decision_bar: dict) -> list[dict]:
         if timeframe not in self.bars:
             raise ValueError(f"CAPABILITY_NOT_SUPPORTED: registered {timeframe} context asset is unavailable")
-        decision_close = decision_bar["timestamp"] + timedelta(minutes=1)
-        position = bisect_right(self.close_times[timeframe], decision_close)
+        position = bisect_right(self.close_times[timeframe], self._decision_close(decision_bar))
         return self.bars[timeframe][:position]
 
     def _rule(self, rule: dict[str, Any], previous_m1: dict, signal_m1: dict) -> dict[str, Any]:
@@ -107,7 +116,9 @@ class CompletedCandleEvaluator:
         if block == "NOT":
             child = self._rule(rule["child"], previous_m1, signal_m1)
             return {"block_id": block, "truth": not child["truth"], "child": child}
-        timeframe = rule.get("timeframe", "M1")
+        # ARK-S27-02: an untimeframed rule means "the bars this strategy trades
+        # on". That was M1 by definition until execution became a parameter.
+        timeframe = rule.get("timeframe", self.execution_timeframe)
         available = self._available(timeframe, signal_m1)
         if block == "ALWAYS":
             return {"block_id": block, "timeframe": timeframe, "truth": True, "completed_bar_count": len(available)}
@@ -211,7 +222,7 @@ class CompletedCandleEvaluator:
                   if isinstance(rule, dict) and str(rule.get("block_id", "")).startswith("ATR_SCALED")}
         if not scaled:
             return None
-        bars = self._available("M1", signal_m1)
+        bars = self._available(self.execution_timeframe, signal_m1)
         evidence: dict[str, Any] = {"block_ids": {key: rule["block_id"] for key, rule in scaled.items()}}
         for key, rule in scaled.items():
             period, multiplier = int(rule["period"]), float(rule["multiplier"])
@@ -271,23 +282,28 @@ class StreamingCompletedCandleEvaluator(CompletedCandleEvaluator):
         asset_lineage: dict[str, dict[str, Any]],
     ) -> None:
         self.contract = contract
+        self.execution_timeframe = contract.get("execution_timeframe", "M1")
         self.asset_lineage = asset_lineage
         lookbacks = _required_lookbacks(contract)
         self.histories = {timeframe: deque(maxlen=count + 1) for timeframe, count in lookbacks.items()}
-        self.sources = {timeframe: _flatten(chunks) for timeframe, chunks in context_chunks.items() if timeframe != "M1"}
+        self.sources = {timeframe: _flatten(chunks) for timeframe, chunks in context_chunks.items()
+                        if timeframe != self.execution_timeframe}
         self.pending: dict[str, dict | None] = {timeframe: None for timeframe in self.sources}
         self.exhausted: set[str] = set()
         self.split_start = None
 
-    def observe_m1(self, candle: dict[str, Any]) -> None:
+    def observe_execution_bar(self, candle: dict[str, Any]) -> None:
         if self.split_start is None:
             self.split_start = candle["timestamp"]
-        self.histories["M1"].append(candle)
+        self.histories[self.execution_timeframe].append(candle)
+
+    # The name every caller used before the execution timeframe was a parameter.
+    observe_m1 = observe_execution_bar
 
     def _advance_context(self, decision_bar: dict[str, Any]) -> None:
         if self.split_start is None:
             raise ValueError("completed-candle evaluator has not observed the split start")
-        decision_close = decision_bar["timestamp"] + timedelta(minutes=1)
+        decision_close = self._decision_close(decision_bar)
         for timeframe, source in self.sources.items():
             while timeframe not in self.exhausted:
                 candle = self.pending[timeframe]
@@ -310,7 +326,7 @@ class StreamingCompletedCandleEvaluator(CompletedCandleEvaluator):
     def _available(self, timeframe: str, decision_bar: dict) -> list[dict]:
         if timeframe not in self.histories:
             raise ValueError(f"CAPABILITY_NOT_SUPPORTED: registered {timeframe} context asset is unavailable")
-        decision_close = decision_bar["timestamp"] + timedelta(minutes=1)
+        decision_close = self._decision_close(decision_bar)
         return [
             candle for candle in self.histories[timeframe]
             if candle["timestamp"] + timedelta(minutes=_MINUTES[timeframe]) <= decision_close
@@ -348,10 +364,11 @@ def _validated_artifact(
     report = assess(contract)
     if report["status"] != "CONTRACT_VALID" or report["evaluator_capability_id"] != GENERIC:
         raise ValueError("CAPABILITY_NOT_SUPPORTED: contract has no accepted completed-candle evaluator capability")
-    required = {"M1"}
+    execution = report["normalized_contract"].get("execution_timeframe", "M1")
+    required = {execution}
     for section in ("context_rules", "setup_rules", "trigger_rules"):
         for rule in report["normalized_contract"][section]:
-            required.update(_rule_timeframes(rule))
+            required.update(_rule_timeframes(rule, execution))
     missing = sorted(required - available_timeframes)
     if missing:
         raise ValueError("CAPABILITY_NOT_SUPPORTED: missing registered completed context assets: " + ", ".join(missing))
@@ -360,6 +377,7 @@ def _validated_artifact(
         "assessment_fingerprint": report["fingerprint"],
         "registry": report["registry"], "evaluator_capability_id": GENERIC,
         "required_timeframes": sorted(required), "asset_lineage": asset_lineage,
+        **({"execution_timeframe": execution} if execution != "M1" else {}),
         "completed_candle_alignment": "CONTEXT_BAR_CLOSE_MUST_BE_AT_OR_BEFORE_M1_DECISION_CLOSE",
     }
     if replay_mode:
@@ -370,6 +388,9 @@ def _validated_artifact(
 
 def kernel_config(contract: dict[str, Any]) -> dict[str, Any]:
     guards = {item["block_id"]: item for item in contract["no_trade_conditions"]}
+    # ARK-S27-02: M1 still emits `timeframe: "M1"` and `M1_BROAD`, so every
+    # stored config and every fingerprint over it is unchanged.
+    execution = contract.get("execution_timeframe", "M1")
     # ARK-S24-02: the key is omitted for LONG so every stored LONG config and
     # its evidence fingerprint stay byte-identical.
     direction = contract.get("direction_eligibility", "LONG")
@@ -387,10 +408,10 @@ def kernel_config(contract: dict[str, Any]) -> dict[str, Any]:
         extra["distance_scaling"] = scaling
     return validate_backtest_config({
         **extra,
-        "candidate_id": "BULLISH_REVERSAL_M1", "candidate_version": 1, "symbol": "XAUUSD", "timeframe": "M1",
+        "candidate_id": "BULLISH_REVERSAL_M1", "candidate_version": 1, "symbol": "XAUUSD", "timeframe": execution,
         "stop_distance": _fixed(contract["stop_loss_rule"]), "target_distance": _fixed(contract["take_profit_rule"]),
         "spread_price": guards["FIXED_SPREAD_GUARD"]["maximum"], "commission_price": contract["cost_assumptions"]["commission_price"],
-        "ambiguity_policy": "STOP_FIRST", "execution_resolution": "M1_BROAD",
+        "ambiguity_policy": "STOP_FIRST", "execution_resolution": f"{execution}_BROAD",
     })
 
 
@@ -406,25 +427,24 @@ def _fixed(rule: dict[str, Any]) -> float:
     return rule["distance"]
 
 
-def _rule_timeframes(rule: dict[str, Any]) -> set[str]:
+def _rule_timeframes(rule: dict[str, Any], default: str = "M1") -> set[str]:
     if rule["block_id"] in {"ALL_OF", "ANY_OF"}:
-        return set().union(*(_rule_timeframes(item) for item in rule["children"]))
+        return set().union(*(_rule_timeframes(item, default) for item in rule["children"]))
     if rule["block_id"] == "NOT":
-        return _rule_timeframes(rule["child"])
-    return {rule.get("timeframe", "M1")}
+        return _rule_timeframes(rule["child"], default)
+    return {rule.get("timeframe", default)}
 
 
-def _rule_lookbacks(rule: dict[str, Any]) -> dict[str, int]:
+def _rule_lookbacks(rule: dict[str, Any], default: str = "M1") -> dict[str, int]:
     if rule["block_id"] in {"ALL_OF", "ANY_OF"}:
         result: dict[str, int] = {}
         for child in rule["children"]:
-            for timeframe, count in _rule_lookbacks(child).items():
+            for timeframe, count in _rule_lookbacks(child, default).items():
                 result[timeframe] = max(result.get(timeframe, 0), count)
         return result
     if rule["block_id"] == "NOT":
-        return _rule_lookbacks(rule["child"])
-    timeframe = rule.get("timeframe", "M1")
-    return {timeframe: _block_lookback(rule)}
+        return _rule_lookbacks(rule["child"], default)
+    return {rule.get("timeframe", default): _block_lookback(rule)}
 
 
 def _block_lookback(rule: dict[str, Any]) -> int:
@@ -450,17 +470,19 @@ def _block_lookback(rule: dict[str, Any]) -> int:
 
 
 def _required_lookbacks(contract: dict[str, Any]) -> dict[str, int]:
-    result = {"M1": 1}
+    execution = contract.get("execution_timeframe", "M1")
+    result = {execution: 1}
     for section in ("context_rules", "setup_rules", "trigger_rules"):
         for rule in contract[section]:
-            for timeframe, count in _rule_lookbacks(rule).items():
+            for timeframe, count in _rule_lookbacks(rule, execution).items():
                 result[timeframe] = max(result.get(timeframe, 0), count)
     # ARK-S24-03: true range needs one bar before the window for the previous
-    # close, so the ATR period is widened by one.
+    # close, so the ATR period is widened by one. ATR is measured on the bars
+    # the position is actually managed on, which is the execution timeframe.
     for key in ("stop_loss_rule", "take_profit_rule"):
         rule = contract.get(key)
         if isinstance(rule, dict) and str(rule.get("block_id", "")).startswith("ATR_SCALED"):
-            result["M1"] = max(result["M1"], int(rule["period"]) + 1)
+            result[execution] = max(result[execution], int(rule["period"]) + 1)
     return result
 
 

@@ -65,9 +65,12 @@ def _asset(session: Session, campaign: EdgeSearchCampaign):
         raise ValueError("the campaign dataset is no longer registered")
     if dataset.fingerprint != campaign.dataset_fingerprint:
         raise ValueError("the campaign dataset fingerprint changed; the frozen grid cannot be replayed against different data")
-    asset = next((item for item in dataset.bars if item.timeframe == "M1"), None)
+    # Every pre-registered campaign to date executes on M1 and says so in its
+    # own grid; a future campaign on another timeframe binds to that one.
+    execution = (campaign.grid or {}).get("execution_timeframe", "M1")
+    asset = next((item for item in dataset.bars if item.timeframe == execution), None)
     if not asset:
-        raise ValueError("the campaign dataset has no registered M1 asset")
+        raise ValueError(f"the campaign dataset has no registered {execution} asset")
     return dataset, asset
 
 

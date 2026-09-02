@@ -173,9 +173,10 @@ def run(
     if not baseline or baseline.strategy_version_id != strategy.id or baseline.protocol.get("version") != GENERIC_PROTOCOL_VERSION:
         raise ValueError("Exact GENERIC_OOS_EVIDENCE_V1 baseline evidence is required")
     dataset = session.get(Dataset, baseline.dataset_id)
-    asset = next((item for item in dataset.bars if item.timeframe == "M1"), None) if dataset else None
+    execution = capability["normalized_contract"].get("execution_timeframe", "M1")
+    asset = next((item for item in dataset.bars if item.timeframe == execution), None) if dataset else None
     if not dataset or not asset:
-        raise ValueError("Baseline registered M1 dataset is unavailable")
+        raise ValueError(f"Baseline registered {execution} dataset is unavailable")
     if (
         baseline.result.get("strategy_version_id") != strategy.id
         or baseline.result.get("strategy_checksum") != strategy.checksum

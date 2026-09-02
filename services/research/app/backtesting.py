@@ -36,14 +36,21 @@ DEFAULT_CONFIG = {
 STRATEGY_EVALUATOR_VERSION = "LEGACY_BULLISH_REVERSAL_CONTRACT_ADAPTER_V1"
 
 
+EXECUTION_TIMEFRAMES = ("M1", "M5", "M15", "M30", "H1", "H4")
+
+
 def validate_backtest_config(payload: dict[str, Any]) -> dict[str, Any]:
     config = {**DEFAULT_CONFIG, **(payload or {})}
     if config["candidate_id"] != "BULLISH_REVERSAL_M1":
         raise ValueError("Only BULLISH_REVERSAL_M1 is registered for Sprint 04")
-    if config["symbol"].upper() != "XAUUSD" or config["timeframe"] != "M1":
-        raise ValueError("Sprint 04 supports registered XAUUSD M1 data only")
-    if config["ambiguity_policy"] != "STOP_FIRST" or config["execution_resolution"] != "M1_BROAD":
-        raise ValueError("Sprint 04 uses fixed STOP_FIRST / M1_BROAD execution")
+    # ARK-S27-02.  The Owner trades M1, M30 and intraday; the kernel walks
+    # candles and never cared which. What did care was this validation, which
+    # named M1 twice. The resolution must still agree with the timeframe, so a
+    # config cannot claim to be executed at a granularity it was not.
+    if config["symbol"].upper() != "XAUUSD" or config["timeframe"] not in EXECUTION_TIMEFRAMES:
+        raise ValueError(f"registered XAUUSD data is required and timeframe must be one of {', '.join(EXECUTION_TIMEFRAMES)}")
+    if config["ambiguity_policy"] != "STOP_FIRST" or config["execution_resolution"] != f"{config['timeframe']}_BROAD":
+        raise ValueError(f"execution is fixed STOP_FIRST / {config['timeframe']}_BROAD")
     for key in ("stop_distance", "target_distance"):
         if not isinstance(config[key], (int, float)) or config[key] <= 0:
             raise ValueError(f"{key} must be a positive explicit price-unit value")
@@ -377,9 +384,9 @@ def run_supplemental_full_validation(session: Session, strategy: StrategyVersion
     dataset = latest_dataset(session)
     if not dataset or "fixture" in dataset.source.lower():
         raise ValueError("A registered real MT5 XAUUSD historical dataset is required")
-    asset = next((item for item in dataset.bars if item.timeframe == "M1"), None)
+    asset = next((item for item in dataset.bars if item.timeframe == config["timeframe"]), None)
     if not asset:
-        raise ValueError("Registered M1 dataset is unavailable")
+        raise ValueError(f"Registered {config['timeframe']} dataset is unavailable")
     fingerprint = sha256(json.dumps({"kind": "SUPPLEMENTAL_FULL_HISTORICAL_V1", "strategy_checksum": strategy.checksum, "original_backtest_fingerprint": original.fingerprint, "dataset_fingerprint": dataset.fingerprint, "config": config, "kernel": "SPRINT04_SHARED_KERNEL_V3_WITH_BACKTEST_DIAGNOSTICS_V1"}, sort_keys=True).encode()).hexdigest()
     existing = session.scalar(select(SupplementalHistoricalValidation).where(SupplementalHistoricalValidation.fingerprint == fingerprint))
     if existing:
@@ -420,34 +427,36 @@ def run_backtest(session: Session, payload: dict[str, Any]) -> tuple[BacktestRun
     dataset = latest_dataset(session)
     if not dataset:
         raise ValueError("Registered XAUUSD dataset is unavailable")
-    asset = next((item for item in dataset.bars if item.timeframe == "M1"), None)
+    # ARK-S27-02: the bars a strategy trades on are the ones its contract names.
+    execution_timeframe = config["timeframe"]
+    asset = next((item for item in dataset.bars if item.timeframe == execution_timeframe), None)
     if not asset:
-        raise ValueError("Registered M1 dataset is unavailable")
+        raise ValueError(f"Registered {execution_timeframe} dataset is unavailable")
     # Quick remains an interactive, bounded latest-5,000-bar experiment.
     bars = read_bars(asset, start=None, end=None, limit=5000, latest=True)
     generic_evaluator = None
     generic_artifact = None
     if generic_contract:
         from .completed_candle_evaluator import build
-        requested = {"M1"}
+        requested = {execution_timeframe}
         def timeframes(rule: dict) -> set[str]:
             if rule["block_id"] in {"ALL_OF", "ANY_OF"}:
                 return set().union(*(timeframes(item) for item in rule["children"]))
             if rule["block_id"] == "NOT":
                 return timeframes(rule["child"])
-            return {rule.get("timeframe", "M1")}
+            return {rule.get("timeframe", execution_timeframe)}
         for section in ("context_rules", "setup_rules", "trigger_rules"):
             for rule in generic_contract[section]: requested.update(timeframes(rule))
         assets = {item.timeframe: item for item in dataset.bars}
         lineage_assets: dict[str, dict[str, Any]] = {}
-        bars_by_timeframe = {"M1": bars}
+        bars_by_timeframe = {execution_timeframe: bars}
         start = bars[0]["timestamp"] - timedelta(days=30) if bars else None
         for timeframe in sorted(requested):
             context_asset = assets.get(timeframe)
             if not context_asset:
                 raise ValueError(f"CAPABILITY_NOT_SUPPORTED: registered {timeframe} context asset is unavailable")
             lineage_assets[timeframe] = {"dataset_id": dataset.id, "dataset_fingerprint": dataset.fingerprint, "timeframe": timeframe, "row_count": context_asset.row_count, "range_start": context_asset.range_start.isoformat(), "range_end": context_asset.range_end.isoformat()}
-            if timeframe != "M1":
+            if timeframe != execution_timeframe:
                 bars_by_timeframe[timeframe] = read_bars(context_asset, start=start, end=None, limit=10_000)
         generic_evaluator, generic_artifact = build(generic_contract, bars_by_timeframe, lineage_assets)
     fingerprint_input: dict[str, Any] = {"dataset": dataset.fingerprint, "config": config, "strategy_version_id": strategy_version_id}
@@ -485,7 +494,7 @@ def run_backtest(session: Session, payload: dict[str, Any]) -> tuple[BacktestRun
             windows.append({"start": str(bars[start]["timestamp"]), "end": str(bars[start + window_size - 1]["timestamp"]), "metrics": _metrics(_simulate(bars[start:start + window_size], config, generic_evaluator.decide if generic_evaluator else None))})
     regime_validation = build_historical_regime_validation(bars, trades)
     trades = regime_validation.pop("trades")
-    result = {"dataset_id": dataset.id, "dataset_fingerprint": dataset.fingerprint, "strategy_lineage": strategy_lineage, "execution_resolution": "M1_BROAD", "ambiguity_policy": "STOP_FIRST", "metrics": _metrics(trades), "split": {"method": "chronological_70_30", "split_timestamp": split_time, "in_sample": _metrics(in_sample), "out_of_sample": _metrics(out_sample)}, "walk_forward": {"available": bool(windows), "windows": windows, "reason": None if windows else "At least 30 M1 bars are required for rolling windows."}, "cost_sensitivity": _cost_sensitivity(bars, config, generic_evaluator.decide if generic_evaluator else None), "regime_validation": regime_validation, "warning": "Backtest experiment only. It is not a strategy approval, trade signal, or MT5 instruction."}
+    result = {"dataset_id": dataset.id, "dataset_fingerprint": dataset.fingerprint, "strategy_lineage": strategy_lineage, "execution_resolution": config["execution_resolution"], "ambiguity_policy": "STOP_FIRST", "metrics": _metrics(trades), "split": {"method": "chronological_70_30", "split_timestamp": split_time, "in_sample": _metrics(in_sample), "out_of_sample": _metrics(out_sample)}, "walk_forward": {"available": bool(windows), "windows": windows, "reason": None if windows else f"At least 30 {execution_timeframe} bars are required for rolling windows."}, "cost_sensitivity": _cost_sensitivity(bars, config, generic_evaluator.decide if generic_evaluator else None), "regime_validation": regime_validation, "warning": "Backtest experiment only. It is not a strategy approval, trade signal, or MT5 instruction."}
     run = BacktestRun(dataset_id=dataset.id, fingerprint=fingerprint, configuration=config, result=result, trades=trades, strategy_version_id=strategy_version_id)
     session.add(run); session.commit(); session.refresh(run)
     return run, False

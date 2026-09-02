@@ -10,7 +10,6 @@ import Link from "next/link";
 const MAIN: Array<[string, string, string]> = [
   ["/", "Data Pasar", "Impor dan sinkronisasi data MetaTrader"],
   ["/explore", "Eksplorasi Market", "Jam berapa sering merah, pola naik-turun, tanpa strategi"],
-  ["/discovery", "Eksplorasi Pola", "Cari pola historis dan kondisi yang mirip"],
   ["/strategies", "Strategi", "Susun dan simpan kontrak strategi"],
   ["/backtest", "Backtest", "Uji strategi ke data historis"],
   ["/capital", "Simulasi Modal", "Berapa hasilnya kalau dipakai dengan modal segini"],
@@ -19,6 +18,7 @@ const MAIN: Array<[string, string, string]> = [
 
 const ADVANCED: Array<[string, string]> = [
   ["/command-center", "Command Center · pantau EA di MT5"],
+  ["/discovery", "Eksplorasi Pola · 4 pola bawaan, digantikan Eksplorasi Market"],
   ["/research", "Research Lab · rumuskan pertanyaan riset"],
   ["/variants", "Variant Explorer · bandingkan variasi parameter"],
   ["/edge-search", "Edge Search · kampanye pencarian massal"],

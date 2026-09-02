@@ -54,7 +54,7 @@ from .edge_search_verification import latest as latest_edge_search_verification,
 from .edge_search_final_oos import assess_conclusion as assess_edge_search_conclusion, list_outcomes as list_edge_search_outcomes, open_and_evaluate as open_edge_search_final_oos, record_conclusion as record_edge_search_conclusion, serialize_conclusion as serialize_edge_search_conclusion, serialize_outcome as serialize_edge_search_outcome
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
 from .strategy_contracts import validate as validate_strategy_contract
-from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
+from .strategy_capabilities import assess as assess_strategy_capability, confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
 from .strategy_compiler import compile_contract as compile_strategy_contract
 from .strategy_evaluator_verification import get as get_strategy_evaluator_verification, materialize as materialize_strategy_evaluator_verification, serialize as serialize_strategy_evaluator_verification
 from .deployments import adapter_preflight, create_deployment, poll_ack, preflight, rollback, serialize as serialize_deployment, stop as stop_deployment
@@ -1868,8 +1868,24 @@ def update_strategy_candidate_route(candidate_id:str,payload:dict,session:Sessio
     except ValueError as error: raise HTTPException(422,str(error)) from error
 
 @app.post("/api/v1/strategy-candidates/validate")
-def validate_strategy_candidate(payload:dict)->dict:
-    return validate_strategy_contract(payload.get("strategy_contract"))
+def validate_strategy_candidate(payload: dict) -> dict:
+    """ARK-S27-03.  Judge a contract with the validator that actually governs it.
+
+    This route ran the legacy Strategy Factory V1 validator, whose block
+    registry holds ten blocks and has not grown since Sprint 12. Every generic
+    contract the UI could build -- including the `SMA M5` expression shipped in
+    Sprint 16 -- was therefore refused here as "unknown block", and since
+    "Confirm immutable version" is gated on this answer, the generic half of the
+    Strategy Factory was unreachable from the screen.
+
+    `assess` is the same function the contract is stored and executed under, so
+    the button now answers the question the Owner is actually asking. The legacy
+    report is still returned beside it: a legacy contract is judged by both, and
+    saying so is cheaper than explaining later why the two disagree.
+    """
+    contract = payload.get("strategy_contract")
+    report = assess_strategy_capability(contract)
+    return {**report, "legacy_validation": validate_strategy_contract(contract)}
 
 
 @app.get("/api/v1/strategy-capabilities")
