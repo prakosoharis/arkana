@@ -5,10 +5,11 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from .models import Deployment, StrategyVersion
-from .deployment_contract import decimal_wire, render
+from .deployment_contract import decimal_wire, parse_and_validate, render
 
 CONFIG_RELATIVE = Path("ARKANA") / "strategy.ini"
 TELEMETRY_RELATIVE = Path("ARKANA") / "telemetry.csv"
+STOPPED = "STOPPED"
 
 def config_text(strategy: StrategyVersion, broker_symbol: str) -> tuple[str, str]:
     raw = strategy.configuration
@@ -77,6 +78,32 @@ def rollback(session: Session, deployment: Deployment) -> Deployment:
     if not previous or previous.status != "DEMO_ACTIVE": raise ValueError("previous deployment is not a valid DEMO configuration")
     write_config(Path(previous.config_path),previous.config_text)
     deployment.status="ROLLED_BACK"; deployment.acknowledgement={"rollback_to":previous.id,"checksum":previous.config_checksum}; session.commit(); session.refresh(deployment); return deployment
+
+def stop(session: Session, deployment: Deployment, reason: str) -> Deployment:
+    """ARK-S26-00.  A deployment nobody is running must stop claiming DEMO_ACTIVE.
+
+    Rollback is the wrong instrument here.  It swaps the previous configuration
+    back in, which leaves `enabled=true` on disk and another deployment still
+    active -- it changes *which* strategy is armed, never *whether* one is.
+
+    Stopping writes the same contract with `enabled=false`.  The EA's own guard
+    refuses to trade on that, so the stop is expressed in the file the terminal
+    actually reads rather than only in this database.  A deployment whose config
+    directory no longer exists (a pytest artifact) is still stopped, and the
+    record says the file was not touched instead of pretending it was.
+    """
+    if deployment.status != "DEMO_ACTIVE": raise ValueError("only a DEMO_ACTIVE deployment can be stopped")
+    if not reason.strip(): raise ValueError("a stop reason is required")
+    values = parse_and_validate(deployment.config_text, deployment.broker_symbol or "")
+    values.pop("checksum"); values["enabled"] = "false"
+    text, checksum = render(values)
+    path = Path(deployment.config_path); written = path.parent.is_dir()
+    if written: write_config(path, text)
+    acknowledgement = dict(deployment.acknowledgement or {})
+    acknowledgement.update({"stopped_reason": reason.strip(), "disabled_config_checksum": checksum, "armed_config_checksum": deployment.config_checksum, "config_disabled_on_disk": written})
+    deployment.status = STOPPED; deployment.acknowledgement = acknowledgement
+    session.commit(); session.refresh(deployment); return deployment
+
 
 def serialize(item: Deployment) -> dict:
     # ARK-S24-09: the operational-health check already knows a pytest artifact

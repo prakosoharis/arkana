@@ -131,6 +131,18 @@ def classify(session: Session, strategy: StrategyVersion) -> dict[str, Any]:
     }
 
 
+def summary(session: Session, strategy: StrategyVersion) -> dict[str, Any]:
+    """The three facts a strategy picker needs, in plain terms.
+
+    `status` alone is misleading: six fixture rows read VALIDATED. `is_fixture`
+    is what separates a record built from real market data from one built to
+    exercise a code path.
+    """
+    result = classify(session, strategy)
+    return {"classification": result["classification"], "is_fixture": result["is_fixture"],
+            "may_satisfy_generic_gate": result["may_satisfy_generic_gate"], "reasons": result["reasons"]}
+
+
 def is_real(session: Session, strategy: StrategyVersion) -> bool:
     """The gate helper: only a REAL_LINEAGE record may satisfy a generic gate."""
     return classify(session, strategy)["may_satisfy_generic_gate"]

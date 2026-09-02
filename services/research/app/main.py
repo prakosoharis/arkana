@@ -46,7 +46,7 @@ from .edge_search import create as create_edge_search_campaign, list_all as list
 from .edge_search_execution import execute as execute_edge_search_campaign, progress as edge_search_progress, survivors as edge_search_survivors
 from .operational_health import assess as assess_operational_health
 from .sprint23_acceptance import latest as latest_sprint23_acceptance, materialize as materialize_sprint23_acceptance, serialize as serialize_sprint23_acceptance, verify as verify_sprint23_acceptance
-from .strategy_lineage import materialize_all as materialize_strategy_lineage, overview as strategy_lineage_overview, serialize as serialize_strategy_lineage, latest_for as latest_strategy_lineage
+from .strategy_lineage import materialize_all as materialize_strategy_lineage, overview as strategy_lineage_overview, serialize as serialize_strategy_lineage, latest_for as latest_strategy_lineage, summary as lineage_summary
 from .edge_search_verification import latest as latest_edge_search_verification, materialize as materialize_edge_search_verification, owner_overview as edge_search_owner_overview, serialize as serialize_edge_search_verification
 from .edge_search_final_oos import assess_conclusion as assess_edge_search_conclusion, list_outcomes as list_edge_search_outcomes, open_and_evaluate as open_edge_search_final_oos, record_conclusion as record_edge_search_conclusion, serialize_conclusion as serialize_edge_search_conclusion, serialize_outcome as serialize_edge_search_outcome
 from .strategies import approve_candidate, create_candidate, create_strategy_candidate, update_strategy_candidate, confirm_strategy_version, revision, serialize_strategy
@@ -54,7 +54,7 @@ from .strategy_contracts import validate as validate_strategy_contract
 from .strategy_capabilities import confirm as confirm_capability_assessment, materialize as materialize_capability_assessment, registry as strategy_capability_registry, serialize as serialize_capability_assessment
 from .strategy_compiler import compile_contract as compile_strategy_contract
 from .strategy_evaluator_verification import get as get_strategy_evaluator_verification, materialize as materialize_strategy_evaluator_verification, serialize as serialize_strategy_evaluator_verification
-from .deployments import adapter_preflight, create_deployment, poll_ack, preflight, rollback, serialize as serialize_deployment
+from .deployments import adapter_preflight, create_deployment, poll_ack, preflight, rollback, serialize as serialize_deployment, stop as stop_deployment
 from . import settings
 from .settings import DATA_ROOT, MAX_BARS_PER_REQUEST
 from .telemetry import serialize as serialize_journal_event, snapshot as telemetry_snapshot, sync as sync_telemetry
@@ -1801,8 +1801,12 @@ def list_supplemental_historical_validations(strategy_version_id: str, session: 
 
 @app.get("/api/v1/strategy-versions")
 def list_strategy_versions(session: Session = Depends(get_session)) -> dict:
+    # ARK-S26-00: six fixtures carry the status VALIDATED, which every strategy
+    # picker rendered as if it were real evidence. The classifier already knows
+    # they are fixtures; the list simply never asked it. Lineage travels with the
+    # row rather than living on one dedicated screen.
     items = session.scalars(select(StrategyVersion).order_by(StrategyVersion.created_at.desc())).all()
-    return {"strategy_versions": [serialize_strategy(item) for item in items]}
+    return {"strategy_versions": [{**serialize_strategy(item), "lineage": lineage_summary(session, item)} for item in items]}
 
 @app.post("/api/v1/strategy-candidates")
 def create_strategy_candidate_route(payload: dict, session: Session = Depends(get_session)) -> dict:
@@ -1954,6 +1958,15 @@ def deployment_rollback(deployment_id: str, session: Session = Depends(get_sessi
     item=session.get(Deployment,deployment_id)
     if not item: raise HTTPException(404,"deployment not found")
     try: return serialize_deployment(rollback(session,item))
+    except ValueError as error: raise HTTPException(422,str(error)) from error
+
+
+@app.post("/api/v1/deployments/{deployment_id}/stop")
+def deployment_stop(deployment_id: str, payload: dict | None = None, session: Session = Depends(get_session)) -> dict:
+    item=session.get(Deployment,deployment_id)
+    if not item: raise HTTPException(404,"deployment not found")
+    reason=str((payload or {}).get("reason","")).strip() or "Owner stopped the deployment"
+    try: return serialize_deployment(stop_deployment(session,item,reason))
     except ValueError as error: raise HTTPException(422,str(error)) from error
 
 

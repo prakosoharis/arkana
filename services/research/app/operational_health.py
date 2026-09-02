@@ -102,8 +102,12 @@ def _heartbeat(session: Session, now: datetime) -> dict[str, Any]:
     active = [item for item in declared if not _is_fixture_deployment(item)]
     latest = session.scalar(select(JournalEvent).order_by(JournalEvent.observed_at.desc()))
     if not latest:
+        # ARK-S26-00: the two branches of one check emitted different keys, so a
+        # reader had to know which branch it was in before it could ask which
+        # deployments were implicated.
         evidence = {"observed_events": 0, "last_observed_at": NOT_REPORTED, "age_seconds": NOT_REPORTED,
-                    "active_demo_deployments": len(active), "fixture_deployments_excluded": len(fixtures)}
+                    "active_demo_deployments": len(active), "active_deployment_ids": [item.id for item in active[:20]],
+                    "fixture_deployments_excluded": len(fixtures), "fixture_deployment_ids": [item.id for item in fixtures[:20]]}
         severity = CRITICAL if active else WARNING
         detail = ("Deployments are DEMO_ACTIVE but no MT5 telemetry has ever been observed."
                   if active else
