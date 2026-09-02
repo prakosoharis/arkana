@@ -19,10 +19,11 @@ trade. Reading the fragment glob any other way would let the two disagree.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import json
 from typing import Any, Callable, Iterable
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -30,8 +31,51 @@ from sqlalchemy.orm import Session
 from .market_data import iter_bars, latest_dataset
 from .models import Dataset, DatasetBarAsset, MarketExploration
 
-PROTOCOL_VERSION = "MARKET_EXPLORATION_V1"
+PROTOCOL_VERSION = "MARKET_EXPLORATION_V2"
 TIMEFRAMES = ("M1", "M5", "M15", "M30", "H1", "H4")
+
+
+# ---------------------------------------------------------------- the clock
+
+# ARK-S26-02. Bar timestamps are broker server time. The Owner reads the screen
+# in WIB, so "12:40" meant nothing until the two were related, and relating them
+# by a single fixed offset would have been wrong for four months of every year.
+#
+# The offset was not assumed. It was measured, twice, from this dataset:
+#
+#   1. The US 08:30 New York release window is the most volatile minute in the
+#      history. It sits at 15:30 server time in summer months *and* in winter
+#      months. A fixed-offset server would place it an hour apart by season, so
+#      the server clock moves with US daylight saving.
+#   2. Weekly open (Mon 01:00) and close (Fri 23:59) are identical across
+#      seasons, which the same rule explains.
+#
+# Anchored on 2026-09-02, when the Owner reported 23:51 WIB against a 19:51 bar:
+# server = UTC+3 under US DST, therefore UTC+2 outside it.
+NEW_YORK = ZoneInfo("America/New_York")
+BROKER_UTC_OFFSET_DST = timedelta(hours=3)
+BROKER_UTC_OFFSET_STANDARD = timedelta(hours=2)
+WIB_UTC_OFFSET = timedelta(hours=7)
+TIMEZONES = ("BROKER", "WIB")
+
+
+def broker_to_utc(server: datetime) -> datetime:
+    """Naive broker server time to a naive UTC instant.
+
+    Resolved provisionally at UTC+3 and corrected to UTC+2 when New York was on
+    standard time. The one hour either side of a US transition is genuinely
+    ambiguous in server-time-only data; it is disclosed rather than hidden.
+    """
+    provisional = server - BROKER_UTC_OFFSET_DST
+    if provisional.replace(tzinfo=timezone.utc).astimezone(NEW_YORK).dst():
+        return provisional
+    return server - BROKER_UTC_OFFSET_STANDARD
+
+
+def to_display(server: datetime, display_timezone: str) -> datetime:
+    if display_timezone == "BROKER":
+        return server
+    return broker_to_utc(server) + WIB_UTC_OFFSET
 
 # A rate computed from a handful of bars is noise wearing a percentage sign.
 # Below this the row is still reported -- hiding it would be its own distortion
@@ -147,13 +191,20 @@ def slot_label(slot: int) -> str:
 
 # ------------------------------------------------------------------ one pass
 
-def measure_stream(chunks: Iterable[list[dict]]) -> dict[str, Any]:
+def measure_stream(chunks: Iterable[list[dict]], display_timezone: str = "BROKER") -> dict[str, Any]:
     """Every question answered in a single traversal.
 
     A pass per question would cost a full read of a 3M-bar asset each time and,
     worse, two answers could end up describing different bars if the dataset
     grew between them.
+
+    The clock is applied here rather than to the finished labels: the broker's
+    offset to WIB is +4 for part of the year and +5 for the rest, so a server
+    slot does not map onto one WIB slot and relabelling afterwards would be
+    arithmetic on a number that no longer means what it says.
     """
+    if display_timezone not in TIMEZONES:
+        raise ValueError(f"timezone must be one of {', '.join(TIMEZONES)}")
     slot_years: dict[int, dict[int, Bucket]] = defaultdict(lambda: defaultdict(Bucket))
     day_years: dict[int, dict[int, Bucket]] = defaultdict(lambda: defaultdict(Bucket))
     follow: dict[str, Bucket] = defaultdict(Bucket)
@@ -173,9 +224,11 @@ def measure_stream(chunks: Iterable[list[dict]]) -> dict[str, Any]:
 
     first = last = None
 
+    shift = display_timezone != "BROKER"
     for chunk in chunks:
         for bar in chunk:
-            timestamp: datetime = bar["timestamp"]
+            server: datetime = bar["timestamp"]
+            timestamp = to_display(server, display_timezone) if shift else server
             open_ = bar["open"]; high = bar["high"]; low = bar["low"]; close = bar["close"]
             if first is None:
                 first = timestamp
@@ -245,9 +298,9 @@ def _runs(counts: dict[int, int], moves: dict[int, list[float]]) -> dict[str, An
 
 # --------------------------------------------------------------- persistence
 
-def fingerprint(dataset_fingerprint: str, timeframe: str, result: dict[str, Any]) -> str:
+def fingerprint(dataset_fingerprint: str, timeframe: str, display_timezone: str, result: dict[str, Any]) -> str:
     return sha256(json.dumps({"protocol": PROTOCOL_VERSION, "dataset_fingerprint": dataset_fingerprint,
-                              "timeframe": timeframe, "result": result},
+                              "timeframe": timeframe, "display_timezone": display_timezone, "result": result},
                              sort_keys=True, default=str).encode()).hexdigest()
 
 
@@ -258,41 +311,47 @@ def asset_for(dataset: Dataset, timeframe: str) -> DatasetBarAsset:
     return asset
 
 
-def existing(session: Session, dataset: Dataset, timeframe: str) -> MarketExploration | None:
+def existing(session: Session, dataset: Dataset, timeframe: str,
+             display_timezone: str = "BROKER") -> MarketExploration | None:
     """A measurement is bound to the dataset fingerprint it read.
 
     An MT5 sync appends bars and rewrites that fingerprint, so a stored
     measurement stops matching and is recomputed rather than served stale. This
     is the ARK-S25-01 rule applied where the result is cached instead of where
-    it is verified.
+    it is verified. The clock is part of the key for the same reason: the same
+    bars grouped on a different clock are a different measurement.
     """
     return session.scalar(select(MarketExploration).where(
         MarketExploration.dataset_id == dataset.id,
         MarketExploration.dataset_fingerprint == dataset.fingerprint,
         MarketExploration.timeframe == timeframe,
+        MarketExploration.display_timezone == display_timezone,
         MarketExploration.protocol_version == PROTOCOL_VERSION))
 
 
-def measure(session: Session, *, timeframe: str, symbol: str = "XAUUSD",
+def measure(session: Session, *, timeframe: str, symbol: str = "XAUUSD", display_timezone: str = "BROKER",
             refresh: bool = False) -> tuple[MarketExploration, bool]:
     if timeframe not in TIMEFRAMES:
         raise ValueError(f"timeframe must be one of {', '.join(TIMEFRAMES)}")
+    if display_timezone not in TIMEZONES:
+        raise ValueError(f"timezone must be one of {', '.join(TIMEZONES)}")
     dataset = latest_dataset(session, symbol)
     if dataset is None:
         raise ValueError(f"no registered dataset for {symbol}")
     if not refresh:
-        stored = existing(session, dataset, timeframe)
+        stored = existing(session, dataset, timeframe, display_timezone)
         if stored is not None:
             return stored, True
     asset = asset_for(dataset, timeframe)
-    result = measure_stream(iter_bars(asset, chunk_size=50_000))
+    result = measure_stream(iter_bars(asset, chunk_size=50_000), display_timezone)
     result["asset"] = {"timeframe": timeframe, "registered_row_count": asset.row_count,
                        "range_start": asset.range_start.isoformat() if asset.range_start else None,
                        "range_end": asset.range_end.isoformat() if asset.range_end else None}
     record = MarketExploration(
         dataset_id=dataset.id, dataset_fingerprint=dataset.fingerprint, timeframe=timeframe,
-        protocol_version=PROTOCOL_VERSION, bars_measured=result["coverage"]["bars"],
-        fingerprint=fingerprint(dataset.fingerprint, timeframe, result), result=result)
+        display_timezone=display_timezone, protocol_version=PROTOCOL_VERSION,
+        bars_measured=result["coverage"]["bars"],
+        fingerprint=fingerprint(dataset.fingerprint, timeframe, display_timezone, result), result=result)
     session.add(record); session.commit(); session.refresh(record)
     return record, False
 
@@ -315,22 +374,46 @@ def _trimmed(result: dict[str, Any]) -> dict[str, Any]:
     return trimmed
 
 
+def clock_disclosure(display_timezone: str, dataset: Dataset | None = None) -> dict[str, Any]:
+    """What clock the labels are on, and what was assumed to get there."""
+    common = {"display_timezone": display_timezone,
+              "dataset_timezone_status": dataset.timezone_status if dataset else "UNKNOWN",
+              "broker_offset_utc": {"us_daylight_saving": "+03:00", "us_standard_time": "+02:00"},
+              "measured_from": ("Jendela rilis data AS pukul 08:30 New York adalah menit paling bergejolak "
+                                "dalam sejarah data ini, dan letaknya tetap di 15:30 jam broker baik di bulan "
+                                "musim panas maupun musim dingin. Jam server broker karena itu ikut berpindah "
+                                "mengikuti daylight saving Amerika."),
+              "ambiguous_window": ("Satu jam di sekitar pergantian daylight saving Amerika (Maret dan November) "
+                                   "tidak bisa dipastikan dari data yang hanya menyimpan jam server."),
+              }
+    if display_timezone == "WIB":
+        return {**common, "source": "WIB",
+                "note": ("Jam di tabel ini sudah dikonversi ke WIB. Selisihnya bukan angka tetap: "
+                         "WIB = jam broker + 4 jam saat daylight saving Amerika aktif (sekitar Maret-November), "
+                         "dan + 5 jam di luar itu."),
+                "caveat": ("Karena WIB tidak ikut daylight saving, satu peristiwa yang jamnya tetap di Amerika "
+                           "akan tampak berpindah satu jam antar musim pada tampilan WIB. Itu memang kenyataannya, "
+                           "bukan kesalahan hitung.")}
+    return {**common, "source": "BROKER_TIME",
+            "note": ("Jam di tabel ini adalah jam broker persis seperti tertulis di data MT5. "
+                     "Untuk membacanya dalam WIB, tambahkan 4 jam saat daylight saving Amerika aktif "
+                     "dan 5 jam di luar itu — atau pilih tampilan WIB."),
+            "caveat": ("Jam broker menyembunyikan pergeseran musiman, sehingga peristiwa yang jamnya tetap "
+                       "di Amerika akan tampak stabil di sini.")}
+
+
 def serialize(record: MarketExploration, dataset: Dataset | None = None) -> dict[str, Any]:
     return {
         "id": record.id,
         "protocol_version": record.protocol_version,
         "fingerprint": record.fingerprint,
         "timeframe": record.timeframe,
+        "display_timezone": record.display_timezone,
         "dataset_id": record.dataset_id,
         "dataset_fingerprint": record.dataset_fingerprint,
         "bars_measured": record.bars_measured,
         "created_at": record.created_at.isoformat() + "Z",
-        "clock": {
-            "source": "BROKER_TIME",
-            "timezone_status": dataset.timezone_status if dataset else "UNKNOWN",
-            "note": ("Jam di tabel ini adalah jam broker persis seperti tertulis di data MT5. "
-                     "Bukan WIB dan bukan UTC, kecuali broker Anda memang memakainya."),
-        },
+        "clock": clock_disclosure(record.display_timezone, dataset),
         "policy": {"minimum_samples": MINIMUM_SAMPLES, "minimum_years": MINIMUM_YEARS,
                    "size_window": SIZE_WINDOW, "large_multiple": LARGE_MULTIPLE,
                    "small_multiple": SMALL_MULTIPLE},

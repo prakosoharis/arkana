@@ -196,13 +196,15 @@ def test_the_serialized_record_names_the_clock_it_measured():
     """"12:40" is meaningless until the Owner knows whose noon it is."""
     record = type("Record", (), {
         "id": "x", "protocol_version": explorer.PROTOCOL_VERSION, "fingerprint": "f" * 64,
-        "timeframe": "M5", "dataset_id": "d", "dataset_fingerprint": "a" * 64, "bars_measured": 10,
+        "timeframe": "M5", "display_timezone": "BROKER", "dataset_id": "d",
+        "dataset_fingerprint": "a" * 64, "bars_measured": 10,
         "created_at": datetime(2026, 1, 1), "result": {"coverage": {"bars": 10}}})()
     dataset = type("Dataset", (), {"timezone_status": "UNVERIFIED_BROKER_TIME"})()
     payload = explorer.serialize(record, dataset)
+    assert payload["display_timezone"] == "BROKER"
     assert payload["clock"]["source"] == "BROKER_TIME"
-    assert payload["clock"]["timezone_status"] == "UNVERIFIED_BROKER_TIME"
-    assert "bukan WIB" in payload["clock"]["note"].lower() or "Bukan WIB" in payload["clock"]["note"]
+    assert payload["clock"]["dataset_timezone_status"] == "UNVERIFIED_BROKER_TIME"
+    assert "jam broker" in payload["clock"]["note"].lower()
 
 
 # ---- the safety boundary ---------------------------------------------------
@@ -246,9 +248,84 @@ def test_the_wire_payload_trims_per_year_without_losing_the_stored_record():
                                                      "mean_absolute_body": 0.1, "sufficient_sample": False}}}]}
     record = type("Record", (), {
         "id": "x", "protocol_version": explorer.PROTOCOL_VERSION, "fingerprint": "f" * 64,
-        "timeframe": "M1", "dataset_id": "d", "dataset_fingerprint": "a" * 64, "bars_measured": 1,
+        "timeframe": "M1", "display_timezone": "WIB", "dataset_id": "d",
+        "dataset_fingerprint": "a" * 64, "bars_measured": 1,
         "created_at": datetime(2026, 1, 1), "result": stored})()
     payload = explorer.serialize(record, None)
     assert set(payload["time_of_day"][0]["per_year"]["2024"]) == set(explorer.WIRE_PER_YEAR)
     # The ledger row itself is untouched: trimming is a wire concern only.
     assert "mean_absolute_body" in stored["time_of_day"][0]["per_year"]["2024"]
+
+
+# ---- ARK-S26-02 the clock -------------------------------------------------
+
+def test_the_broker_to_wib_offset_is_not_a_constant():
+    """The whole reason the conversion happens before bucketing rather than on
+    the finished labels. A single fixed shift is wrong for four months a year."""
+    summer = datetime(2026, 9, 2, 19, 51)   # the Owner's own observation
+    winter = datetime(2026, 1, 15, 19, 51)
+    assert explorer.to_display(summer, "WIB") == datetime(2026, 9, 2, 23, 51)
+    assert explorer.to_display(winter, "WIB") == datetime(2026, 1, 15, 23, 51) + timedelta(hours=1)
+    assert explorer.to_display(summer, "WIB") - summer == timedelta(hours=4)
+    assert explorer.to_display(winter, "WIB") - winter == timedelta(hours=5)
+
+
+def test_the_owner_reported_moment_converts_exactly():
+    """2026-09-02: the Owner read 23:51 WIB against a 19:51 bar. Anything else
+    means the anchor is wrong and every time-of-day row is wrong with it."""
+    assert explorer.to_display(datetime(2026, 9, 2, 19, 51), "WIB").strftime("%H:%M") == "23:51"
+
+
+@pytest.mark.parametrize("moment,offset_hours", [
+    (datetime(2026, 3, 2, 12, 0), 5),    # before the US switch
+    (datetime(2026, 3, 20, 12, 0), 4),   # after it
+    (datetime(2026, 10, 20, 12, 0), 4),  # before the November switch
+    (datetime(2026, 11, 20, 12, 0), 5),  # after it
+])
+def test_the_offset_follows_us_daylight_saving_not_the_calendar(moment, offset_hours):
+    assert explorer.to_display(moment, "WIB") - moment == timedelta(hours=offset_hours)
+
+
+def test_broker_time_is_returned_untouched():
+    moment = datetime(2026, 9, 2, 19, 51)
+    assert explorer.to_display(moment, "BROKER") is moment
+
+
+def test_the_same_bars_on_two_clocks_are_two_different_measurements():
+    """A 12:40 broker row and a 12:40 WIB row describe different bars. Serving
+    one for the other is the failure this whole checkpoint exists to prevent."""
+    bars = _series([1, -1] * 100, start=datetime(2024, 6, 3, 8, 0), step=1)
+    broker = explorer.measure_stream([bars], "BROKER")
+    wib = explorer.measure_stream([bars], "WIB")
+    assert {row["label"] for row in broker["time_of_day"]} != {row["label"] for row in wib["time_of_day"]}
+    # Same bars, so the totals cannot move -- only the grouping.
+    assert broker["coverage"]["bars"] == wib["coverage"]["bars"]
+    assert broker["coverage"]["up"] == wib["coverage"]["up"]
+    assert broker["runs"] == wib["runs"]
+
+
+def test_a_measurement_on_an_unknown_clock_is_refused():
+    with pytest.raises(ValueError, match="timezone must be one of"):
+        explorer.measure_stream([_series([1])], "WITA")
+
+
+def test_the_wib_disclosure_states_that_the_offset_moves():
+    disclosure = explorer.clock_disclosure("WIB", None)
+    assert disclosure["source"] == "WIB"
+    assert "+ 4 jam" in disclosure["note"] and "+ 5 jam" in disclosure["note"]
+    assert disclosure["broker_offset_utc"] == {"us_daylight_saving": "+03:00", "us_standard_time": "+02:00"}
+    assert "15:30" in disclosure["measured_from"]
+    assert disclosure["ambiguous_window"]
+
+
+def test_the_broker_disclosure_tells_the_owner_how_to_read_it_in_wib():
+    disclosure = explorer.clock_disclosure("BROKER", None)
+    assert disclosure["source"] == "BROKER_TIME"
+    assert "4 jam" in disclosure["note"] and "5 jam" in disclosure["note"]
+
+
+def test_the_api_refuses_an_unknown_timezone():
+    with TestClient(app) as client:
+        response = client.get("/api/v1/market-explorer/M5", params={"timezone": "WITA"})
+        assert response.status_code == 422
+        assert "timezone must be one of" in response.json()["detail"]

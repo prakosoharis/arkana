@@ -40,3 +40,4 @@
 .explorer-runs table{margin-top:10px}
 .timeframes button small{color:var(--muted);font-size:9px}
 @media(max-width:850px){.explorer-runs{grid-template-columns:1fr}}
+.explorer-zones{margin-top:14px}

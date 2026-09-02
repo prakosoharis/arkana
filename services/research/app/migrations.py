@@ -58,6 +58,8 @@ MIGRATION_055 = "055_strategy_lineage_classification"
 MIGRATION_056 = "056_sprint23_acceptance_verifier"
 MIGRATION_057 = "057_edge_search_trial_breadth"
 MIGRATION_058 = "058_market_explorations"
+MIGRATION_059 = "059_market_exploration_timezone"
+MIGRATION_060 = "060_market_exploration_timezone_key"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -951,6 +953,43 @@ def _migration_058(connection) -> None:
         connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_market_explorations_{column} ON market_explorations({column})"))
 
 
+
+def _migration_059(connection) -> None:
+    """ARK-S26-02 the clock a measurement was grouped on.
+
+    Broker server time and WIB are not a fixed distance apart -- the broker
+    follows US daylight saving and WIB does not -- so the same bars grouped on
+    the two clocks are two different measurements, not one measurement with two
+    labels. Existing rows were all measured on broker time and say so.
+    """
+    if "display_timezone" not in _columns(connection, "market_explorations"):
+        connection.execute(text("ALTER TABLE market_explorations ADD COLUMN display_timezone VARCHAR(16)"))
+        connection.execute(text("UPDATE market_explorations SET display_timezone = 'BROKER' WHERE display_timezone IS NULL"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_market_explorations_display_timezone ON market_explorations(display_timezone)"))
+
+
+
+def _migration_060(connection) -> None:
+    """ARK-S26-02 the uniqueness key must include the clock.
+
+    Migration 059 added the column but left the key at three columns, so the
+    WIB measurement of a timeframe and the broker measurement of the same
+    timeframe collided -- the second one written was rejected outright. The new
+    key is strictly weaker than the old one, so nothing already stored can
+    violate it.
+
+    SQLite builds this table from the model, which already carries the
+    four-column key, so only the migrated Postgres schema needs the rebuild.
+    """
+    if connection.dialect.name != "postgresql":
+        return
+    connection.execute(text("UPDATE market_explorations SET display_timezone = 'BROKER' WHERE display_timezone IS NULL"))
+    connection.execute(text("ALTER TABLE market_explorations ALTER COLUMN display_timezone SET NOT NULL"))
+    connection.execute(text("ALTER TABLE market_explorations DROP CONSTRAINT IF EXISTS uq_market_exploration_lineage"))
+    connection.execute(text("""ALTER TABLE market_explorations ADD CONSTRAINT uq_market_exploration_lineage
+        UNIQUE (dataset_fingerprint, timeframe, display_timezone, protocol_version)"""))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -998,6 +1037,8 @@ MIGRATIONS = (
     (MIGRATION_056, _migration_056),
     (MIGRATION_057, _migration_057),
     (MIGRATION_058, _migration_058),
+    (MIGRATION_059, _migration_059),
+    (MIGRATION_060, _migration_060),
 )
 
 def run_migrations(engine: Engine) -> None:

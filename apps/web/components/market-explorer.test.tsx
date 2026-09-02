@@ -61,6 +61,17 @@ describe("MarketExplorer", () => {
     expect(markup).not.toContain("Deploy");
   });
 
+  it("offers both clocks and says the gap between them is not fixed", () => {
+    // A single stated offset would be wrong for four months of every year, and
+    // the Owner would have no way to know which four.
+    const markup = renderToStaticMarkup(<MarketExplorer />);
+    expect(markup).toContain("Jam WIB");
+    expect(markup).toContain("Jam broker");
+    expect(markup).toContain("4 jam");
+    expect(markup).toContain("5 jam");
+    expect(markup).toContain("daylight saving");
+  });
+
   it("reports a run length beside how often it happened, never alone", () => {
     const markup = renderToStaticMarkup(<RunsPanel runs={{
       UP: { total: 100, mean_length: 1.95, lengths: [{ length: 1, occurrences: 51, closed_runs: 51, mean_move: 0.95 }] },

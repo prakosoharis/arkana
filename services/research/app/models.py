@@ -1206,12 +1206,13 @@ class MarketExploration(Base):
     served as if it still described the data.
     """
     __tablename__ = "market_explorations"
-    __table_args__ = (UniqueConstraint("dataset_fingerprint", "timeframe", "protocol_version",
-                                       name="uq_market_exploration_lineage"),)
+    __table_args__ = (UniqueConstraint("dataset_fingerprint", "timeframe", "display_timezone",
+                                       "protocol_version", name="uq_market_exploration_lineage"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id"), nullable=False, index=True)
     dataset_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     timeframe: Mapped[str] = mapped_column(String(8), nullable=False, index=True)
+    display_timezone: Mapped[str] = mapped_column(String(16), nullable=False, default="BROKER", index=True)
     protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
     fingerprint: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     bars_measured: Mapped[int] = mapped_column(Integer, nullable=False)

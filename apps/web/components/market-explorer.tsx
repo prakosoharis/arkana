@@ -42,10 +42,11 @@ type RunLength = { length: number; occurrences: number; closed_runs: number; mea
 
 type Exploration = {
   timeframe: string;
+  display_timezone: string;
   bars_measured: number;
   fingerprint: string;
   reused: boolean;
-  clock: { source: string; timezone_status: string; note: string };
+  clock: { source: string; display_timezone: string; dataset_timezone_status: string; note: string; caveat: string; measured_from: string; ambiguous_window: string; broker_offset_utc: { us_daylight_saving: string; us_standard_time: string } };
   policy: { minimum_samples: number; minimum_years: number; size_window: number; large_multiple: number; small_multiple: number };
   warning: string;
   coverage: { bars: number; start: string | null; end: string | null; years: number; up_rate: number | null; down_rate: number | null; mean_range: number | null };
@@ -57,7 +58,12 @@ type Exploration = {
   follow_through: Array<{ key: string; bars: number; up_rate: number | null; down_rate: number | null; mean_range: number | null; mean_body: number | null; sufficient_sample: boolean }>;
 };
 
-type TimeframeOption = { timeframe: string; rows: number; measured: boolean };
+type TimeframeOption = { timeframe: string; rows: number; measured: Record<string, boolean> };
+
+const ZONES = [
+  { id: "WIB", label: "Jam WIB", hint: "jam di HP Anda" },
+  { id: "BROKER", label: "Jam broker", hint: "persis seperti di MT5" },
+] as const;
 
 const VIEWS = [
   { id: "time_of_day", label: "Per jam:menit" },
@@ -188,6 +194,7 @@ export function FollowPanel({ rows, minimumSamples, policy }: { rows: Exploratio
 export function MarketExplorer() {
   const [options, setOptions] = useState<TimeframeOption[]>([]);
   const [timeframe, setTimeframe] = useState("M5");
+  const [zone, setZone] = useState<"WIB" | "BROKER">("WIB");
   const [data, setData] = useState<Exploration | null>(null);
   const [view, setView] = useState<ViewId>("time_of_day");
   const [sort, setSort] = useState<SortId>("down");
@@ -209,10 +216,10 @@ export function MarketExplorer() {
     })();
   }, []);
 
-  const load = useCallback(async (target: string, refresh = false) => {
+  const load = useCallback(async (target: string, targetZone: string, refresh = false) => {
     setBusy(true); setMessage(refresh ? "Menghitung ulang dari awal…" : "Membaca data…"); setData(null);
     try {
-      const response = await fetch(`/api/v1/market-explorer/${target}${refresh ? "?refresh=true" : ""}`, { cache: "no-store" });
+      const response = await fetch(`/api/v1/market-explorer/${target}?timezone=${targetZone}${refresh ? "&refresh=true" : ""}`, { cache: "no-store" });
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail ?? "Pengukuran gagal.");
       setData(body);
@@ -244,17 +251,23 @@ export function MarketExplorer() {
 
     <section className="backtest-content">
       <section className="panel backtest-config">
-        <h2>Pilih timeframe</h2>
+        <h2>Pilih timeframe dan jam</h2>
         <div className="timeframes">
           {options.map(option => <button key={option.timeframe} className={option.timeframe === timeframe ? "selected" : ""} onClick={() => setTimeframe(option.timeframe)}>
             {option.timeframe}<small> · {count(option.rows)}</small>
           </button>)}
         </div>
-        <div className="actions explorer-actions">
-          <button className="run-button" disabled={busy} onClick={() => void load(timeframe)}>Ukur {timeframe}</button>
-          <button className="secondary" disabled={busy || !data} onClick={() => void load(timeframe, true)}>Hitung ulang</button>
+        <div className="timeframes explorer-zones">
+          {ZONES.map(item => <button key={item.id} className={item.id === zone ? "selected" : ""} onClick={() => setZone(item.id)}>
+            {item.label}<small> · {item.hint}</small>
+          </button>)}
         </div>
-        <p className="muted">Perhitungan pertama untuk M1 memakan waktu sekitar setengah menit karena harus membaca 3 juta candle. Hasilnya disimpan, jadi berikutnya langsung muncul.</p>
+        <div className="actions explorer-actions">
+          <button className="run-button" disabled={busy} onClick={() => void load(timeframe, zone)}>Ukur {timeframe}</button>
+          <button className="secondary" disabled={busy || !data} onClick={() => void load(timeframe, zone, true)}>Hitung ulang</button>
+        </div>
+        <p className="muted">Jam broker Anda tertinggal <strong>4 jam</strong> dari WIB saat daylight saving Amerika aktif (sekitar Maret–November), dan <strong>5 jam</strong> di luar itu. Karena selisihnya berubah, mengganti pilihan jam berarti menghitung ulang pengelompokannya, bukan sekadar menggeser label.</p>
+        <p className="muted">Perhitungan pertama untuk M1 memakan waktu sekitar setengah menit karena harus membaca 3 juta candle. Hasilnya disimpan per timeframe dan per pilihan jam, jadi berikutnya langsung muncul.</p>
       </section>
 
       {message && <p className="notice">{message}</p>}
@@ -262,7 +275,7 @@ export function MarketExplorer() {
       {data && <>
         <section className="panel result-panel">
           <div className="panel-header"><div>
-            <h2>{data.timeframe} · {count(data.coverage.bars)} candle · {data.coverage.years} tahun</h2>
+            <h2>{data.timeframe} · {count(data.coverage.bars)} candle · {data.coverage.years} tahun · {data.display_timezone === "WIB" ? "jam WIB" : "jam broker"}</h2>
             <p>{data.coverage.start?.slice(0, 10)} sampai {data.coverage.end?.slice(0, 10)} · sidik jari {data.fingerprint.slice(0, 12)}</p>
           </div><span className="mode-badge">{data.reused ? "TERSIMPAN" : "BARU DIHITUNG"}</span></div>
           <section className="command-metrics">
@@ -271,7 +284,15 @@ export function MarketExplorer() {
             <article><small>Rata-rata range</small><strong>{price(data.coverage.mean_range)}</strong></article>
             <article><small>Tahun terukur</small><strong>{data.coverage.years}</strong></article>
           </section>
-          <p className="warning-line">{data.clock.note} Status zona waktu tercatat: <strong>{data.clock.timezone_status}</strong>.</p>
+          <p className="warning-line">{data.clock.note}</p>
+          <details className="discovery-advanced">
+            <summary>Dari mana selisih jam ini diketahui?</summary>
+            <p>{data.clock.measured_from}</p>
+            <p>Jam broker terhadap UTC: <strong>{data.clock.broker_offset_utc.us_daylight_saving}</strong> saat daylight saving Amerika, <strong>{data.clock.broker_offset_utc.us_standard_time}</strong> di luar itu.</p>
+            <p>{data.clock.caveat}</p>
+            <p>{data.clock.ambiguous_window}</p>
+            <p>Status zona waktu yang tercatat di dataset: <code>{data.clock.dataset_timezone_status}</code>.</p>
+          </details>
         </section>
 
         <section className="panel result-panel">
