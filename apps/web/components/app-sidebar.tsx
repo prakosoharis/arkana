@@ -10,6 +10,7 @@ import Link from "next/link";
 const MAIN: Array<[string, string, string]> = [
   ["/", "Data Pasar", "Impor dan sinkronisasi data MetaTrader"],
   ["/explore", "Eksplorasi Market", "Jam berapa sering merah, pola naik-turun, tanpa strategi"],
+  ["/level-touch", "Uji Sentuhan Garis", "Harga menyentuh EMA: duluan TP atau SL?"],
   ["/strategies", "Strategi", "Susun dan simpan kontrak strategi"],
   ["/backtest", "Backtest", "Uji strategi ke data historis"],
   ["/capital", "Simulasi Modal", "Berapa hasilnya kalau dipakai dengan modal segini"],

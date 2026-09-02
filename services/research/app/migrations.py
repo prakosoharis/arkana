@@ -60,6 +60,7 @@ MIGRATION_057 = "057_edge_search_trial_breadth"
 MIGRATION_058 = "058_market_explorations"
 MIGRATION_059 = "059_market_exploration_timezone"
 MIGRATION_060 = "060_market_exploration_timezone_key"
+MIGRATION_061 = "061_level_touch_probes"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -990,6 +991,20 @@ def _migration_060(connection) -> None:
         UNIQUE (dataset_fingerprint, timeframe, display_timezone, protocol_version)"""))
 
 
+
+def _migration_061(connection) -> None:
+    """ARK-S28-01 cached level-touch measurements."""
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS level_touch_probes (
+        id VARCHAR(36) PRIMARY KEY, dataset_id VARCHAR(36) NOT NULL,
+        dataset_fingerprint VARCHAR(64) NOT NULL, timeframe VARCHAR(8) NOT NULL,
+        protocol_version VARCHAR(64) NOT NULL, fingerprint VARCHAR(64) NOT NULL UNIQUE,
+        spec JSON NOT NULL, touches INTEGER NOT NULL, result JSON NOT NULL,
+        created_at TIMESTAMP NOT NULL,
+        FOREIGN KEY(dataset_id) REFERENCES datasets(id))"""))
+    for column in ("dataset_id", "dataset_fingerprint", "timeframe", "fingerprint"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_level_touch_probes_{column} ON level_touch_probes({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -1039,6 +1054,7 @@ MIGRATIONS = (
     (MIGRATION_058, _migration_058),
     (MIGRATION_059, _migration_059),
     (MIGRATION_060, _migration_060),
+    (MIGRATION_061, _migration_061),
 )
 
 def run_migrations(engine: Engine) -> None:

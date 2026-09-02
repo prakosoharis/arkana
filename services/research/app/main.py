@@ -47,6 +47,8 @@ from .edge_search_execution import execute as execute_edge_search_campaign, prog
 from .market_explorer import (TIMEFRAMES as MARKET_EXPLORER_TIMEFRAMES, TIMEZONES as MARKET_EXPLORER_TIMEZONES,
                               clock_disclosure as market_exploration_clock, existing as market_exploration_cached,
                               measure as measure_market, serialize as serialize_market_exploration)
+from .level_touch import (LEVEL_KINDS, TIMEFRAMES as TOUCH_TIMEFRAMES, measure as measure_level_touch,
+                          normalize_spec as normalize_touch_spec, serialize as serialize_level_touch)
 from .operational_health import assess as assess_operational_health
 from .sprint23_acceptance import latest as latest_sprint23_acceptance, materialize as materialize_sprint23_acceptance, serialize as serialize_sprint23_acceptance, verify as verify_sprint23_acceptance
 from .strategy_lineage import materialize_all as materialize_strategy_lineage, overview as strategy_lineage_overview, serialize as serialize_strategy_lineage, latest_for as latest_strategy_lineage, summary as lineage_summary
@@ -1202,6 +1204,32 @@ def get_market_exploration(timeframe: str, timezone: str = "WIB", refresh: bool 
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
     return {**serialize_market_exploration(record, session.get(Dataset, record.dataset_id)), "reused": reused}
+
+
+@app.get("/api/v1/level-touch/options")
+def get_level_touch_options(session: Session = Depends(get_session)) -> dict:
+    dataset = latest_dataset(session)
+    registered = {asset.timeframe: asset.row_count for asset in dataset.bars} if dataset else {}
+    return {"level_kinds": list(LEVEL_KINDS),
+            "timeframes": [{"timeframe": item, "rows": registered[item]} for item in TOUCH_TIMEFRAMES if item in registered],
+            "dataset": {"id": dataset.id, "fingerprint": dataset.fingerprint} if dataset else None}
+
+
+@app.post("/api/v1/level-touch/validate")
+def validate_level_touch(payload: dict) -> dict:
+    try:
+        return {"ready": True, "spec": normalize_touch_spec(payload or {})}
+    except ValueError as error:
+        return {"ready": False, "issue": str(error)}
+
+
+@app.post("/api/v1/level-touch")
+def run_level_touch(payload: dict, refresh: bool = False, session: Session = Depends(get_session)) -> dict:
+    try:
+        record, reused = measure_level_touch(session, payload or {}, refresh=refresh)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    return {**serialize_level_touch(record), "reused": reused}
 
 
 @app.get("/api/v1/edge-search/owner-overview")

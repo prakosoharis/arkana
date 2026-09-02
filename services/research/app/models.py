@@ -1218,3 +1218,23 @@ class MarketExploration(Base):
     bars_measured: Mapped[int] = mapped_column(Integer, nullable=False)
     result: Mapped[dict] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class LevelTouchProbe(Base):
+    """ARK-S28-01 what happened after price met a line, measured and cached.
+
+    Keyed by a fingerprint over the dataset fingerprint and the whole request,
+    so an MT5 sync retires every stored answer rather than serving one computed
+    against bars it never saw.
+    """
+    __tablename__ = "level_touch_probes"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id"), nullable=False, index=True)
+    dataset_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    timeframe: Mapped[str] = mapped_column(String(8), nullable=False, index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    spec: Mapped[dict] = mapped_column(JSON, nullable=False)
+    touches: Mapped[int] = mapped_column(Integer, nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
