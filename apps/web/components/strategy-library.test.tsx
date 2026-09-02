@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { GenericDecision, GenericEvidenceChain, supportsChoices, GenericEvidenceVerification, latestRenderableOosEvidence, LifecycleGovernance, LifecycleVerification, OosEvidence, RobustnessEvidence, StrategyLibrary } from "./strategy-library";
+import { EXPRESSIONS, GenericDecision, GenericEvidenceChain, PARAMETER_FIELDS, supportsChoices, GenericEvidenceVerification, latestRenderableOosEvidence, LifecycleGovernance, LifecycleVerification, OosEvidence, RobustnessEvidence, StrategyLibrary } from "./strategy-library";
 
 const split = (trade_count: number, net_pnl_price: number, profit_factor: number) => ({ metrics: { trade_count, net_pnl_price, profit_factor } });
 
@@ -103,5 +103,33 @@ describe("Strategy Factory choices (ARK-S27)", () => {
     expect(supportsChoices("LEGACY")).toBe(false);
     expect(supportsChoices("M1_M5_COMPLETED")).toBe(true);
     expect(supportsChoices("EMA_MINIMUM_RANGE")).toBe(true);
+  });
+});
+
+describe("Strategy Factory parameters (ARK-S27-04)", () => {
+  it("exposes a field for every number a generic expression actually reads", () => {
+    // "31" was given as an example and shipped as the only period. A number the
+    // Owner cannot change is a number the Owner cannot test, and a backtest of
+    // it measures my arbitrary choice rather than their idea.
+    expect(PARAMETER_FIELDS.EMA_MINIMUM_RANGE.map(([key]) => key)).toEqual(["maPeriod", "rangeLookback", "rangeDistance"]);
+    expect(PARAMETER_FIELDS.M1_M5_COMPLETED.map(([key]) => key)).toEqual(["smaFast", "smaSlow"]);
+  });
+
+  it("shows no parameter fields for an expression that reads none", () => {
+    // A field the contract ignores is worse than a hidden one: the Owner would
+    // change it and see nothing move.
+    expect(PARAMETER_FIELDS.LEGACY).toEqual([]);
+    const markup = renderToStaticMarkup(<StrategyLibrary />);
+    expect(markup).not.toContain("Periode EMA");
+  });
+
+  it("declares a field for every expression, so a new one cannot ship unlabelled", () => {
+    expect(Object.keys(PARAMETER_FIELDS).sort()).toEqual([...EXPRESSIONS].sort());
+    for (const fields of Object.values(PARAMETER_FIELDS)) {
+      for (const [, label, step] of fields) {
+        expect(label.length).toBeGreaterThan(0);
+        expect(Number(step)).toBeGreaterThan(0);
+      }
+    }
   });
 });

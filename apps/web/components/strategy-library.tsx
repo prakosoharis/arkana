@@ -27,6 +27,22 @@ export type LifecycleVerification = { id: string; strategy_version_id: string; f
 const defaultDraft = { name: "Legacy Compatibility Candidate", source: "MANUAL", note: "Created in Strategy Factory UI" };
 const defaultTerms = { stop: 0.1, target: 0.1, spread: 0.02, commission: 0 };
 
+// ARK-S27-04. Every one of these was a literal inside `contractFor`. The Owner
+// gave 31 as an *example* of a period, and it arrived on screen as the only
+// period -- which also made the backtest of it a measurement of my arbitrary
+// choice rather than of their idea. A number the Owner cannot change is a
+// number the Owner cannot test.
+const defaultParameters = { maPeriod: 31, rangeLookback: 12, rangeDistance: 5, smaFast: 2, smaSlow: 5 };
+type Parameters = typeof defaultParameters;
+
+// Which knobs each expression actually reads. Showing a field the contract
+// ignores is worse than hiding it: the Owner would change it and see nothing.
+export const PARAMETER_FIELDS: Record<Expression, Array<[keyof Parameters, string, string]>> = {
+  LEGACY: [],
+  M1_M5_COMPLETED: [["smaFast", "Periode SMA cepat", "1"], ["smaSlow", "Periode SMA lambat", "1"]],
+  EMA_MINIMUM_RANGE: [["maPeriod", "Periode EMA", "1"], ["rangeLookback", "Range: berapa candle ke belakang", "1"], ["rangeDistance", "Range minimal (price unit)", "0.1"]],
+};
+
 // ARK-S27-02/03. Direction and execution timeframe are the Owner's to choose on
 // a generic contract. The legacy expression keeps neither: its envelope is
 // XAUUSD LONG M1 by definition, so the controls are disabled rather than
@@ -38,7 +54,7 @@ export type Direction = "LONG" | "SHORT";
 
 export function supportsChoices(expression: Expression) { return expression !== "LEGACY"; }
 
-function contractFor(terms: typeof defaultTerms, expression: Expression, direction: Direction = "LONG", execution: string = "M1"): Contract & Record<string, unknown> {
+function contractFor(terms: typeof defaultTerms, expression: Expression, direction: Direction = "LONG", execution: string = "M1", parameters: Parameters = defaultParameters): Contract & Record<string, unknown> {
   const completed = { block_id: "ALWAYS", uses_completed_candles: true };
   const polarity = direction === "LONG" ? "BULLISH" : "BEARISH";
   const contract = {
@@ -54,7 +70,7 @@ function contractFor(terms: typeof defaultTerms, expression: Expression, directi
   if (expression === "M1_M5_COMPLETED") {
     contract.direction_eligibility = direction; contract.execution_timeframe = execution;
     contract.context_timeframes = Array.from(new Set([execution, "M5"])).sort(); contract.setup_timeframes = [execution];
-    contract.context_rules = [{ block_id: "SMA_RELATION", uses_completed_candles: true, timeframe: "M5", fast_period: 2, slow_period: 5, relation: "ABOVE" }];
+    contract.context_rules = [{ block_id: "SMA_RELATION", uses_completed_candles: true, timeframe: "M5", fast_period: parameters.smaFast, slow_period: parameters.smaSlow, relation: "ABOVE" }];
     contract.setup_rules = [{ block_id: "TWO_BAR_REVERSAL", uses_completed_candles: true, timeframe: execution, direction: polarity }];
     contract.trigger_rules = [{ block_id: "ALL_OF", uses_completed_candles: true, children: [{ block_id: "CANDLE_DIRECTION", uses_completed_candles: true, timeframe: execution, direction: polarity }, { block_id: "NOT", uses_completed_candles: true, child: { block_id: "CANDLE_DIRECTION", uses_completed_candles: true, timeframe: execution, direction: polarity === "BULLISH" ? "BEARISH" : "BULLISH" } }] }];
   }
@@ -63,8 +79,8 @@ function contractFor(terms: typeof defaultTerms, expression: Expression, directi
     contract.direction_eligibility = direction; contract.execution_timeframe = execution;
     contract.context_timeframes = [execution]; contract.setup_timeframes = [execution];
     contract.context_rules = [
-      { block_id: "PRICE_VS_MA", uses_completed_candles: true, timeframe: execution, method: "EMA", period: 31, relation: direction === "LONG" ? "ABOVE" : "BELOW" },
-      { block_id: "MINIMUM_RANGE", uses_completed_candles: true, timeframe: execution, lookback: 12, minimum_distance: 5 },
+      { block_id: "PRICE_VS_MA", uses_completed_candles: true, timeframe: execution, method: "EMA", period: parameters.maPeriod, relation: direction === "LONG" ? "ABOVE" : "BELOW" },
+      { block_id: "MINIMUM_RANGE", uses_completed_candles: true, timeframe: execution, lookback: parameters.rangeLookback, minimum_distance: parameters.rangeDistance },
     ];
     contract.setup_rules = [completed];
     contract.trigger_rules = [{ block_id: "CANDLE_DIRECTION", uses_completed_candles: true, timeframe: execution, direction: polarity }];
@@ -128,8 +144,8 @@ export function LifecycleGovernance({ verification, onPromote, onRetire, retirem
 export function StrategyLibrary() {
   const [items, setItems] = useState<Strategy[]>([]); const [candidates, setCandidates] = useState<Candidate[]>([]); const [selected, setSelected] = useState("");
   const [draft, setDraft] = useState(defaultDraft); const [terms, setTerms] = useState(defaultTerms); const [validation, setValidation] = useState<Validation | null>(null); const [run, setRun] = useState<Backtest | null>(null); const [oos, setOos] = useState<OosEvidence | null>(null); const [genericChain, setGenericChain] = useState<GenericChain | null>(null);
-  const [message, setMessage] = useState(""); const [busy, setBusy] = useState(false); const [registry, setRegistry] = useState<CapabilityRegistry | null>(null); const [verification, setVerification] = useState<EvaluatorVerification | null>(null); const [lifecycle, setLifecycle] = useState<LifecycleVerification | null>(null); const [retirementReason, setRetirementReason] = useState(""); const [expression, setExpression] = useState<Expression>("LEGACY"); const [direction, setDirection] = useState<Direction>("LONG"); const [execution, setExecution] = useState<string>("M1");
-  const contract = useMemo(() => contractFor(terms, expression, direction, execution), [terms, expression, direction, execution]);
+  const [message, setMessage] = useState(""); const [busy, setBusy] = useState(false); const [registry, setRegistry] = useState<CapabilityRegistry | null>(null); const [verification, setVerification] = useState<EvaluatorVerification | null>(null); const [lifecycle, setLifecycle] = useState<LifecycleVerification | null>(null); const [retirementReason, setRetirementReason] = useState(""); const [expression, setExpression] = useState<Expression>("LEGACY"); const [direction, setDirection] = useState<Direction>("LONG"); const [execution, setExecution] = useState<string>("M1"); const [parameters, setParameters] = useState<Parameters>(defaultParameters);
+  const contract = useMemo(() => contractFor(terms, expression, direction, execution, parameters), [terms, expression, direction, execution, parameters]);
   const load = async () => {
     const [versions, factory] = await Promise.all([fetch("/api/v1/strategy-versions", { cache: "no-store" }), fetch("/api/v1/strategy-candidates", { cache: "no-store" })]);
     const versionBody = await versions.json(); const factoryBody = await factory.json();
@@ -255,6 +271,7 @@ export function StrategyLibrary() {
   }
   async function approve(id: string) { setBusy(true); try { await request(`/api/v1/strategy-versions/${id}/approve`); setMessage("Manual approval legacy tercatat. Ini tidak melakukan deployment."); await load(); } catch (error) { setMessage(error instanceof Error ? error.message : "Approval gagal."); } finally { setBusy(false); } }
   const updateTerm = (key: keyof typeof defaultTerms, value: number) => { setTerms(current => ({ ...current, [key]: value })); setValidation(null); };
+  const updateParameter = (key: keyof Parameters, value: number) => { setParameters(current => ({ ...current, [key]: value })); setValidation(null); };
 
   return <main className="backtest-page"><header><div><Link className="back-link" href="/backtest">← Backtest Lab</Link><h1>Strategy Factory</h1><p>Build an inspectable compatibility contract, then record canonical historical evidence.</p></div><span className="mode-badge">NO LIVE ACTION</span></header><section className="backtest-content">
     {message && <p className="notice">{message}</p>}
@@ -263,7 +280,7 @@ export function StrategyLibrary() {
       <section className="panel backtest-config factory-panel"><p className="discovery-kicker">2 · CONTRACT</p><h2>Registered V1 expression</h2><label className="deploy-label">Completed-candle block picker<select value={expression} onChange={event => { setExpression(event.target.value as Expression); setValidation(null); }}><option value="LEGACY">Legacy bullish reversal · M1</option><option value="M1_M5_COMPLETED">SMA M5 + bullish reversal</option><option value="EMA_MINIMUM_RANGE">Harga vs EMA 31 + range minimal</option></select></label>
         <label className="deploy-label">Arah<select value={direction} disabled={!supportsChoices(expression)} onChange={event => { setDirection(event.target.value as Direction); setValidation(null); }}><option value="LONG">LONG (beli)</option><option value="SHORT">SHORT (jual)</option></select></label>
         <label className="deploy-label">Timeframe eksekusi<select value={execution} disabled={!supportsChoices(expression)} onChange={event => { setExecution(event.target.value); setValidation(null); }}>{EXECUTION_TIMEFRAMES.map(item => <option key={item} value={item}>{item}</option>)}</select></label>
-        <p className="muted">{supportsChoices(expression) ? "Arah dan timeframe bisa dipilih. Simbol tetap XAUUSD, entry di open candle berikutnya, satu posisi, STOP_FIRST." : "Ekspresi legacy terkunci di XAUUSD LONG M1 — itu memang batas kemampuannya, jadi kedua pilihan di atas dimatikan."}</p><div className="backtest-form">{([ ["stop", "Stop distance"], ["target", "Target distance"], ["spread", "Spread guard"], ["commission", "Commission price"] ] as Array<[keyof typeof defaultTerms, string]>).map(([key, label]) => <label key={key}>{label}<input aria-label={label} type="number" min="0" step="0.01" value={terms[key]} onChange={event => updateTerm(key, event.target.valueAsNumber)} /></label>)}</div><div className="actions"><button className="secondary" disabled={busy} onClick={validateContract}>Validate contract</button><button className="run-button" disabled={busy || !selected || validation?.ready !== true} onClick={confirmVersion}>Confirm immutable version</button></div>{validation && <div className={validation.ready ? "factory-state ready" : "factory-state invalid"}><strong>{validation.ready ? "CONTRACT VALID" : "CONTRACT NEEDS FIXES"}</strong><span>{validation.ready ? `Fingerprint ${validation.fingerprint?.slice(0, 16)}` : (validation.issues?.join(" ") || validation.status || "Kontrak ditolak.")}</span></div>}</section>
+        <p className="muted">{supportsChoices(expression) ? "Arah dan timeframe bisa dipilih. Simbol tetap XAUUSD, entry di open candle berikutnya, satu posisi, STOP_FIRST." : "Ekspresi legacy terkunci di XAUUSD LONG M1 — itu memang batas kemampuannya, jadi kedua pilihan di atas dimatikan."}</p>{PARAMETER_FIELDS[expression].length > 0 && <><p className="muted">Angka di bawah ini milik Anda. Nilai awalnya hanya contoh, bukan rekomendasi — ganti sesukanya, lalu validasi lagi.</p><div className="backtest-form">{PARAMETER_FIELDS[expression].map(([key, label, step]) => <label key={key}>{label}<input aria-label={label} type="number" min={step} step={step} value={parameters[key]} onChange={event => updateParameter(key, event.target.valueAsNumber)} /></label>)}</div></>}<div className="backtest-form">{([ ["stop", "Stop distance"], ["target", "Target distance"], ["spread", "Spread guard"], ["commission", "Commission price"] ] as Array<[keyof typeof defaultTerms, string]>).map(([key, label]) => <label key={key}>{label}<input aria-label={label} type="number" min="0" step="0.01" value={terms[key]} onChange={event => updateTerm(key, event.target.valueAsNumber)} /></label>)}</div><div className="actions"><button className="secondary" disabled={busy} onClick={validateContract}>Validate contract</button><button className="run-button" disabled={busy || !selected || validation?.ready !== true} onClick={confirmVersion}>Confirm immutable version</button></div>{validation && <div className={validation.ready ? "factory-state ready" : "factory-state invalid"}><strong>{validation.ready ? "CONTRACT VALID" : "CONTRACT NEEDS FIXES"}</strong><span>{validation.ready ? `Fingerprint ${validation.fingerprint?.slice(0, 16)}` : (validation.issues?.join(" ") || validation.status || "Kontrak ditolak.")}</span></div>}</section>
       <section className="panel backtest-info factory-panel"><p className="discovery-kicker">WHAT THIS DOES NOT DO</p><h2>Safety boundary</h2><p>Confirmation alone does not mark a version <strong>VALIDATED</strong>, deploy it, configure MT5, or create an order.</p><p>Backtest V1 remains the single canonical kernel. Eligibility and acknowledgement cannot promote by themselves; promotion requires its own explicit Owner authorization.</p><p><strong>VALIDATED always means historical validation only.</strong> It never means profitable, DEMO-ready, LIVE-ready, capital-authorized, routed, or recommended. RETIRED is immutable and revisions create new versions.</p></section></section>
     {run && <section className="panel result-panel factory-evidence"><div className="panel-header"><div><p className="discovery-kicker">CANONICAL BACKTEST EVIDENCE</p><h2>{run.reused ? "Recorded evidence reused" : "New evidence recorded"}</h2><p>Run {run.id.slice(0, 8)} · fingerprint {run.fingerprint.slice(0, 16)}</p></div><span className="mode-badge">HISTORICAL ONLY</span></div><section className="command-metrics"><article><small>Trades</small><strong>{run.result.metrics.trade_count}</strong></article><article><small>Net price PnL</small><strong>{run.result.metrics.net_pnl_price}</strong></article><article><small>Entry timing</small><strong>{run.result.strategy_lineage?.execution_semantics.entry_timing ?? "Legacy"}</strong></article><article><small>Ambiguity</small><strong>{run.result.strategy_lineage?.execution_semantics.ambiguity_policy ?? "Legacy"}</strong></article></section>{run.strategy_version_id && <button className="secondary" disabled={busy} onClick={verifyEvaluatorEvidence}>Materialize evaluator acceptance verifier</button>}{verification && <p className="warning-line">Verifier: {verification.owner_acceptance_readiness} · {verification.fingerprint.slice(0, 16)} · {Object.values(verification.checks).every(check => check.status === "PASS") ? "all checks PASS" : "blocking check present"}</p>}<p className="warning-line">{run.result.warning}</p><details className="discovery-advanced"><summary>Lineage evidence</summary><pre>{JSON.stringify(run.result.strategy_lineage, null, 2)}</pre></details></section>}
     {oos && <RobustnessEvidence evidence={oos} />}
