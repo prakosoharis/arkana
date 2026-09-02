@@ -56,6 +56,7 @@ MIGRATION_053 = "053_edge_search_final_oos_outcome"
 MIGRATION_054 = "054_edge_search_campaign_verification"
 MIGRATION_055 = "055_strategy_lineage_classification"
 MIGRATION_056 = "056_sprint23_acceptance_verifier"
+MIGRATION_057 = "057_edge_search_trial_breadth"
 
 
 def _columns(connection, table: str) -> set[str]:
@@ -917,6 +918,18 @@ def _migration_056(connection) -> None:
         connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_sprint23_acceptance_verifications_{column} ON sprint23_acceptance_verifications({column})"))
 
 
+def _migration_057(connection) -> None:
+    connection.execute(text("""CREATE TABLE IF NOT EXISTS edge_search_trial_breadth (
+        id VARCHAR(36) PRIMARY KEY, campaign_id VARCHAR(36) NOT NULL, trial_id VARCHAR(36) NOT NULL,
+        fingerprint VARCHAR(64) NOT NULL UNIQUE, breadth_version VARCHAR(64) NOT NULL,
+        regime_concentration FLOAT, year_concentration FLOAT,
+        within_ceiling BOOLEAN NOT NULL, result JSON NOT NULL, created_at TIMESTAMP NOT NULL,
+        FOREIGN KEY(campaign_id) REFERENCES edge_search_campaigns(id),
+        FOREIGN KEY(trial_id) REFERENCES edge_search_trials(id))"""))
+    for column in ("campaign_id", "trial_id", "fingerprint", "within_ceiling"):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_edge_search_trial_breadth_{column} ON edge_search_trial_breadth({column})"))
+
+
 MIGRATIONS = (
     (MIGRATION_013, _migration_013),
     (MIGRATION_014, _migration_014),
@@ -962,6 +975,7 @@ MIGRATIONS = (
     (MIGRATION_054, _migration_054),
     (MIGRATION_055, _migration_055),
     (MIGRATION_056, _migration_056),
+    (MIGRATION_057, _migration_057),
 )
 
 

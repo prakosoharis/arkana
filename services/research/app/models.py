@@ -764,6 +764,24 @@ class EdgeSearchCampaignVerification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class EdgeSearchTrialBreadth(Base):
+    """ARK-S25-01 immutable regime/year spread for one pre-registered survivor,
+    measured over train and holdout only. It predicts the accepted gate's
+    concentration check; it never replaces it and grants no authority."""
+    __tablename__ = "edge_search_trial_breadth"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_edge_search_trial_breadth_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    campaign_id: Mapped[str] = mapped_column(String(36), ForeignKey("edge_search_campaigns.id"), nullable=False, index=True)
+    trial_id: Mapped[str] = mapped_column(String(36), ForeignKey("edge_search_trials.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    breadth_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    regime_concentration: Mapped[float | None] = mapped_column(Float, nullable=True)
+    year_concentration: Mapped[float | None] = mapped_column(Float, nullable=True)
+    within_ceiling: Mapped[bool] = mapped_column(Boolean, nullable=False, index=True)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class StrategyLineageClassification(Base):
     """Immutable, evidence-derived judgement of whether a StrategyVersion's
     lineage is real. A fixture must be refused by rule, not by coincidence."""

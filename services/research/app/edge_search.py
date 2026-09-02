@@ -309,12 +309,19 @@ def _grid_record(dimensions: dict[str, Any], points: list[dict[str, Any]]) -> di
     }
 
 
-def _fingerprint(dataset: Dataset, registry_fp: str, grid: dict[str, Any], calibration: dict[str, Any]) -> str:
+def _fingerprint(dataset_id: str, dataset_fingerprint: str, registry_fp: str,
+                 grid: dict[str, Any], calibration: dict[str, Any]) -> str:
     # The protocol version is read from the grid, never from a module constant,
     # so adding V2 cannot move the fingerprint of an accepted V1 campaign.
+    #
+    # ARK-S25-01: the dataset fingerprint is passed in rather than read live off
+    # the Dataset row. A registered dataset grows -- an MT5 sync appended 11,281
+    # bars -- and recomputing from the current row made both accepted campaigns
+    # verify as FAILED although neither record had been touched. What a campaign
+    # was pre-registered against is what the campaign recorded.
     return sha256(canonical_json({
         "protocol_version": protocol_of_dimensions(grid["dimensions"]),
-        "dataset_id": dataset.id, "dataset_fingerprint": dataset.fingerprint,
+        "dataset_id": dataset_id, "dataset_fingerprint": dataset_fingerprint,
         "registry_fingerprint": registry_fp, "grid": grid,
         "spread_assumption": SPREAD_ASSUMPTION, "final_oos_budget": FINAL_OOS_BUDGET,
         "split_policy": policy_contract()["split_policy"], "calibration_disclosure": calibration,
@@ -357,7 +364,7 @@ def validation_report(session: Session, payload: dict[str, Any]) -> dict[str, An
         "estimated_wall_clock_seconds": len(points) * seconds_per_trial(protocol),
         "registry_fingerprint": registry_fp,
         "dataset_id": dataset.id if dataset else None,
-        "fingerprint": _fingerprint(dataset, registry_fp, _grid_record(dimensions, points), calibration) if not issues and dataset else None,
+        "fingerprint": _fingerprint(dataset.id, dataset.fingerprint, registry_fp, _grid_record(dimensions, points), calibration) if not issues and dataset else None,
     }
 
 
@@ -372,7 +379,7 @@ def create(session: Session, payload: dict[str, Any]) -> tuple[EdgeSearchCampaig
     grid = _grid_record(dimensions, points)
     dataset = session.get(Dataset, report["dataset_id"])
     registry_fp = report["registry_fingerprint"]
-    fingerprint = _fingerprint(dataset, registry_fp, grid, calibration)
+    fingerprint = _fingerprint(dataset.id, dataset.fingerprint, registry_fp, grid, calibration)
     existing = session.scalar(select(EdgeSearchCampaign).where(EdgeSearchCampaign.fingerprint == fingerprint))
     if existing:
         return existing, True
@@ -551,7 +558,7 @@ def verify(session: Session, campaign: EdgeSearchCampaign) -> dict[str, Any]:
     keys = dimension_keys(campaign.protocol_version)
     declared = {key: campaign.grid["dimensions"][key] for key in keys}
     grid = _grid_record(declared, enumerate_grid(declared))
-    recomputed = _fingerprint(session.get(Dataset, campaign.dataset_id), campaign.registry_fingerprint, grid, campaign.calibration_disclosure)
+    recomputed = _fingerprint(campaign.dataset_id, campaign.dataset_fingerprint, campaign.registry_fingerprint, grid, campaign.calibration_disclosure)
     trials = list(session.scalars(select(EdgeSearchTrial).where(EdgeSearchTrial.campaign_id == campaign.id)))
     known = {item["contract_fingerprint"] for item in campaign.grid["trials"]}
     consumed = consumed_budget(session, campaign)
@@ -579,6 +586,15 @@ def verify(session: Session, campaign: EdgeSearchCampaign) -> dict[str, Any]:
         "checks": checks, "selection_disclosure": selection_disclosure(session, campaign),
         # Recorded, not hidden: the registry did change, and the campaign is
         # unaffected because none of the blocks it uses did.
+        "dataset_lineage": {
+            "dataset_id": campaign.dataset_id,
+            "dataset_fingerprint_at_pre_registration": campaign.dataset_fingerprint,
+            "dataset_fingerprint_now": (lambda item: item.fingerprint if item else None)(session.get(Dataset, campaign.dataset_id)),
+            "dataset_grew_since_pre_registration": (lambda item: bool(item and item.fingerprint != campaign.dataset_fingerprint))(session.get(Dataset, campaign.dataset_id)),
+            "frozen_grid_is_replayable": all(
+                (item.result or {}).get("splits", {}).get("holdout", {}).get("index_range") is not None
+                for item in trials) if trials else True,
+        },
         "registry_lineage": {
             "registry_fingerprint_at_pre_registration": campaign.registry_fingerprint,
             "registry_fingerprint_now": capability_registry()["fingerprint"],

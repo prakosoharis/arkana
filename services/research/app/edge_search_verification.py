@@ -78,6 +78,11 @@ def assess(session: Session, campaign: EdgeSearchCampaign) -> dict[str, Any]:
                           "oos_validation_id": item.oos_validation_id, "strategy_version_id": item.strategy_version_id} for item in outcomes],
         },
         "selection_disclosure": selection_disclosure(session, campaign),
+        # ARK-S25-01: the campaign verifier records why an accepted record is
+        # still valid after the registry or the dataset legitimately moved.
+        # The chain verifier is the Owner-facing surface, so it must carry them.
+        "dataset_lineage": base.get("dataset_lineage"),
+        "registry_lineage": base.get("registry_lineage"),
         "survivor_criterion": SURVIVOR_CRITERION,
         "safety_boundary": {"read_only_verifier": True, "grid_mutated": False, "evidence_mutated": False,
                             "second_backtester": False, "automatic_promotion": False, "live_authorized": False},

@@ -129,3 +129,48 @@ def test_a_recorded_fingerprint_is_preferred_over_the_constant(session):
     campaign.result = {**campaign.result, "capability_dependency_fingerprint": "c" * 64}
     assert edge_search.accepted_dependency_fingerprint(campaign) == "c" * 64
     assert edge_search.verify(session, campaign)["checks"]["capability_dependencies_unchanged"]["status"] == "FAIL"
+
+
+# ---- ARK-S25-01 a growing dataset must not break an accepted record ---------
+
+def test_a_grown_dataset_does_not_break_the_grid_recomputation(session):
+    """The verifier read `dataset.fingerprint` live. An MT5 sync appended
+    11,281 bars and both accepted campaigns began verifying as FAILED although
+    neither record had been touched -- the same defect class as ARK-S24-04a,
+    one field over."""
+    from app.models import Dataset
+    campaign = _create(session)
+    assert edge_search.verify(session, campaign)["status"] == "PASSED"
+    dataset = session.get(Dataset, campaign.dataset_id)
+    dataset.fingerprint = "grown-" + "f" * 58        # the sync rewrote it
+    session.commit()
+    report = edge_search.verify(session, campaign)
+    assert report["checks"]["immutable_grid_recomputation"]["status"] == "PASS"
+    assert report["status"] == "PASSED"
+
+
+def test_the_dataset_drift_is_reported_rather_than_hidden(session):
+    from app.models import Dataset
+    campaign = _create(session)
+    session.get(Dataset, campaign.dataset_id).fingerprint = "grown-" + "f" * 58
+    session.commit()
+    lineage = edge_search.verify(session, campaign)["dataset_lineage"]
+    assert lineage["dataset_grew_since_pre_registration"] is True
+    assert lineage["dataset_fingerprint_at_pre_registration"] == campaign.dataset_fingerprint
+    assert lineage["dataset_fingerprint_now"] != campaign.dataset_fingerprint
+
+
+def test_the_recomputation_uses_what_the_campaign_recorded(session):
+    """Passing the live row in was the defect; a test pins the signature."""
+    import inspect
+    source = inspect.getsource(edge_search.verify)
+    assert "campaign.dataset_fingerprint" in source
+    assert "session.get(Dataset, campaign.dataset_id), campaign.registry_fingerprint" not in source
+
+
+def test_the_chain_verifier_carries_both_lineage_blocks(session):
+    from app import edge_search_verification as verification
+    campaign = _create(session)
+    report = verification.assess(session, campaign)
+    assert report["dataset_lineage"]["dataset_id"] == campaign.dataset_id
+    assert report["registry_lineage"]["capability_blocks_used"]
