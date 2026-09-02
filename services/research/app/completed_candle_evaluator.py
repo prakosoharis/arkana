@@ -5,7 +5,7 @@ from bisect import bisect_right
 from collections import deque
 from datetime import timedelta
 from hashlib import sha256
-from statistics import fmean
+from statistics import fmean, pstdev
 from typing import Any, Iterable, Iterator
 
 from .strategy_capabilities import GENERIC, assess
@@ -15,6 +15,71 @@ from .backtesting import validate_backtest_config
 
 EVALUATOR_VERSION = "COMPLETED_CANDLE_MULTI_TIMEFRAME_EVALUATOR_V1"
 _MINUTES = {"M1": 1, "M5": 5, "M15": 15, "H1": 60}
+
+# ARK-S27-01.  A textbook EMA or Wilder RSI is recursive over all history. The
+# streaming evaluator keeps a bounded deque, so "all history" is not available
+# to it and the two evaluator paths would quietly disagree -- the batch one
+# seeing years, the streaming one seeing a window.
+#
+# Both are therefore defined over a declared warm-up: take the last
+# `RECURSIVE_WARMUP_MULTIPLE * period` completed closes, seed from the simple
+# mean of the first `period` of them, and iterate. The definition is exact, so
+# either path reproduces it, and after 4x period steps the seed's residual
+# weight is under 0.05%. The window is part of the block's meaning, and it is
+# disclosed in every rule evaluation.
+RECURSIVE_WARMUP_MULTIPLE = 5
+
+
+def warmup_bars(period: int) -> int:
+    return max(period + 1, RECURSIVE_WARMUP_MULTIPLE * period)
+
+
+def moving_average(closes: list[float], period: int, method: str) -> float | None:
+    if method == "SMA":
+        return fmean(closes[-period:]) if len(closes) >= period else None
+    span = warmup_bars(period)
+    if len(closes) < span:
+        return None
+    window = closes[-span:]
+    value = fmean(window[:period])
+    multiplier = 2.0 / (period + 1)
+    for close in window[period:]:
+        value += multiplier * (close - value)
+    return value
+
+
+def relative_strength_index(closes: list[float], period: int) -> float | None:
+    """Wilder's RSI over the declared warm-up window.
+
+    A window with no movement at all has no ratio to take. Rather than divide
+    by zero or invent a direction it reports the neutral 50, and a window with
+    gains and no losses reports 100 -- both are the conventional readings and
+    both are stated here rather than left to the caller to guess.
+    """
+    span = warmup_bars(period) + 1
+    if len(closes) < span:
+        return None
+    window = closes[-span:]
+    gains = [max(0.0, window[index] - window[index - 1]) for index in range(1, len(window))]
+    losses = [max(0.0, window[index - 1] - window[index]) for index in range(1, len(window))]
+    average_gain, average_loss = fmean(gains[:period]), fmean(losses[:period])
+    for gain, loss in zip(gains[period:], losses[period:]):
+        average_gain = (average_gain * (period - 1) + gain) / period
+        average_loss = (average_loss * (period - 1) + loss) / period
+    if average_loss == 0:
+        return 100.0 if average_gain > 0 else 50.0
+    return 100.0 - 100.0 / (1.0 + average_gain / average_loss)
+
+
+def bollinger_bands(closes: list[float], period: int, deviations: float) -> dict[str, float] | None:
+    """Population standard deviation, which is the Bollinger convention."""
+    if len(closes) < period:
+        return None
+    window = closes[-period:]
+    middle = fmean(window)
+    spread = pstdev(window)
+    return {"middle": middle, "upper": middle + deviations * spread,
+            "lower": middle - deviations * spread, "standard_deviation": spread}
 
 
 class CompletedCandleEvaluator:
@@ -70,6 +135,72 @@ class CompletedCandleEvaluator:
             fast = fmean(closes[-rule["fast_period"]:]); slow = fmean(closes[-needed:])
             truth = fast > slow if rule["relation"] == "ABOVE" else fast < slow
             return {"block_id": block, "timeframe": timeframe, "truth": truth, "fast_sma": round(fast, 10), "slow_sma": round(slow, 10), "completed_bar_timestamp": str(available[-1]["timestamp"])}
+        return self._indicator(block, rule, timeframe, available)
+
+    def _indicator(self, block: str, rule: dict[str, Any], timeframe: str, available: list[dict]) -> dict[str, Any]:
+        """ARK-S27-01 blocks. Insufficient context is false, never a guess."""
+        def short(required: int) -> dict[str, Any]:
+            return {"block_id": block, "timeframe": timeframe, "truth": False,
+                    "reason": "INSUFFICIENT_COMPLETED_CONTEXT",
+                    "available_bars": len(available), "required_bars": required}
+
+        def stamped(payload: dict[str, Any]) -> dict[str, Any]:
+            return {"block_id": block, "timeframe": timeframe, **payload,
+                    "completed_bar_timestamp": str(available[-1]["timestamp"])}
+
+        closes = [float(item["close"]) for item in available]
+
+        if block == "EMA_RELATION":
+            slow_period, fast_period = int(rule["slow_period"]), int(rule["fast_period"])
+            required = warmup_bars(slow_period)
+            fast, slow = moving_average(closes, fast_period, "EMA"), moving_average(closes, slow_period, "EMA")
+            if fast is None or slow is None:
+                return short(required)
+            return stamped({"truth": fast > slow if rule["relation"] == "ABOVE" else fast < slow,
+                            "fast_ema": round(fast, 10), "slow_ema": round(slow, 10), "warmup_bars": required})
+
+        if block == "PRICE_VS_MA":
+            method, period = rule["method"], int(rule["period"])
+            required = period if method == "SMA" else warmup_bars(period)
+            average = moving_average(closes, period, method)
+            if average is None:
+                return short(required)
+            price = closes[-1]
+            return stamped({"truth": price > average if rule["relation"] == "ABOVE" else price < average,
+                            "method": method, "moving_average": round(average, 10),
+                            "close": round(price, 10), "warmup_bars": required})
+
+        if block == "RSI_THRESHOLD":
+            period = int(rule["period"])
+            required = warmup_bars(period) + 1
+            value = relative_strength_index(closes, period)
+            if value is None:
+                return short(required)
+            threshold = float(rule["threshold"])
+            return stamped({"truth": value > threshold if rule["relation"] == "ABOVE" else value < threshold,
+                            "rsi": round(value, 10), "threshold": threshold, "warmup_bars": required})
+
+        if block == "BOLLINGER_RELATION":
+            period = int(rule["period"])
+            bands = bollinger_bands(closes, period, float(rule["standard_deviations"]))
+            if bands is None:
+                return short(period)
+            band = bands[rule["band"].lower()]
+            price = closes[-1]
+            return stamped({"truth": price > band if rule["relation"] == "ABOVE" else price < band,
+                            "band": rule["band"], "band_value": round(band, 10), "close": round(price, 10),
+                            "standard_deviation": round(bands["standard_deviation"], 10)})
+
+        if block == "MINIMUM_RANGE":
+            lookback = int(rule["lookback"])
+            if len(available) < lookback:
+                return short(lookback)
+            window = available[-lookback:]
+            span = max(item["high"] for item in window) - min(item["low"] for item in window)
+            minimum = float(rule["minimum_distance"])
+            return stamped({"truth": span >= minimum, "observed_range": round(span, 10),
+                            "minimum_distance": minimum, "lookback": lookback})
+
         raise ValueError(f"CAPABILITY_NOT_SUPPORTED: evaluator cannot execute {block}")
 
     def _distances(self, signal_m1: dict) -> dict[str, Any] | None:
@@ -293,8 +424,29 @@ def _rule_lookbacks(rule: dict[str, Any]) -> dict[str, int]:
     if rule["block_id"] == "NOT":
         return _rule_lookbacks(rule["child"])
     timeframe = rule.get("timeframe", "M1")
-    count = rule.get("slow_period", 2 if rule["block_id"] == "TWO_BAR_REVERSAL" else 1)
-    return {timeframe: int(count)}
+    return {timeframe: _block_lookback(rule)}
+
+
+def _block_lookback(rule: dict[str, Any]) -> int:
+    """How many completed bars a single block needs to answer at all.
+
+    The streaming evaluator sizes its deque from this. Under-reporting here does
+    not raise -- it silently starves the block, and the rule reads false forever
+    while looking like a legitimate `INSUFFICIENT_COMPLETED_CONTEXT`.
+    """
+    block = rule["block_id"]
+    if block == "EMA_RELATION":
+        return warmup_bars(int(rule["slow_period"]))
+    if block == "PRICE_VS_MA":
+        period = int(rule["period"])
+        return period if rule["method"] == "SMA" else warmup_bars(period)
+    if block == "RSI_THRESHOLD":
+        return warmup_bars(int(rule["period"])) + 1
+    if block == "BOLLINGER_RELATION":
+        return int(rule["period"])
+    if block == "MINIMUM_RANGE":
+        return int(rule["lookback"])
+    return int(rule.get("slow_period", 2 if block == "TWO_BAR_REVERSAL" else 1))
 
 
 def _required_lookbacks(contract: dict[str, Any]) -> dict[str, int]:

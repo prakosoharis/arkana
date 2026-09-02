@@ -48,6 +48,20 @@ _BLOCKS = (
     {"id": "ATR_SCALED_SL", "category": "STOP_LOSS", "execution": GENERIC, "completed_candles": True, "parameters": {"unit": ["ATR"], "period": "POSITIVE_INTEGER", "multiplier": "POSITIVE_FINITE"}},
     {"id": "ATR_SCALED_TP", "category": "TAKE_PROFIT", "execution": GENERIC, "completed_candles": True, "parameters": {"unit": ["ATR"], "period": "POSITIVE_INTEGER", "multiplier": "POSITIVE_FINITE"}},
     {"id": "SESSION_WINDOW", "category": "NO_TRADE", "execution": GENERIC, "completed_candles": True, "parameters": {"clock": ["BROKER_TIME"], "windows": "BROKER_HOUR_WINDOW_LIST"}},
+    # ARK-S27-01.  The Owner's own candidate strategies -- "on M5 price follows
+    # EMA 31 with a minimum range of 50 pips" -- were inexpressible, so three
+    # campaigns searched a family of two rules that nobody had a reason to
+    # believe in. These are the vocabulary those strategies need.
+    #
+    # EMA and RSI are recursive over all history, which a bounded streaming
+    # evaluator cannot hold; both are therefore defined over a declared warm-up
+    # window so the two evaluator paths reproduce each other exactly. The
+    # warm-up is part of the block's meaning, not an implementation detail.
+    {"id": "EMA_RELATION", "category": "CONTEXT", "execution": GENERIC, "completed_candles": True, "parameters": {"fast_period": "POSITIVE_INTEGER", "slow_period": "POSITIVE_INTEGER", "relation": ["ABOVE", "BELOW"]}},
+    {"id": "PRICE_VS_MA", "category": "CONTEXT", "execution": GENERIC, "completed_candles": True, "parameters": {"method": ["SMA", "EMA"], "period": "POSITIVE_INTEGER", "relation": ["ABOVE", "BELOW"]}},
+    {"id": "RSI_THRESHOLD", "category": "CONTEXT", "execution": GENERIC, "completed_candles": True, "parameters": {"period": "POSITIVE_INTEGER", "relation": ["ABOVE", "BELOW"], "threshold": "PERCENT_0_100"}},
+    {"id": "BOLLINGER_RELATION", "category": "CONTEXT", "execution": GENERIC, "completed_candles": True, "parameters": {"period": "POSITIVE_INTEGER", "standard_deviations": "POSITIVE_FINITE", "band": ["UPPER", "MIDDLE", "LOWER"], "relation": ["ABOVE", "BELOW"]}},
+    {"id": "MINIMUM_RANGE", "category": "CONTEXT", "execution": GENERIC, "completed_candles": True, "parameters": {"lookback": "POSITIVE_INTEGER", "minimum_distance": "POSITIVE_FINITE"}},
 )
 BLOCKS = {item["id"]: item for item in _BLOCKS}
 _TOP_LEVEL = set(REQUIRED) | {"schema_version"}
@@ -58,6 +72,11 @@ _REQUIRED_PARAMETERS = {
     "SMA_RELATION": {"fast_period", "slow_period", "relation"},
     "SESSION_WINDOW": {"clock", "windows"},
     "ATR_SCALED_SL": {"unit", "period", "multiplier"}, "ATR_SCALED_TP": {"unit", "period", "multiplier"},
+    "EMA_RELATION": {"fast_period", "slow_period", "relation"},
+    "PRICE_VS_MA": {"method", "period", "relation"},
+    "RSI_THRESHOLD": {"period", "relation", "threshold"},
+    "BOLLINGER_RELATION": {"period", "standard_deviations", "band", "relation"},
+    "MINIMUM_RANGE": {"lookback", "minimum_distance"},
 }
 
 
@@ -163,6 +182,8 @@ def normalize(contract: object) -> tuple[dict[str, Any], list[str], list[str]]:
                     issues.append(f"{block_id}.{parameter} must be finite and non-negative.")
                 elif allowed == "POSITIVE_INTEGER" and (not isinstance(actual, int) or isinstance(actual, bool) or actual <= 0):
                     issues.append(f"{block_id}.{parameter} must be a positive integer.")
+                elif allowed == "PERCENT_0_100" and (not isinstance(actual, (int, float)) or isinstance(actual, bool) or not isfinite(actual) or not 0 <= actual <= 100):
+                    issues.append(f"{block_id}.{parameter} must be a number between 0 and 100.")
                 elif isinstance(allowed, list) and actual not in allowed:
                     issues.append(f"{block_id}.{parameter} is outside the supported V1 envelope.")
             if block_id == "CANDLE_DIRECTION" and not (
@@ -172,8 +193,8 @@ def normalize(contract: object) -> tuple[dict[str, Any], list[str], list[str]]:
                 issues.append("CANDLE_DIRECTION requires direction or the exact legacy previous/current shape.")
             if block_id == "TWO_BAR_REVERSAL" and block.get("direction") not in {"BULLISH", "BEARISH"}:
                 issues.append("TWO_BAR_REVERSAL.direction is outside the supported V1 envelope.")
-            if block_id == "SMA_RELATION" and isinstance(block.get("fast_period"), int) and isinstance(block.get("slow_period"), int) and block["fast_period"] >= block["slow_period"]:
-                issues.append("SMA_RELATION.fast_period must be smaller than slow_period.")
+            if block_id in {"SMA_RELATION", "EMA_RELATION"} and isinstance(block.get("fast_period"), int) and isinstance(block.get("slow_period"), int) and block["fast_period"] >= block["slow_period"]:
+                issues.append(f"{block_id}.fast_period must be smaller than slow_period.")
             if block_id in {"ALL_OF", "ANY_OF"} and not isinstance(block.get("children"), list) or block_id in {"ALL_OF", "ANY_OF"} and not block.get("children"):
                 issues.append(f"{block_id}.children must be a non-empty rule list.")
             if block_id == "NOT" and not isinstance(block.get("child"), dict):
