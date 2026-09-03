@@ -1,1 +1,1 @@
-import { MarketExplorer } from "../../components/market-explorer"; export default function Page(){return <MarketExplorer/>}
+import { ResearchWorkbench } from "../../components/research-workbench"; export default function Page(){return <ResearchWorkbench/>}

@@ -38,10 +38,22 @@ from .oos_validation import split_bounds
 
 PROTOCOL_VERSION = "LEVEL_TOUCH_PROBE_V1"
 
-# The only partition this probe may read. The reserved partition costs an
-# irreversible budget unit and is reachable solely through an authorized
-# opening; an unbudgeted exploration screen must never become a way around it.
-READABLE_SPLIT = "train"
+# ARK-S28-03. The partitions this probe may read.
+#
+# It began at train alone, which on M5 ends in April 2023 -- and the Owner
+# pointed out that this is a market that no longer exists: the average M5 range
+# has grown roughly tenfold since 2018. Exploring only the first 60% means
+# studying one market and trading another.
+#
+# Holdout is opened for exploration, which matches what ARK-S25-01's breadth
+# module already reads. The reserved partition stays shut: it costs an
+# irreversible budget unit, it is reachable solely through an authorized
+# opening, and an unbudgeted screen must never become a way around that.
+#
+# The cost is stated rather than hidden: a partition the Owner has looked at
+# many times is no longer clean for *selecting* a candidate. Only the final
+# fifth can still deliver a verdict, and that is what it is for.
+READABLE_SPLITS = ("train", "holdout")
 
 TIMEFRAMES = ("M1", "M5", "M15", "M30", "H1", "H4")
 LEVEL_KINDS = ("EMA", "SMA")
@@ -269,7 +281,7 @@ def normalize_spec(spec: dict[str, Any]) -> dict[str, Any]:
     return {"timeframe": timeframe, "level": {"kind": kind, "period": period},
             "distances": clean_distances, "timeouts": sorted(set(clean_timeouts)),
             "spread_price": float(spread), "protocol_version": PROTOCOL_VERSION,
-            "split": READABLE_SPLIT}
+            "splits": list(READABLE_SPLITS)}
 
 
 def measure_bars(bars: list[dict], spec: dict[str, Any]) -> dict[str, Any]:
@@ -369,9 +381,15 @@ def existing(session: Session, dataset: Dataset, spec: dict[str, Any]) -> LevelT
         LevelTouchProbe.fingerprint == fingerprint(dataset.fingerprint, spec)))
 
 
-def train_bars(asset, chunk_size: int = 50_000) -> list[dict]:
-    """Only the partition an unbudgeted screen is allowed to look at."""
-    start, end = split_bounds(asset.row_count)[READABLE_SPLIT]
+def readable_bars(asset, chunk_size: int = 50_000) -> list[dict]:
+    """Only the partitions an unbudgeted screen is allowed to look at.
+
+    Contiguous by construction: the readable partitions are the leading
+    fraction of the asset, so this is one range, not a stitched one.
+    """
+    bounds = split_bounds(asset.row_count)
+    start = min(bounds[name][0] for name in READABLE_SPLITS)
+    end = max(bounds[name][1] for name in READABLE_SPLITS)
     bars: list[dict] = []
     position = 0
     for chunk in iter_bars(asset, chunk_size=chunk_size):
@@ -401,7 +419,7 @@ def measure(session: Session, spec: dict[str, Any], *, symbol: str = "XAUUSD",
     asset = next((item for item in dataset.bars if item.timeframe == clean["timeframe"]), None)
     if asset is None:
         raise ValueError(f"timeframe {clean['timeframe']} is not registered for this dataset")
-    bars = train_bars(asset)
+    bars = readable_bars(asset)
     result = measure_bars(bars, clean)
     result["asset"] = {"timeframe": clean["timeframe"], "registered_row_count": asset.row_count,
                        "measured_row_count": len(bars)}
@@ -420,10 +438,12 @@ def serialize(record: LevelTouchProbe) -> dict[str, Any]:
         "fingerprint": record.fingerprint, "spec": record.spec,
         "dataset_id": record.dataset_id, "dataset_fingerprint": record.dataset_fingerprint,
         "touches": record.touches, "created_at": record.created_at.isoformat() + "Z",
-        "policy": {"readable_split": READABLE_SPLIT, "ambiguity": "STOP_FIRST",
+        "policy": {"readable_splits": list(READABLE_SPLITS), "ambiguity": "STOP_FIRST",
                    "entry": "OPEN_OF_NEXT_BAR_PLUS_SPREAD",
                    "level_uses_completed_bars_only": True},
-        "warning": ("Ini pengukuran sejarah, bukan strategi dan bukan sinyal. Angkanya hanya dari "
-                    "60% data pertama; 20% data terakhir tetap terkunci dan tidak pernah dibaca di sini."),
+        "warning": ("Ini pengukuran sejarah, bukan strategi dan bukan sinyal. Angkanya dari 80% data "
+                    "pertama; 20% data terakhir tetap terkunci dan tidak pernah dibaca di halaman ini. "
+                    "Karena Anda bebas mencoba di sini berkali-kali, hanya 20% terakhir itu yang nanti "
+                    "bisa memberi vonis."),
         **record.result,
     }

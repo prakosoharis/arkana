@@ -227,7 +227,7 @@ def test_the_defaults_are_a_complete_request():
     spec = probe.normalize_spec({})
     assert spec["timeframe"] == "M5"
     assert spec["level"] == {"kind": "EMA", "period": 23}
-    assert spec["split"] == "train"
+    assert spec["splits"] == ["train", "holdout"]
 
 
 def test_the_validate_route_reports_the_reason_rather_than_raising():
@@ -259,22 +259,25 @@ def _executable_code(module) -> str:
     return ast.unparse(tree)
 
 
-@pytest.mark.parametrize("forbidden", ["final_oos", "holdout"])
-def test_the_probe_names_no_partition_but_the_one_it_may_read(forbidden):
+def test_the_probe_never_names_the_reserved_partition():
     """An unbudgeted exploration screen must never become a way around the
-    ceremony that guards the reserved partition."""
-    assert forbidden not in _executable_code(probe)
-    assert probe.READABLE_SPLIT == "train"
+    ceremony that guards the reserved partition. Holdout was opened in
+    ARK-S28-03 because train alone ends in 2023 and that market no longer
+    exists; the final fifth stays shut, because it is the only thing left that
+    can deliver a verdict after this screen has been used many times."""
+    assert "final_oos" not in _executable_code(probe)
+    assert probe.READABLE_SPLITS == ("train", "holdout")
 
 
-def test_the_probe_stops_at_the_train_boundary():
+def test_the_probe_stops_at_the_reserved_boundary():
     from app.oos_validation import split_bounds
 
     class _Asset:
         row_count = 1000
         timeframe = "M5"
 
-    expected = split_bounds(1000)["train"]
+    bounds = split_bounds(1000)
+    expected = (bounds["train"][0], bounds["holdout"][1])
     seen: list[dict] = []
 
     def fake_iter(asset, chunk_size):
@@ -286,11 +289,12 @@ def test_the_probe_stops_at_the_train_boundary():
     original = module.iter_bars
     module.iter_bars = fake_iter
     try:
-        seen = module.train_bars(_Asset(), chunk_size=100)
+        seen = module.readable_bars(_Asset(), chunk_size=100)
     finally:
         module.iter_bars = original
-    assert len(seen) == expected[1] - expected[0] == 600
-    assert seen[0]["index"] == 0 and seen[-1]["index"] == 599
+    assert len(seen) == expected[1] - expected[0] == 800
+    assert seen[0]["index"] == 0 and seen[-1]["index"] == 799
+    assert len(seen) < 1000, "the final fifth must never be read"
 
 
 @pytest.mark.parametrize("forbidden", ["StrategyVersion", "BacktestRun", "Deployment", "simulate_kernel"])

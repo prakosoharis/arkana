@@ -1,1 +1,1 @@
-import { LevelTouchLab } from "../../components/level-touch-lab"; export default function Page(){return <LevelTouchLab/>}
+import { ResearchWorkbench } from "../../components/research-workbench"; export default function Page(){return <ResearchWorkbench initial="sentuhan"/>}

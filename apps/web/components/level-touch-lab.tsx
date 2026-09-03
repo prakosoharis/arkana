@@ -33,8 +33,8 @@ type Probe = {
   fingerprint: string;
   reused: boolean;
   touches: number;
-  spec: { timeframe: string; level: { kind: string; period: number }; spread_price: number; split: string };
-  policy: { readable_split: string; ambiguity: string; entry: string };
+  spec: { timeframe: string; level: { kind: string; period: number }; spread_price: number; splits: string[] };
+  policy: { readable_splits: string[]; ambiguity: string; entry: string };
   warning: string;
   asset: { timeframe: string; registered_row_count: number; measured_row_count: number };
   coverage: { bars: number; start: string | null; end: string | null; touches: Record<string, number>; touches_total: number };
@@ -71,15 +71,18 @@ export function resolvedShare(row: Row): number | null {
   return total ? (row.target_first + row.stop_first) / total : null;
 }
 
-export function LevelTouchLab() {
+export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {}) {
   const [options, setOptions] = useState<Options | null>(null);
   const [timeframe, setTimeframe] = useState("M15");
   const [kind, setKind] = useState("EMA");
   const [period, setPeriod] = useState(23);
-  const [distances, setDistances] = useState("5, 10");
+  const [distances, setDistances] = useState("5");
   const [atrMultiple, setAtrMultiple] = useState(1.5);
-  const [useAtr, setUseAtr] = useState(true);
-  const [timeouts, setTimeouts] = useState("8, 24, 48");
+  const [useAtr, setUseAtr] = useState(false);
+  const [timeouts, setTimeouts] = useState("24");
+  // One number is the normal case. Comparing several at once is a deliberate
+  // extra, not the shape the first-time reader has to decode.
+  const [compare, setCompare] = useState(false);
   const [spread, setSpread] = useState(0.25);
   const [data, setData] = useState<Probe | null>(null);
   const [busy, setBusy] = useState(false);
@@ -130,17 +133,7 @@ export function LevelTouchLab() {
 
   const rowKey = (row: Row) => `${row.event}|${row.distance}|${row.timeout_bars}`;
 
-  return <main className="backtest-page">
-    <header>
-      <div>
-        <Link className="back-link" href="/explore">← Eksplorasi Market</Link>
-        <h1>Uji Sentuhan Garis</h1>
-        <p>Saat harga menyentuh sebuah garis: duluan kena TP, SL, atau tidak dua-duanya? Belum ada strategi, belum ada sinyal.</p>
-      </div>
-      <span className="mode-badge">PENGUKURAN SAJA</span>
-    </header>
-
-    <section className="backtest-content">
+  const body = <>
       <section className="panel backtest-config">
         <h2>Susun percobaan Anda</h2>
         <div className="timeframes">
@@ -149,22 +142,36 @@ export function LevelTouchLab() {
           </button>)}
         </div>
         <div className="backtest-form">
-          <label>Jenis garis<select value={kind} onChange={event => setKind(event.target.value)}>{(options?.level_kinds ?? ["EMA", "SMA"]).map(item => <option key={item} value={item}>{item}</option>)}</select></label>
-          <label>Periode<input aria-label="Periode" type="number" min="1" max="500" value={period} onChange={event => setPeriod(Math.round(event.target.valueAsNumber))} /></label>
-          <label>TP/SL tetap (dolar, pisahkan koma)<input aria-label="TP/SL tetap" value={distances} onChange={event => setDistances(event.target.value)} /></label>
-          <label>Batas waktu (candle, pisahkan koma)<input aria-label="Batas waktu" value={timeouts} onChange={event => setTimeouts(event.target.value)} /></label>
-          <label>Spread<input aria-label="Spread" type="number" min="0" step="0.01" value={spread} onChange={event => setSpread(event.target.valueAsNumber)} /></label>
-          <label>Kelipatan ATR<input aria-label="Kelipatan ATR" type="number" min="0.1" step="0.1" value={atrMultiple} disabled={!useAtr} onChange={event => setAtrMultiple(event.target.valueAsNumber)} /></label>
+          <label>Jenis garis<select value={kind} onChange={event => setKind(event.target.value)}>{(options?.level_kinds ?? ["EMA", "SMA"]).map(item => <option key={item} value={item}>{item}</option>)}</select>
+            <small>Garis yang harus disentuh harga.</small></label>
+          <label>Periode<input aria-label="Periode" type="number" min="1" max="500" value={period} onChange={event => setPeriod(Math.round(event.target.valueAsNumber))} />
+            <small>Berapa candle dipakai untuk menghitung garisnya.</small></label>
+          <label>TP dan SL (dolar){compare
+            ? <input aria-label="TP dan SL" value={distances} onChange={event => setDistances(event.target.value)} />
+            : <input aria-label="TP dan SL" type="number" min="0.1" step="0.1" value={distances} onChange={event => setDistances(event.target.value)} />}
+            <small>Keduanya sama besar. Isi <strong>5</strong> berarti TP $5 dan SL $5.</small></label>
+          <label>Ditunggu berapa candle{compare
+            ? <input aria-label="Ditunggu berapa candle" value={timeouts} onChange={event => setTimeouts(event.target.value)} />
+            : <input aria-label="Ditunggu berapa candle" type="number" min="1" step="1" value={timeouts} onChange={event => setTimeouts(event.target.value)} />}
+            <small>Kalau sampai sekian candle belum kena TP maupun SL, posisi dianggap <strong>belum selesai</strong> dan tidak dihitung menang atau kalah.</small></label>
+          <label>Spread<input aria-label="Spread" type="number" min="0" step="0.01" value={spread} onChange={event => setSpread(event.target.valueAsNumber)} />
+            <small>Ongkos masuk, dibebankan ke harga entry.</small></label>
+          <label>Kelipatan ATR<input aria-label="Kelipatan ATR" type="number" min="0.1" step="0.1" value={atrMultiple} disabled={!useAtr} onChange={event => setAtrMultiple(event.target.valueAsNumber)} />
+            <small>TP/SL yang ikut volatilitas: 1,5 berarti 1,5x rata-rata gerak candle terakhir. Berguna karena $5 di 2018 itu jarak jauh, di 2026 dekat.</small></label>
         </div>
         <label className="explorer-filter">
+          <input type="checkbox" checked={compare} onChange={event => { setCompare(event.target.checked); if (!event.target.checked) { setDistances(distances.split(",")[0].trim()); setTimeouts(timeouts.split(",")[0].trim()); } }} />
+          Bandingkan beberapa angka sekaligus (pisahkan dengan koma)
+        </label>
+        <label className="explorer-filter">
           <input type="checkbox" checked={useAtr} onChange={event => setUseAtr(event.target.checked)} />
-          Ikut sertakan jarak yang mengikuti volatilitas (ATR)
+          Tambahkan sekalian jarak yang mengikuti volatilitas (ATR)
         </label>
         <div className="actions explorer-actions">
           <button className="run-button" disabled={busy} onClick={() => void run()}>Ukur</button>
         </div>
         <p className="muted">TP dan SL selalu sama besar, jadi <strong>winrate adalah satu-satunya angka yang penting</strong>. Kalau SL dan TP tersentuh di candle yang sama, SL yang menang — aturan paling pesimis, sama dengan mesin backtest.</p>
-        <p className="muted">Hanya membaca <strong>60% data pertama</strong>. 20% data terakhir tetap terkunci dan tidak pernah dibaca di halaman ini.</p>
+        <p className="muted">Membaca <strong>80% data pertama</strong>. 20% terakhir tetap terkunci dan tidak pernah dibaca di sini — itu satu-satunya bagian yang nanti bisa memberi vonis, justru karena Anda bebas mencoba berkali-kali di halaman ini.</p>
         {attempts > 0 && <p className="muted">Anda sudah menjalankan <strong>{attempts}</strong> percobaan di sesi ini. Makin banyak dicoba, makin besar peluang angka bagus muncul karena kebetulan.</p>}
       </section>
 
@@ -175,6 +182,7 @@ export function LevelTouchLab() {
           <div className="panel-header"><div>
             <h2>{data.spec.level.kind} {data.spec.level.period} · {data.asset.timeframe} · {count(data.coverage.touches_total)} sentuhan</h2>
             <p>{data.coverage.start?.slice(0, 10)} sampai {data.coverage.end?.slice(0, 10)} · {count(data.asset.measured_row_count)} dari {count(data.asset.registered_row_count)} candle · sidik jari {data.fingerprint.slice(0, 12)}</p>
+            <p className="muted">Berhenti di tanggal itu karena 20% candle terbaru sengaja dikunci.</p>
           </div><span className="mode-badge">{data.reused ? "TERSIMPAN" : "BARU DIHITUNG"}</span></div>
           <section className="command-metrics">
             {Object.entries(data.coverage.touches).map(([event, value]) => <article key={event}>
@@ -236,6 +244,18 @@ export function LevelTouchLab() {
           <p className="warning-line">{data.warning}</p>
         </section>
       </>}
-    </section>
+  </>;
+
+  if (embedded) return body;
+  return <main className="backtest-page">
+    <header>
+      <div>
+        <Link className="back-link" href="/explore">← Riset Pasar</Link>
+        <h1>Uji Sentuhan Garis</h1>
+        <p>Saat harga menyentuh sebuah garis: duluan kena TP, SL, atau tidak dua-duanya?</p>
+      </div>
+      <span className="mode-badge">PENGUKURAN SAJA</span>
+    </header>
+    <section className="backtest-content">{body}</section>
   </main>;
 }

@@ -41,3 +41,6 @@
 .timeframes button small{color:var(--muted);font-size:9px}
 @media(max-width:850px){.explorer-runs{grid-template-columns:1fr}}
 .explorer-zones{margin-top:14px}
+.workbench-tabs{margin-bottom:18px}
+.workbench-tabs button{padding:10px 14px;font-size:13px}
+.backtest-form label small{display:block;color:var(--muted);font-size:10px;line-height:1.4;margin-top:4px;text-transform:none}

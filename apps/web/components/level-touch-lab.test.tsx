@@ -43,7 +43,7 @@ describe("LevelTouchLab", () => {
     expect(markup).toContain("Uji Sentuhan Garis");
     expect(markup).toContain("PENGUKURAN SAJA");
     expect(markup).toContain("SL yang menang");
-    expect(markup).toContain("60% data pertama");
+    expect(markup).toContain("80% data pertama");
     expect(markup).toContain("winrate adalah satu-satunya angka yang penting");
   });
 

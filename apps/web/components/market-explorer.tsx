@@ -191,7 +191,7 @@ export function FollowPanel({ rows, minimumSamples, policy }: { rows: Exploratio
   </div>;
 }
 
-export function MarketExplorer() {
+export function MarketExplorer({ embedded = false }: { embedded?: boolean } = {}) {
   const [options, setOptions] = useState<TimeframeOption[]>([]);
   const [timeframe, setTimeframe] = useState("M5");
   const [zone, setZone] = useState<"WIB" | "BROKER">("WIB");
@@ -239,17 +239,7 @@ export function MarketExplorer() {
     return [];
   }, [data, view, sort]);
 
-  return <main className="backtest-page">
-    <header>
-      <div>
-        <Link className="back-link" href="/">← Data Pasar</Link>
-        <h1>Eksplorasi Market</h1>
-        <p>Mengukur pasar apa adanya. Belum ada strategi, belum ada backtest, belum ada sinyal.</p>
-      </div>
-      <span className="mode-badge">PENGUKURAN SAJA</span>
-    </header>
-
-    <section className="backtest-content">
+  const body = <>
       <section className="panel backtest-config">
         <h2>Pilih timeframe dan jam</h2>
         <div className="timeframes">
@@ -338,6 +328,18 @@ export function MarketExplorer() {
           <p className="warning-line">{data.warning}</p>
         </section>
       </>}
-    </section>
+  </>;
+
+  if (embedded) return body;
+  return <main className="backtest-page">
+    <header>
+      <div>
+        <Link className="back-link" href="/">← Data Pasar</Link>
+        <h1>Eksplorasi Market</h1>
+        <p>Mengukur pasar apa adanya. Belum ada strategi, belum ada backtest, belum ada sinyal.</p>
+      </div>
+      <span className="mode-badge">PENGUKURAN SAJA</span>
+    </header>
+    <section className="backtest-content">{body}</section>
   </main>;
 }
