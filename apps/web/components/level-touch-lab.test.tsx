@@ -43,7 +43,9 @@ describe("LevelTouchLab", () => {
     expect(markup).toContain("Uji Sentuhan Garis");
     expect(markup).toContain("PENGUKURAN SAJA");
     expect(markup).toContain("SL yang menang");
-    expect(markup).toContain("80% data pertama");
+    // The default reaches the latest synced bar, so the disclosure shown first
+    // is the one that belongs to that choice.
+    expect(markup).toContain("Seluruh data dipakai");
     expect(markup).toContain("winrate adalah satu-satunya angka yang penting");
   });
 
@@ -68,5 +70,23 @@ describe("LevelTouchLab time limit", () => {
     expect(markup).toContain("Batas waktu (opsional)");
     expect(markup).toContain("kosongkan = tanpa batas");
     expect(markup).toContain("Kosongkan saja");
+  });
+});
+
+describe("LevelTouchLab coverage (ARK-S29-02)", () => {
+  it("offers both spans and puts the price of each on the button", () => {
+    const markup = renderToStaticMarkup(<LevelTouchLab />);
+    expect(markup).toContain("Sampai data terkini");
+    expect(markup).toContain("Sisakan 20% untuk vonis");
+    expect(markup).toContain("ikut sync terbaru");
+  });
+
+  it("says out loud what using every bar costs", () => {
+    // Pretending the reserve survives a hundred exploration runs would be the
+    // larger dishonesty, so the trade is stated rather than withheld.
+    const markup = renderToStaticMarkup(<LevelTouchLab />);
+    expect(markup).toContain("Seluruh data dipakai");
+    expect(markup).toContain("juri netral");
+    expect(markup).toContain("forward test");
   });
 });

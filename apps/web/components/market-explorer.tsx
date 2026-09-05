@@ -22,6 +22,8 @@ type Consistency = {
   years_above_half: number | null;
 };
 
+type Slice = { bars: number; up_rate: number | null; down_rate: number | null; mean_range: number | null };
+
 type Row = {
   key: number;
   label: string;
@@ -35,7 +37,9 @@ type Row = {
   mean_body: number | null;
   sufficient_sample: boolean;
   consistency: Consistency;
-  per_year: Record<string, { bars: number; up_rate: number | null; down_rate: number | null; mean_range: number | null }>;
+  per_year: Record<string, Slice>;
+  recent?: Record<string, Slice>;
+  by_month_direction?: Record<string, Slice>;
 };
 
 type RunLength = { length: number; occurrences: number; closed_runs: number; mean_move: number | null };
@@ -51,6 +55,8 @@ type Exploration = {
   warning: string;
   coverage: { bars: number; start: string | null; end: string | null; years: number; up_rate: number | null; down_rate: number | null; mean_range: number | null };
   per_year: Array<{ year: number; bars: number; up_rate: number | null; mean_range: number | null }>;
+  months: Array<{ month: string; direction: string; change: number | null; bars: number }>;
+  month_policy: { windows: number[]; directions: string[]; rule: string; latest_month: string | null; months_measured: number };
   time_of_day: Row[];
   hour_of_day: Row[];
   day_of_week: Row[];
@@ -75,6 +81,36 @@ const VIEWS = [
 
 type ViewId = (typeof VIEWS)[number]["id"];
 
+// ARK-S29-01. A nine-year average cannot answer "which hour still leans up in a
+// falling month". These two controls pick which slice of the row the table
+// shows, and the sample count travels with whichever is chosen -- a one-month
+// window on a single five-minute slot is about twenty candles, and the table
+// has to say so rather than print a percentage over it.
+const PERIODS = [
+  { id: "all", label: "Semua data" },
+  { id: "12", label: "12 bulan terakhir" },
+  { id: "6", label: "6 bulan terakhir" },
+  { id: "3", label: "3 bulan terakhir" },
+  { id: "1", label: "1 bulan terakhir" },
+] as const;
+
+type PeriodId = (typeof PERIODS)[number]["id"];
+
+const MONTH_FILTERS = [
+  { id: "all", label: "Semua bulan" },
+  { id: "NAIK", label: "Hanya bulan naik" },
+  { id: "TURUN", label: "Hanya bulan turun" },
+] as const;
+
+type MonthFilterId = (typeof MONTH_FILTERS)[number]["id"];
+
+/** The slice of a row the two controls select, or the row itself. */
+export function sliceOf(row: Row, period: PeriodId, monthFilter: MonthFilterId): Slice {
+  if (monthFilter !== "all") return row.by_month_direction?.[monthFilter] ?? { bars: 0, up_rate: null, down_rate: null, mean_range: null };
+  if (period !== "all") return row.recent?.[period] ?? { bars: 0, up_rate: null, down_rate: null, mean_range: null };
+  return { bars: row.bars, up_rate: row.up_rate, down_rate: row.down_rate, mean_range: row.mean_range };
+}
+
 const SORTS = [
   { id: "down", label: "Paling sering merah" },
   { id: "up", label: "Paling sering hijau" },
@@ -89,7 +125,14 @@ const price = (value: number | null | undefined) => (value === null || value ===
 const count = (value: number) => value.toLocaleString("id-ID");
 
 /** How trustworthy a row is, in one word the Owner can act on. */
-export function verdict(row: Row, minimumSamples: number): { label: string; tone: string; why: string } {
+export function verdict(row: Row, minimumSamples: number, slice?: Slice): { label: string; tone: string; why: string } {
+  // A narrowed slice is judged on its own sample count. Carrying the nine-year
+  // verdict onto a one-month number would be the exact thing this control was
+  // added to expose.
+  if (slice && slice.bars < minimumSamples) {
+    return { label: "SAMPEL KURANG", tone: "weak", why: `Hanya ${count(slice.bars)} candle di periode ini, minimal ${count(minimumSamples)}.` };
+  }
+  if (slice) return { label: "CUKUP SAMPEL", tone: "medium", why: `${count(slice.bars)} candle di periode ini. Bandingkan dengan angka semua data di sebelahnya.` };
   if (!row.sufficient_sample) return { label: "SAMPEL KURANG", tone: "weak", why: `Baru ${count(row.bars)} candle, minimal ${count(minimumSamples)}.` };
   if (!row.consistency.sufficient_years) return { label: "TAHUN KURANG", tone: "weak", why: `Hanya ${row.consistency.years_measured} tahun yang sampelnya cukup.` };
   const spread = row.consistency.spread ?? 1;
@@ -98,38 +141,61 @@ export function verdict(row: Row, minimumSamples: number): { label: string; tone
   return { label: "KONSISTEN", tone: "strong", why: `Selisih antar tahun hanya ${percent(spread)} selama ${row.consistency.years_measured} tahun.` };
 }
 
-export function sortRows(rows: Row[], sort: SortId): Row[] {
+export function sortRows(rows: Row[], sort: SortId, period: PeriodId = "all", monthFilter: MonthFilterId = "all"): Row[] {
   const copy = [...rows];
   if (sort === "time") return copy.sort((a, b) => a.key - b.key);
-  if (sort === "range") return copy.sort((a, b) => (b.mean_range ?? -1) - (a.mean_range ?? -1));
+  // Ranking on the whole history while showing a one-month column would put the
+  // wrong rows at the top of the table the Owner is reading.
+  const of = (row: Row) => sliceOf(row, period, monthFilter);
+  if (sort === "range") return copy.sort((a, b) => (of(b).mean_range ?? -1) - (of(a).mean_range ?? -1));
   const field = sort === "down" ? "down_rate" : "up_rate";
-  return copy.sort((a, b) => (b[field] ?? -1) - (a[field] ?? -1));
+  return copy.sort((a, b) => (of(b)[field] ?? -1) - (of(a)[field] ?? -1));
 }
 
-function RowTable({ rows, minimumSamples, onlySufficient, query, limit }: { rows: Row[]; minimumSamples: number; onlySufficient: boolean; query: string; limit: number }) {
+function RowTable({ rows, minimumSamples, onlySufficient, query, limit, period, monthFilter }: { rows: Row[]; minimumSamples: number; onlySufficient: boolean; query: string; limit: number; period: PeriodId; monthFilter: MonthFilterId }) {
   const [open, setOpen] = useState<number | null>(null);
+  const narrowed = period !== "all" || monthFilter !== "all";
   const filtered = rows
-    .filter(row => (onlySufficient ? row.sufficient_sample : true))
+    .filter(row => (onlySufficient ? (narrowed ? sliceOf(row, period, monthFilter).bars >= minimumSamples : row.sufficient_sample) : true))
     .filter(row => (query.trim() ? row.label.includes(query.trim()) : true));
   const shown = filtered.slice(0, limit);
-  if (!shown.length) return <p className="empty-library muted">Tidak ada baris yang cocok. Coba matikan filter &quot;sampel cukup&quot; atau kosongkan pencarian.</p>;
+  if (!shown.length) return <p className="empty-library muted">Tidak ada baris yang cocok. Coba matikan filter &quot;sampel cukup&quot;, lebarkan periodenya, atau kosongkan pencarian.</p>;
   return <div className="explorer-table">
     <table>
-      <thead><tr><th>Waktu</th><th>Hijau</th><th>Merah</th><th>Jumlah candle</th><th>Rata-rata range</th><th>Konsistensi antar tahun</th><th /></tr></thead>
+      <thead><tr><th>Waktu</th><th>Hijau</th><th>Merah</th><th>Jumlah candle</th><th>Rata-rata range</th>{narrowed && <th>Hijau semua data</th>}<th>{narrowed ? "Penilaian periode" : "Konsistensi antar tahun"}</th><th /></tr></thead>
       <tbody>
         {shown.map(row => {
-          const state = verdict(row, minimumSamples);
+          const slice = sliceOf(row, period, monthFilter);
+          const state = verdict(row, minimumSamples, narrowed ? slice : undefined);
           return <React.Fragment key={row.key}>
             <tr>
               <td><strong>{row.label}</strong></td>
-              <td>{percent(row.up_rate)}</td>
-              <td>{percent(row.down_rate)}</td>
-              <td>{count(row.bars)}</td>
-              <td>{price(row.mean_range)}</td>
+              <td><strong>{percent(slice.up_rate)}</strong></td>
+              <td>{percent(slice.down_rate)}</td>
+              <td>{count(slice.bars)}</td>
+              <td>{price(slice.mean_range)}</td>
+              {narrowed && <td className="muted">{percent(row.up_rate)}<small>{count(row.bars)} candle</small></td>}
               <td><span className={`explorer-verdict ${state.tone}`}>{state.label}</span><small>{state.why}</small></td>
-              <td><button className="sample-use" onClick={() => setOpen(open === row.key ? null : row.key)}>{open === row.key ? "Tutup" : "Per tahun"}</button></td>
+              <td><button className="sample-use" onClick={() => setOpen(open === row.key ? null : row.key)}>{open === row.key ? "Tutup" : "Rinci"}</button></td>
             </tr>
-            {open === row.key && <tr className="explorer-detail"><td colSpan={7}>
+            {open === row.key && <tr className="explorer-detail"><td colSpan={narrowed ? 8 : 7}>
+              <h3>Jendela terakhir</h3>
+              <table>
+                <thead><tr><th>Periode</th><th>Hijau</th><th>Merah</th><th>Candle</th><th>Rata-rata range</th></tr></thead>
+                <tbody>{Object.entries(row.recent ?? {}).sort((a, b) => Number(a[0]) - Number(b[0])).map(([window, value]) => <tr key={window}>
+                  <td>{window} bulan terakhir</td><td>{percent(value.up_rate)}</td><td>{percent(value.down_rate)}</td>
+                  <td>{count(value.bars)}</td><td>{price(value.mean_range)}</td>
+                </tr>)}</tbody>
+              </table>
+              <h3>Menurut arah bulannya</h3>
+              <table>
+                <thead><tr><th>Bulan</th><th>Hijau</th><th>Merah</th><th>Candle</th><th>Rata-rata range</th></tr></thead>
+                <tbody>{Object.entries(row.by_month_direction ?? {}).map(([direction, value]) => <tr key={direction}>
+                  <td>Bulan {direction.toLowerCase()}</td><td>{percent(value.up_rate)}</td><td>{percent(value.down_rate)}</td>
+                  <td>{count(value.bars)}</td><td>{price(value.mean_range)}</td>
+                </tr>)}</tbody>
+              </table>
+              <h3>Per tahun</h3>
               <table>
                 <thead><tr><th>Tahun</th><th>Hijau</th><th>Merah</th><th>Candle</th><th>Rata-rata range</th></tr></thead>
                 <tbody>{Object.entries(row.per_year).map(([year, value]) => <tr key={year}>
@@ -199,6 +265,8 @@ export function MarketExplorer({ embedded = false }: { embedded?: boolean } = {}
   const [view, setView] = useState<ViewId>("time_of_day");
   const [sort, setSort] = useState<SortId>("down");
   const [onlySufficient, setOnlySufficient] = useState(true);
+  const [period, setPeriod] = useState<PeriodId>("all");
+  const [monthFilter, setMonthFilter] = useState<MonthFilterId>("all");
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -233,11 +301,11 @@ export function MarketExplorer({ embedded = false }: { embedded?: boolean } = {}
 
   const rows: Row[] = useMemo(() => {
     if (!data) return [];
-    if (view === "time_of_day") return sortRows(data.time_of_day, sort);
-    if (view === "hour_of_day") return sortRows(data.hour_of_day, sort);
-    if (view === "day_of_week") return sortRows(data.day_of_week, sort);
+    if (view === "time_of_day") return sortRows(data.time_of_day, sort, period, monthFilter);
+    if (view === "hour_of_day") return sortRows(data.hour_of_day, sort, period, monthFilter);
+    if (view === "day_of_week") return sortRows(data.day_of_week, sort, period, monthFilter);
     return [];
-  }, [data, view, sort]);
+  }, [data, view, sort, period, monthFilter]);
 
   const body = <>
       <section className="panel backtest-config">
@@ -275,6 +343,7 @@ export function MarketExplorer({ embedded = false }: { embedded?: boolean } = {}
             <article><small>Tahun terukur</small><strong>{data.coverage.years}</strong></article>
           </section>
           <p className="warning-line">{data.clock.note}</p>
+          <p className="warning-line">Data ini <strong>tidak memuat spread</strong> — hanya harga open/high/low/close. Jam pembukaan bursa sering terlihat paling menjanjikan di sini justru karena spread-nya lebar, dan biaya itu tidak ikut terhitung. Perlakukan jam buka dan jam tutup dengan curiga.</p>
           <details className="discovery-advanced">
             <summary>Dari mana selisih jam ini diketahui?</summary>
             <p>{data.clock.measured_from}</p>
@@ -298,8 +367,19 @@ export function MarketExplorer({ embedded = false }: { embedded?: boolean } = {}
                 onClick={() => { setView(item.id); if (item.id === "day_of_week") setSort("time"); }}>{item.label}</button>)}
             </div>
             {(view === "time_of_day" || view === "hour_of_day" || view === "day_of_week") && <>
+              <p className="muted">
+                <strong>Periode</strong> mempersempit ke bulan-bulan terakhir. <strong>Arah bulan</strong> hanya menghitung bulan yang naik atau yang turun —
+                itu yang menjawab &quot;di bulan turun, jam berapa masih condong hijau&quot;. Keduanya tidak bisa dipakai bersamaan, supaya sampelnya tidak habis.
+                Perhatikan kolom jumlah candle: satu slot 5 menit dalam sebulan hanya sekitar 20 candle, jadi baca angka pendek lewat tampilan <em>Per jam</em>.
+              </p>
               <div className="timeframes">
                 {SORTS.map(item => <button key={item.id} className={item.id === sort ? "selected" : ""} onClick={() => setSort(item.id)}>{item.label}</button>)}
+              </div>
+              <div className="timeframes">
+                {PERIODS.map(item => <button key={item.id} className={item.id === period ? "selected" : ""} disabled={monthFilter !== "all"} onClick={() => setPeriod(item.id)}>{item.label}</button>)}
+              </div>
+              <div className="timeframes">
+                {MONTH_FILTERS.map(item => <button key={item.id} className={item.id === monthFilter ? "selected" : ""} onClick={() => setMonthFilter(item.id)}>{item.label}</button>)}
               </div>
               <label className="explorer-filter">
                 <input type="checkbox" checked={onlySufficient} onChange={event => setOnlySufficient(event.target.checked)} />
@@ -312,7 +392,7 @@ export function MarketExplorer({ embedded = false }: { embedded?: boolean } = {}
           </div>
 
           {(view === "time_of_day" || view === "hour_of_day" || view === "day_of_week") &&
-            <RowTable rows={rows} minimumSamples={data.policy.minimum_samples} onlySufficient={view === "day_of_week" ? false : onlySufficient} query={view === "time_of_day" ? query : ""} limit={60} />}
+            <RowTable rows={rows} minimumSamples={data.policy.minimum_samples} onlySufficient={view === "day_of_week" ? false : onlySufficient} query={view === "time_of_day" ? query : ""} limit={60} period={period} monthFilter={monthFilter} />}
           {view === "runs" && <RunsPanel runs={data.runs} />}
           {view === "follow" && <FollowPanel rows={data.follow_through} minimumSamples={data.policy.minimum_samples} policy={data.policy} />}
         </section>

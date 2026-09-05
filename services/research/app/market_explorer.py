@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 from .market_data import iter_bars, latest_dataset
 from .models import Dataset, DatasetBarAsset, MarketExploration
 
-PROTOCOL_VERSION = "MARKET_EXPLORATION_V2"
+PROTOCOL_VERSION = "MARKET_EXPLORATION_V3"
 TIMEFRAMES = ("M1", "M5", "M15", "M30", "H1", "H4")
 
 
@@ -91,6 +91,22 @@ LARGE_MULTIPLE = 1.5
 SMALL_MULTIPLE = 0.5
 
 WEEKDAYS = ("Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu")
+
+# ARK-S29-01.  A year-level rate hides the market changing underneath it.
+#
+# The Owner asked for the same slot over the last month, three months and six
+# months, for a concrete reason: they want to know which hour still leans up
+# during a month that is falling. A nine-year average cannot answer that, and a
+# 61% at the session open is a number the spread would eat anyway.
+#
+# Everything here is derived from one extra accumulation -- the slot's own
+# months -- rather than from extra passes over the asset.
+RECENT_WINDOWS = (1, 3, 6, 12)
+
+# A month is up or down by its own first open against its own last close. No
+# band in between: a threshold would be a judgement the data does not carry,
+# and the size of the move is reported so the Owner can apply their own.
+MONTH_DIRECTIONS = ("NAIK", "TURUN")
 
 
 # ---------------------------------------------------------------- accumulator
@@ -161,27 +177,40 @@ def consistency(per_year: dict[int, Bucket]) -> dict[str, Any]:
             "years_above_half": sum(1 for rate in rates if rate > 0.5)}
 
 
-def _rows(yearly: dict[Any, dict[int, Bucket]], label: Callable[[Any], str]) -> list[dict[str, Any]]:
+def _rows(yearly: dict[Any, dict[int, Bucket]], label: Callable[[Any], str],
+          monthly: dict[Any, dict[str, Bucket]] | None = None,
+          month_direction: dict[str, str] | None = None,
+          ordered_months: list[str] | None = None) -> list[dict[str, Any]]:
     rows = []
     for key in sorted(yearly):
         per_year = yearly[key]
-        rows.append({"key": key, "label": label(key), **_merged(per_year.values()).read(),
-                     "consistency": consistency(per_year),
-                     "per_year": {str(year): per_year[year].read() for year in sorted(per_year)}})
+        row = {"key": key, "label": label(key), **_merged(per_year.values()).read(),
+               "consistency": consistency(per_year),
+               "per_year": {str(year): per_year[year].read() for year in sorted(per_year)}}
+        if monthly is not None and ordered_months:
+            per_month = monthly.get(key, {})
+            row["recent"] = {
+                str(window): _merged(per_month[month] for month in ordered_months[-window:] if month in per_month).read()
+                for window in RECENT_WINDOWS}
+            row["by_month_direction"] = {
+                direction: _merged(bucket for month, bucket in per_month.items()
+                                   if (month_direction or {}).get(month) == direction).read()
+                for direction in MONTH_DIRECTIONS}
+        rows.append(row)
     return rows
 
 
-def _regrouped(slot_years: dict[int, dict[int, Bucket]], size: int) -> dict[int, dict[int, Bucket]]:
+def _regrouped(slot_buckets: dict[int, dict[Any, Bucket]], size: int) -> dict[int, dict[Any, Bucket]]:
     """Coarser time buckets summed from the finest one already collected.
 
     Counting hour-of-day separately during the pass would mean a second `add`
     per bar for a number that is the sum of the minute rows anyway.
     """
-    grouped: dict[int, dict[int, Bucket]] = defaultdict(lambda: defaultdict(Bucket))
-    for slot, per_year in slot_years.items():
+    grouped: dict[int, dict[Any, Bucket]] = defaultdict(lambda: defaultdict(Bucket))
+    for slot, per_period in slot_buckets.items():
         target = (slot // size) * size
-        for year, bucket in per_year.items():
-            grouped[target][year].merge(bucket)
+        for period, bucket in per_period.items():
+            grouped[target][period].merge(bucket)
     return grouped
 
 
@@ -207,6 +236,12 @@ def measure_stream(chunks: Iterable[list[dict]], display_timezone: str = "BROKER
         raise ValueError(f"timezone must be one of {', '.join(TIMEZONES)}")
     slot_years: dict[int, dict[int, Bucket]] = defaultdict(lambda: defaultdict(Bucket))
     day_years: dict[int, dict[int, Bucket]] = defaultdict(lambda: defaultdict(Bucket))
+    # ARK-S29-01: the slot's own months. Rolling windows and the up/down-month
+    # split are both sums over these, so neither costs another pass.
+    slot_months: dict[int, dict[str, Bucket]] = defaultdict(lambda: defaultdict(Bucket))
+    day_months: dict[int, dict[str, Bucket]] = defaultdict(lambda: defaultdict(Bucket))
+    month_open: dict[str, float] = {}
+    month_close: dict[str, float] = {}
     follow: dict[str, Bucket] = defaultdict(Bucket)
 
     # Runs of consecutive same-direction bars. `moves` is kept beside `counts`
@@ -234,9 +269,15 @@ def measure_stream(chunks: Iterable[list[dict]], display_timezone: str = "BROKER
                 first = timestamp
             last = timestamp
             year = timestamp.year
+            month = f"{year}-{timestamp.month:02d}"
+            slot = timestamp.hour * 60 + timestamp.minute
 
-            slot_years[timestamp.hour * 60 + timestamp.minute][year].add(open_, high, low, close)
+            slot_years[slot][year].add(open_, high, low, close)
             day_years[timestamp.weekday()][year].add(open_, high, low, close)
+            slot_months[slot][month].add(open_, high, low, close)
+            day_months[timestamp.weekday()][month].add(open_, high, low, close)
+            month_open.setdefault(month, open_)
+            month_close[month] = close
 
             direction = "UP" if close > open_ else "DOWN" if close < open_ else None
             if direction != direction_now:
@@ -270,15 +311,33 @@ def measure_stream(chunks: Iterable[list[dict]], display_timezone: str = "BROKER
         for year, bucket in per_year.items():
             yearly[year].merge(bucket)
 
+    ordered_months = sorted(month_open)
+    month_direction = {month: ("NAIK" if month_close[month] > month_open[month] else "TURUN")
+                       for month in ordered_months}
+    month_change = {month: (month_close[month] - month_open[month]) / month_open[month]
+                    for month in ordered_months if month_open[month]}
+    hour_months = _regrouped(slot_months, 60)
+    monthly_totals: dict[str, Bucket] = defaultdict(Bucket)
+    for per_month in slot_months.values():
+        for month, bucket in per_month.items():
+            monthly_totals[month].merge(bucket)
+
     return {
         "coverage": {"bars": overall.bars,
                      "start": first.isoformat() if first else None,
                      "end": last.isoformat() if last else None,
                      "years": len(yearly), **overall.read()},
         "per_year": [{"year": year, **yearly[year].read()} for year in sorted(yearly)],
-        "time_of_day": _rows(slot_years, slot_label),
-        "hour_of_day": _rows(_regrouped(slot_years, 60), slot_label),
-        "day_of_week": _rows(day_years, lambda day: WEEKDAYS[day]),
+        "months": [{"month": month, "direction": month_direction[month],
+                    "change": month_change.get(month), **monthly_totals[month].read()}
+                   for month in ordered_months],
+        "month_policy": {"windows": list(RECENT_WINDOWS), "directions": list(MONTH_DIRECTIONS),
+                         "rule": "Sebuah bulan disebut NAIK kalau close terakhirnya di atas open pertamanya, TURUN kalau tidak. Tidak ada zona tengah; besar perubahannya ditampilkan supaya Anda bisa memakai batas sendiri.",
+                         "latest_month": ordered_months[-1] if ordered_months else None,
+                         "months_measured": len(ordered_months)},
+        "time_of_day": _rows(slot_years, slot_label, slot_months, month_direction, ordered_months),
+        "hour_of_day": _rows(_regrouped(slot_years, 60), slot_label, hour_months, month_direction, ordered_months),
+        "day_of_week": _rows(day_years, lambda day: WEEKDAYS[day], day_months, month_direction, ordered_months),
         "runs": {direction: _runs(run_counts[direction], run_moves[direction]) for direction in ("UP", "DOWN")},
         "follow_through": [{"key": key, **follow[key].read()} for key in sorted(follow)],
     }
@@ -362,14 +421,20 @@ def measure(session: Session, *, timeframe: str, symbol: str = "XAUUSD", display
 WIRE_PER_YEAR = ("bars", "up_rate", "down_rate", "mean_range")
 
 
+def _slim(nested: dict[str, Any]) -> dict[str, Any]:
+    return {name: {key: value[key] for key in WIRE_PER_YEAR if key in value} for name, value in nested.items()}
+
+
 def _trimmed(result: dict[str, Any]) -> dict[str, Any]:
     trimmed = dict(result)
     for group in ("time_of_day", "hour_of_day", "day_of_week"):
         if group not in trimmed:
             continue
         trimmed[group] = [
-            {**row, "per_year": {year: {key: value[key] for key in WIRE_PER_YEAR if key in value}
-                                 for year, value in row.get("per_year", {}).items()}}
+            {**row,
+             "per_year": _slim(row.get("per_year", {})),
+             "recent": _slim(row.get("recent", {})),
+             "by_month_direction": _slim(row.get("by_month_direction", {}))}
             for row in trimmed[group]]
     return trimmed
 

@@ -33,8 +33,8 @@ type Probe = {
   fingerprint: string;
   reused: boolean;
   touches: number;
-  spec: { timeframe: string; level: { kind: string; period: number }; spread_price: number; splits: string[] };
-  policy: { readable_splits: string[]; ambiguity: string; entry: string };
+  spec: { timeframe: string; level: { kind: string; period: number }; spread_price: number; splits: string[]; coverage: string };
+  policy: { coverage: string; coverages: string[]; readable_splits: string[]; ambiguity: string; entry: string };
   warning: string;
   asset: { timeframe: string; registered_row_count: number; measured_row_count: number };
   coverage: { bars: number; start: string | null; end: string | null; touches: Record<string, number>; touches_total: number };
@@ -43,7 +43,18 @@ type Probe = {
   per_month: Row[];
 };
 
-type Options = { level_kinds: string[]; timeframes: Array<{ timeframe: string; rows: number }> };
+type Options = { level_kinds: string[]; coverages?: string[]; timeframes: Array<{ timeframe: string; rows: number }> };
+
+// ARK-S29-02. The Owner asked for the latest synced bar, and was right to: with
+// the reserve held back the M5 window ends in December 2024 while they trade
+// September 2026. The choice is theirs, and the price of each side is on the
+// button rather than buried in a footnote.
+const COVERAGES = [
+  { id: "ALL", label: "Sampai data terkini", hint: "seluruh data, ikut sync terbaru" },
+  { id: "RESEARCH", label: "Sisakan 20% untuk vonis", hint: "berhenti lebih awal, tapi masih ada juri" },
+] as const;
+
+type CoverageId = (typeof COVERAGES)[number]["id"];
 
 const EVENT_LABEL: Record<string, string> = {
   BOUNCE_FROM_ABOVE: "Mantul dari atas (BUY)",
@@ -88,6 +99,7 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
   // extra, not the shape the first-time reader has to decode.
   const [compare, setCompare] = useState(false);
   const [spread, setSpread] = useState(0.25);
+  const [coverage, setCoverage] = useState<CoverageId>("ALL");
   const [data, setData] = useState<Probe | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -112,7 +124,8 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
     ],
     timeouts: numbers(timeouts).map(value => Math.round(value)),   // [] means no limit
     spread_price: spread,
-  }), [timeframe, kind, period, distances, useAtr, atrMultiple, timeouts, spread]);
+    coverage,
+  }), [timeframe, kind, period, distances, useAtr, atrMultiple, timeouts, spread, coverage]);
 
   const run = useCallback(async () => {
     setBusy(true); setMessage("Menghitung… M1 bisa memakan waktu sekitar semenit."); setData(null); setOpenRow(null);
@@ -171,11 +184,19 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
           <input type="checkbox" checked={useAtr} onChange={event => setUseAtr(event.target.checked)} />
           Tambahkan sekalian jarak yang mengikuti volatilitas (ATR)
         </label>
+        <p className="muted">Sampai data kapan?</p>
+        <div className="timeframes">
+          {COVERAGES.map(item => <button key={item.id} className={item.id === coverage ? "selected" : ""} onClick={() => setCoverage(item.id)}>
+            {item.label}<small> · {item.hint}</small>
+          </button>)}
+        </div>
         <div className="actions explorer-actions">
           <button className="run-button" disabled={busy} onClick={() => void run()}>Ukur</button>
         </div>
         <p className="muted">TP dan SL selalu sama besar, jadi <strong>winrate adalah satu-satunya angka yang penting</strong>. Kalau SL dan TP tersentuh di candle yang sama, SL yang menang — aturan paling pesimis, sama dengan mesin backtest.</p>
-        <p className="muted">Membaca <strong>80% data pertama</strong>. 20% terakhir tetap terkunci dan tidak pernah dibaca di sini — itu satu-satunya bagian yang nanti bisa memberi vonis, justru karena Anda bebas mencoba berkali-kali di halaman ini.</p>
+        {coverage === "ALL"
+          ? <p className="muted"><strong>Seluruh data dipakai, sampai sync terakhir.</strong> Hasilnya ikut berubah setiap kali Anda sync. Konsekuensinya: tidak ada lagi potongan sejarah yang belum pernah Anda lihat, jadi tidak ada yang bisa jadi juri netral. Pembuktian yang tersisa adalah <strong>forward test</strong> — catat sinyalnya mulai hari ini, lalu bandingkan dengan kenyataan.</p>
+          : <p className="muted">Membaca <strong>80% data pertama</strong>. 20% terakhir dikunci dan tidak pernah dibaca di sini, supaya masih ada bagian yang bisa memberi vonis netral nanti — dengan harga datanya berhenti lebih awal.</p>}
         {attempts > 0 && <p className="muted">Anda sudah menjalankan <strong>{attempts}</strong> percobaan di sesi ini. Makin banyak dicoba, makin besar peluang angka bagus muncul karena kebetulan.</p>}
       </section>
 
@@ -186,7 +207,7 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
           <div className="panel-header"><div>
             <h2>{data.spec.level.kind} {data.spec.level.period} · {data.asset.timeframe} · {count(data.coverage.touches_total)} sentuhan</h2>
             <p>{data.coverage.start?.slice(0, 10)} sampai {data.coverage.end?.slice(0, 10)} · {count(data.asset.measured_row_count)} dari {count(data.asset.registered_row_count)} candle · sidik jari {data.fingerprint.slice(0, 12)}</p>
-            <p className="muted">Berhenti di tanggal itu karena 20% candle terbaru sengaja dikunci.</p>
+            <p className="muted">{data.policy.coverage === "ALL" ? "Sampai candle terakhir yang tersinkron. Angka ini akan berubah setelah sync berikutnya." : "Berhenti di tanggal itu karena 20% candle terbaru sengaja dikunci."}</p>
           </div><span className="mode-badge">{data.reused ? "TERSIMPAN" : "BARU DIHITUNG"}</span></div>
           <section className="command-metrics">
             {Object.entries(data.coverage.touches).map(([event, value]) => <article key={event}>

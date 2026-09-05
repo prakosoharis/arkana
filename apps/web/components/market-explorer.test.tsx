@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { FollowPanel, MarketExplorer, RunsPanel, sortRows, verdict } from "./market-explorer";
+import { FollowPanel, MarketExplorer, RunsPanel, sliceOf, sortRows, verdict } from "./market-explorer";
 
 const row = (over: Partial<Parameters<typeof verdict>[0]> = {}) => ({
   key: 0, label: "12:40", bars: 2185, up: 1100, down: 1085, flat: 0,
@@ -91,5 +91,55 @@ describe("MarketExplorer", () => {
     expect(markup).toContain("1.5");
     expect(markup).toContain("Hijau besar");
     expect(markup).toContain("42.529");
+  });
+});
+
+describe("sliceOf (ARK-S29-01)", () => {
+  const withSlices = row({
+    bars: 20000, up_rate: 0.51,
+    recent: { "1": { bars: 20, up_rate: 0.65, down_rate: 0.35, mean_range: 6 }, "6": { bars: 120, up_rate: 0.55, down_rate: 0.45, mean_range: 5 } },
+    by_month_direction: { NAIK: { bars: 11000, up_rate: 0.53, down_rate: 0.47, mean_range: 2 }, TURUN: { bars: 9000, up_rate: 0.49, down_rate: 0.51, mean_range: 2 } },
+  } as never);
+
+  it("returns the whole row when nothing is narrowed", () => {
+    expect(sliceOf(withSlices, "all", "all").bars).toBe(20000);
+  });
+
+  it("returns the window asked for, and the month filter wins over it", () => {
+    expect(sliceOf(withSlices, "6", "all").up_rate).toBe(0.55);
+    expect(sliceOf(withSlices, "6", "TURUN").up_rate).toBe(0.49);
+  });
+
+  it("returns an empty slice rather than the whole row when the breakdown is missing", () => {
+    // An older cached record has no breakdowns. Falling back to the whole history
+    // would silently answer a different question than the one on screen.
+    expect(sliceOf(row(), "3", "all")).toEqual({ bars: 0, up_rate: null, down_rate: null, mean_range: null });
+  });
+});
+
+describe("verdict on a narrowed slice", () => {
+  it("judges the slice on its own sample count, not the whole history", () => {
+    // 20 candles is what one five-minute slot gets in a month. Carrying the
+    // nine-year verdict onto it is the exact thing the control exposes.
+    const state = verdict(row(), 200, { bars: 20, up_rate: 0.65, down_rate: 0.35, mean_range: 6 });
+    expect(state.label).toBe("SAMPEL KURANG");
+    expect(state.why).toContain("20");
+  });
+
+  it("stops short of calling a narrowed slice consistent", () => {
+    const state = verdict(row(), 200, { bars: 5000, up_rate: 0.55, down_rate: 0.45, mean_range: 2 });
+    expect(state.label).toBe("CUKUP SAMPEL");
+  });
+});
+
+describe("sortRows on a narrowed slice", () => {
+  it("ranks by the column the table is showing", () => {
+    const make = (key: number, all: number, recent: number) => row({
+      key, up_rate: all, down_rate: 1 - all,
+      recent: { "3": { bars: 900, up_rate: recent, down_rate: 1 - recent, mean_range: 1 } },
+    } as never);
+    const rows = [make(1, 0.9, 0.1), make(2, 0.1, 0.9)];
+    expect(sortRows(rows, "up", "all", "all").map(item => item.key)).toEqual([1, 2]);
+    expect(sortRows(rows, "up", "3", "all").map(item => item.key)).toEqual([2, 1]);
   });
 });

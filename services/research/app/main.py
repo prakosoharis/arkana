@@ -47,7 +47,7 @@ from .edge_search_execution import execute as execute_edge_search_campaign, prog
 from .market_explorer import (TIMEFRAMES as MARKET_EXPLORER_TIMEFRAMES, TIMEZONES as MARKET_EXPLORER_TIMEZONES,
                               clock_disclosure as market_exploration_clock, existing as market_exploration_cached,
                               measure as measure_market, serialize as serialize_market_exploration)
-from .level_touch import (LEVEL_KINDS, TIMEFRAMES as TOUCH_TIMEFRAMES, measure as measure_level_touch,
+from .level_touch import (COVERAGES as TOUCH_COVERAGES, LEVEL_KINDS, TIMEFRAMES as TOUCH_TIMEFRAMES, measure as measure_level_touch,
                           normalize_spec as normalize_touch_spec, serialize as serialize_level_touch)
 from .operational_health import assess as assess_operational_health
 from .sprint23_acceptance import latest as latest_sprint23_acceptance, materialize as materialize_sprint23_acceptance, serialize as serialize_sprint23_acceptance, verify as verify_sprint23_acceptance
@@ -1210,7 +1210,7 @@ def get_market_exploration(timeframe: str, timezone: str = "WIB", refresh: bool 
 def get_level_touch_options(session: Session = Depends(get_session)) -> dict:
     dataset = latest_dataset(session)
     registered = {asset.timeframe: asset.row_count for asset in dataset.bars} if dataset else {}
-    return {"level_kinds": list(LEVEL_KINDS),
+    return {"level_kinds": list(LEVEL_KINDS), "coverages": list(TOUCH_COVERAGES),
             "timeframes": [{"timeframe": item, "rows": registered[item]} for item in TOUCH_TIMEFRAMES if item in registered],
             "dataset": {"id": dataset.id, "fingerprint": dataset.fingerprint} if dataset else None}
 

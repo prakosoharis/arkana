@@ -329,3 +329,92 @@ def test_the_api_refuses_an_unknown_timezone():
         response = client.get("/api/v1/market-explorer/M5", params={"timezone": "WITA"})
         assert response.status_code == 422
         assert "timezone must be one of" in response.json()["detail"]
+
+
+# ---- ARK-S29-01 recent windows and month direction --------------------------
+
+def _months(spec: list[tuple[int, int, list[int]]], *, hour: int = 9) -> list[dict]:
+    """`spec` is (year, month, directions); one bar per direction, all at `hour`."""
+    bars = []
+    for year, month, directions in spec:
+        for index, move in enumerate(directions):
+            bars.append(_bar(datetime(year, month, 1 + index // 24, hour, 0), 100.0, 100.0 + 0.5 * move))
+    return bars
+
+
+def test_a_recent_window_sums_only_the_last_n_months():
+    """A nine-year average cannot answer "which hour still leans up lately"."""
+    bars = _months([(2024, 1, [-1] * 40), (2024, 2, [-1] * 40), (2024, 3, [1] * 40)])
+    row = next(row for row in explorer.measure_stream([bars])["time_of_day"] if row["label"] == "09:00")
+    assert row["recent"]["1"]["bars"] == 40
+    assert row["recent"]["1"]["up_rate"] == pytest.approx(1.0)
+    assert row["recent"]["3"]["bars"] == 120
+    assert row["recent"]["3"]["up_rate"] == pytest.approx(40 / 120)
+    # A window wider than the data holds the data, not a padded average.
+    assert row["recent"]["12"]["bars"] == 120
+
+
+def test_the_windows_offered_are_the_ones_declared():
+    bars = _months([(2024, 1, [1] * 10)])
+    row = explorer.measure_stream([bars])["time_of_day"][0]
+    assert sorted(int(key) for key in row["recent"]) == sorted(explorer.RECENT_WINDOWS)
+
+
+def test_a_month_is_up_or_down_by_its_own_first_open_against_its_last_close():
+    """No band in between: a threshold would be a judgement the data does not
+    carry, so the size of the move is reported and the Owner applies their own."""
+    bars = _months([(2024, 1, [1] * 10), (2024, 2, [-1] * 10)])
+    result = explorer.measure_stream([bars])
+    directions = {item["month"]: item["direction"] for item in result["months"]}
+    assert directions == {"2024-01": "NAIK", "2024-02": "TURUN"}
+    assert result["months"][0]["change"] > 0 and result["months"][1]["change"] < 0
+
+
+def test_a_slot_can_lean_the_other_way_in_falling_months():
+    """The Owner's actual question: in a month that is falling, which hour still
+    leans up? A whole-history rate cannot separate the two."""
+    # The month's own last close against its own first open decides its label,
+    # so the last bar of each month is what makes it rise or fall.
+    rising_month = [-1] * 10 + [1] * 30        # ends up: NAIK
+    falling_month = [1] * 25 + [-1] * 40       # ends down: TURUN
+    bars = _months([(2024, 1, rising_month), (2024, 2, falling_month)])
+    row = next(row for row in explorer.measure_stream([bars])["time_of_day"] if row["label"] == "09:00")
+    up_months, down_months = row["by_month_direction"]["NAIK"], row["by_month_direction"]["TURUN"]
+    assert up_months["bars"] == len(rising_month)
+    assert down_months["bars"] == len(falling_month)
+    assert up_months["up_rate"] == pytest.approx(30 / 40)
+    assert down_months["up_rate"] == pytest.approx(25 / 65)
+    # The two partitions together are the whole row, with nothing dropped.
+    assert up_months["bars"] + down_months["bars"] == row["bars"]
+
+
+def test_the_hour_windows_are_the_sum_of_their_minute_windows():
+    bars = []
+    for minute in (0, 30):
+        bars += _months([(2024, 1, [1] * 20), (2024, 2, [-1] * 20)], hour=9)
+        bars[-40:] = [{**bar, "timestamp": bar["timestamp"].replace(minute=minute)} for bar in bars[-40:]]
+    result = explorer.measure_stream([bars])
+    minutes = {row["label"]: row for row in result["time_of_day"]}
+    for hour_row in result["hour_of_day"]:
+        hour = int(hour_row["label"][:2])
+        for window in ("1", "3", "6", "12"):
+            expected = sum(row["recent"][window]["bars"] for label, row in minutes.items() if int(label[:2]) == hour)
+            assert hour_row["recent"][window]["bars"] == expected
+
+
+def test_the_wire_trims_the_new_breakdowns_the_same_way():
+    """1,440 minute rows times four windows times two directions is a lot of
+    fields for numbers no surface reads."""
+    stored = {"coverage": {"bars": 1}, "time_of_day": [{
+        "key": 0, "label": "00:00", "bars": 1,
+        "per_year": {"2024": {"bars": 1, "up_rate": 1.0, "down_rate": 0.0, "mean_range": 0.2, "flat": 0}},
+        "recent": {"1": {"bars": 1, "up_rate": 1.0, "down_rate": 0.0, "mean_range": 0.2, "flat": 0}},
+        "by_month_direction": {"NAIK": {"bars": 1, "up_rate": 1.0, "down_rate": 0.0, "mean_range": 0.2, "flat": 0}}}]}
+    record = type("Record", (), {
+        "id": "x", "protocol_version": explorer.PROTOCOL_VERSION, "fingerprint": "f" * 64,
+        "timeframe": "M5", "display_timezone": "WIB", "dataset_id": "d",
+        "dataset_fingerprint": "a" * 64, "bars_measured": 1,
+        "created_at": datetime(2026, 1, 1), "result": stored})()
+    row = explorer.serialize(record, None)["time_of_day"][0]
+    for group in ("per_year", "recent", "by_month_direction"):
+        assert set(next(iter(row[group].values()))) == set(explorer.WIRE_PER_YEAR)

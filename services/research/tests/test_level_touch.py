@@ -343,3 +343,80 @@ def test_the_ceiling_is_reported_so_a_hidden_limit_cannot_pass_as_no_limit():
         "spec": probe.normalize_spec({}), "dataset_id": "d", "dataset_fingerprint": "a" * 64,
         "touches": 0, "created_at": datetime(2026, 1, 1), "result": {}})()
     assert probe.serialize(record)["policy"]["no_limit_ceiling_bars"] == probe.NO_LIMIT_CEILING
+
+
+# ---- ARK-S29-02 the Owner chooses how far the measurement reaches -----------
+
+class _Asset:
+    row_count = 1000
+    timeframe = "M5"
+
+
+def _fake_bars(count: int = 1000):
+    bar = {"timestamp": datetime(2024, 1, 1), "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0}
+    for start in range(0, count, 100):
+        yield [{**bar, "index": start + offset} for offset in range(100)]
+
+
+def _with_fake_reader(coverage: str) -> list[dict]:
+    import app.level_touch as module
+    original = module.iter_bars
+    module.iter_bars = lambda asset, chunk_size: _fake_bars()
+    try:
+        return module.readable_bars(_Asset(), chunk_size=100, coverage=coverage)
+    finally:
+        module.iter_bars = original
+
+
+def test_research_coverage_still_stops_before_the_reserved_fifth():
+    seen = _with_fake_reader("RESEARCH")
+    assert len(seen) == 800
+    assert seen[-1]["index"] == 799
+
+
+def test_all_coverage_reaches_the_last_synced_bar():
+    """The Owner's reason is sound: held back, the M5 window ends in December
+    2024 while they are trading a market whose candles are several times
+    larger."""
+    seen = _with_fake_reader("ALL")
+    assert len(seen) == 1000
+    assert seen[-1]["index"] == 999
+
+
+def test_the_default_still_holds_the_reserve_back():
+    assert probe.normalize_spec({})["coverage"] == "RESEARCH"
+    assert probe.normalize_spec({})["splits"] == ["train", "holdout"]
+
+
+def test_asking_for_everything_is_recorded_as_asking_for_everything():
+    spec = probe.normalize_spec({"coverage": "all"})
+    assert spec["coverage"] == "ALL"
+    assert spec["splits"] == ["all"]
+
+
+def test_an_unknown_coverage_is_refused():
+    with pytest.raises(ValueError, match="coverage must be one of"):
+        probe.normalize_spec({"coverage": "FINAL_OOS_ONLY"})
+
+
+def test_the_two_coverages_are_different_measurements_not_one():
+    """Both stored under the same fingerprint would let a full-history answer be
+    served for a request that asked for the reserve to be respected."""
+    research = probe.normalize_spec({"coverage": "RESEARCH"})
+    everything = probe.normalize_spec({"coverage": "ALL"})
+    assert probe.fingerprint("a" * 64, research) != probe.fingerprint("a" * 64, everything)
+
+
+def test_using_everything_says_what_it_costs():
+    def record_for(coverage: str):
+        return type("Record", (), {
+            "id": "x", "protocol_version": probe.PROTOCOL_VERSION, "fingerprint": "f" * 64,
+            "spec": probe.normalize_spec({"coverage": coverage}), "dataset_id": "d",
+            "dataset_fingerprint": "a" * 64, "touches": 0,
+            "created_at": datetime(2026, 1, 1), "result": {}})()
+    everything = probe.serialize(record_for("ALL"))
+    assert everything["policy"]["coverage"] == "ALL"
+    assert "forward test" in everything["warning"]
+    assert "juri netral" in everything["warning"]
+    research = probe.serialize(record_for("RESEARCH"))
+    assert "80%" in research["warning"]
