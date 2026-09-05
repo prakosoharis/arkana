@@ -213,7 +213,7 @@ def test_an_atr_distance_that_cannot_be_computed_is_skipped_not_defaulted():
     ({"distances": [{"kind": "FIXED", "value": 0}]}, "positive value"),
     ({"distances": [{"kind": "ATR", "multiple": -1}]}, "positive multiple"),
     ({"distances": [{"kind": "PERCENT", "value": 1}]}, "must be FIXED or ATR"),
-    ({"timeouts": [0]}, "timeout must be an integer"),
+    ({"timeouts": [-1]}, "timeout must be an integer"),
     ({"timeouts": [10_000]}, "timeout must be an integer"),
     ({"timeouts": [1, 2, 3, 4, 5]}, "timeouts are required"),
     ({"spread_price": -1}, "spread_price must be non-negative"),
@@ -300,3 +300,46 @@ def test_the_probe_stops_at_the_reserved_boundary():
 @pytest.mark.parametrize("forbidden", ["StrategyVersion", "BacktestRun", "Deployment", "simulate_kernel"])
 def test_the_probe_creates_no_strategy_and_no_trade(forbidden):
     assert forbidden not in _executable_code(probe)
+
+
+# ---- ARK-S28-04 the time limit is optional ---------------------------------
+
+def test_no_timeout_means_follow_it_until_it_resolves():
+    """The Owner's objection: a $5 target on gold does not sit open for days, so
+    naming a limit before the question can be asked is a knob in the way."""
+    spec = probe.normalize_spec({})
+    assert spec["timeouts"] == [probe.NO_LIMIT]
+    spec = probe.normalize_spec({"timeouts": []})
+    assert spec["timeouts"] == [probe.NO_LIMIT]
+
+
+def test_an_unlimited_case_resolves_far_beyond_any_offered_limit():
+    quiet = [(100, 100.5, 99.5, 100)] * 400
+    bars = _series([(100, 100, 100, 100), *quiet, (100, 106.0, 99.0, 105.0)])
+    assert probe.resolve(bars, 0, 100.0, 95.0, 105.0, True, [probe.NO_LIMIT])[probe.NO_LIMIT] == ("TARGET", 401)
+
+
+def test_the_unlimited_walk_still_has_a_disclosed_floor_under_the_worst_case():
+    """Without one, a single stubborn touch would walk the whole asset and the
+    measurement would be quadratic. Reaching it is reported, not swallowed."""
+    quiet = [(100, 100.5, 99.5, 100)] * (probe.NO_LIMIT_CEILING + 10)
+    bars = _series([(100, 100, 100, 100), *quiet])
+    verdict, steps = probe.resolve(bars, 0, 100.0, 95.0, 105.0, True, [probe.NO_LIMIT])[probe.NO_LIMIT]
+    assert verdict == "TIMEOUT"
+    assert steps == probe.NO_LIMIT_CEILING
+
+
+def test_an_explicit_limit_still_works_beside_an_unlimited_one():
+    quiet = [(100, 100.5, 99.5, 100)] * 30
+    bars = _series([(100, 100, 100, 100), *quiet, (100, 106.0, 99.0, 105.0)])
+    outcome = probe.resolve(bars, 0, 100.0, 95.0, 105.0, True, [probe.NO_LIMIT, 10])
+    assert outcome[probe.NO_LIMIT] == ("TARGET", 31)
+    assert outcome[10] == ("TIMEOUT", 10)
+
+
+def test_the_ceiling_is_reported_so_a_hidden_limit_cannot_pass_as_no_limit():
+    record = type("Record", (), {
+        "id": "x", "protocol_version": probe.PROTOCOL_VERSION, "fingerprint": "f" * 64,
+        "spec": probe.normalize_spec({}), "dataset_id": "d", "dataset_fingerprint": "a" * 64,
+        "touches": 0, "created_at": datetime(2026, 1, 1), "result": {}})()
+    assert probe.serialize(record)["policy"]["no_limit_ceiling_bars"] == probe.NO_LIMIT_CEILING

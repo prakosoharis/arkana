@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { judge, LevelTouchLab, resolvedShare } from "./level-touch-lab";
+import { judge, LevelTouchLab, resolvedShare, timeoutLabel } from "./level-touch-lab";
 
 const row = (over: Partial<Parameters<typeof judge>[0]> = {}) => ({
   event: "BOUNCE_FROM_ABOVE", distance: "FIXED_5", timeout_bars: 24,
@@ -52,5 +52,21 @@ describe("LevelTouchLab", () => {
     for (const forbidden of ["Deploy", "Confirm", "VALIDATED"]) {
       expect(markup).not.toContain(forbidden);
     }
+  });
+});
+
+describe("timeoutLabel", () => {
+  it("never prints the sentinel as a limit of zero", () => {
+    expect(timeoutLabel(0)).toBe("tanpa batas");
+    expect(timeoutLabel(24)).toBe("24");
+  });
+});
+
+describe("LevelTouchLab time limit", () => {
+  it("leaves the limit blank and says so on the field", () => {
+    const markup = renderToStaticMarkup(<LevelTouchLab />);
+    expect(markup).toContain("Batas waktu (opsional)");
+    expect(markup).toContain("kosongkan = tanpa batas");
+    expect(markup).toContain("Kosongkan saja");
   });
 });

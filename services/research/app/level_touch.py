@@ -61,6 +61,21 @@ MAXIMUM_DISTANCES = 4
 MAXIMUM_TIMEOUTS = 4
 MAXIMUM_TIMEOUT_BARS = 480
 
+# ARK-S28-04. A time limit is optional, and off by default.
+#
+# The Owner's objection: a $5 target on gold does not sit open for days, so
+# forcing everyone to name a limit before they can ask the question is a knob
+# in the way of the question. Left blank, the case is followed until it
+# resolves.
+#
+# "Until it resolves" still needs a floor under the worst case, or one stubborn
+# touch would walk the whole asset and the measurement would be quadratic. The
+# ceiling is generous -- roughly a week of M5 bars -- and any case that reaches
+# it is reported as unresolved rather than quietly dropped, so a hidden limit
+# cannot masquerade as an answer.
+NO_LIMIT = 0
+NO_LIMIT_CEILING = 2000
+
 # Four ways a bar can meet a line, and they mean different things. Measuring
 # only the two the Owner asked for would hide the possibility that the break is
 # the interesting one -- which cannot be known without looking.
@@ -136,7 +151,8 @@ def resolve(bars: list[dict], entry_index: int, entry: float, stop: float, targe
     stop and the target, the stop wins. Any other choice here would let this
     screen report a win the backtester would call a loss.
     """
-    longest = max(timeouts)
+    limits = [NO_LIMIT_CEILING if value == NO_LIMIT else value for value in timeouts]
+    longest = max(limits)
     outcome: dict[int, tuple[str, int]] = {}
     decided: str | None = None
     decided_after = 0
@@ -155,15 +171,15 @@ def resolve(bars: list[dict], entry_index: int, entry: float, stop: float, targe
             decided = "STOP" if stop_hit else "TARGET"
             decided_after = step
             break
-    for timeout in timeouts:
-        if decided and decided_after <= timeout:
+    for timeout, limit in zip(timeouts, limits):
+        if decided and decided_after <= limit:
             outcome[timeout] = (decided, decided_after)
-        elif walked < timeout:
+        elif walked < limit:
             # The history ran out before the clock did. Counting this as an
             # unresolved case would blame the market for the edge of the data.
             outcome[timeout] = ("DATA_END", walked)
         else:
-            outcome[timeout] = ("TIMEOUT", timeout)
+            outcome[timeout] = ("TIMEOUT", limit)
     return outcome
 
 
@@ -263,15 +279,19 @@ def normalize_spec(spec: dict[str, Any]) -> dict[str, Any]:
         else:
             raise ValueError("distance.kind must be FIXED or ATR")
 
+    # No timeout at all is the default and means "follow it until it resolves".
     timeouts = spec.get("timeouts")
-    if timeouts is None:
-        timeouts = [12, 24, 48]
+    if timeouts is None or timeouts == []:
+        timeouts = [NO_LIMIT]
     if not isinstance(timeouts, list) or not 1 <= len(timeouts) <= MAXIMUM_TIMEOUTS:
         raise ValueError(f"between 1 and {MAXIMUM_TIMEOUTS} timeouts are required")
     clean_timeouts = []
     for value in timeouts:
+        if value == NO_LIMIT:
+            clean_timeouts.append(NO_LIMIT)
+            continue
         if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= MAXIMUM_TIMEOUT_BARS:
-            raise ValueError(f"each timeout must be an integer between 1 and {MAXIMUM_TIMEOUT_BARS} bars")
+            raise ValueError(f"each timeout must be an integer between 1 and {MAXIMUM_TIMEOUT_BARS} bars, or omitted for no limit")
         clean_timeouts.append(value)
 
     spread = spec.get("spread_price", 0.25)
@@ -440,7 +460,8 @@ def serialize(record: LevelTouchProbe) -> dict[str, Any]:
         "touches": record.touches, "created_at": record.created_at.isoformat() + "Z",
         "policy": {"readable_splits": list(READABLE_SPLITS), "ambiguity": "STOP_FIRST",
                    "entry": "OPEN_OF_NEXT_BAR_PLUS_SPREAD",
-                   "level_uses_completed_bars_only": True},
+                   "level_uses_completed_bars_only": True,
+                   "no_limit_ceiling_bars": NO_LIMIT_CEILING},
         "warning": ("Ini pengukuran sejarah, bukan strategi dan bukan sinyal. Angkanya dari 80% data "
                     "pertama; 20% data terakhir tetap terkunci dan tidak pernah dibaca di halaman ini. "
                     "Karena Anda bebas mencoba di sini berkali-kali, hanya 20% terakhir itu yang nanti "

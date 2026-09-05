@@ -55,6 +55,8 @@ const EVENT_LABEL: Record<string, string> = {
 const percent = (value: number | null | undefined) => (value === null || value === undefined ? "—" : `${(value * 100).toFixed(1)}%`);
 const count = (value: number) => value.toLocaleString("id-ID");
 const bars = (value: number | null | undefined) => (value === null || value === undefined ? "—" : `${value}`);
+/** 0 is the sentinel for "followed until it resolved"; printing it would read as a limit of zero. */
+export const timeoutLabel = (value: number) => (value ? `${value}` : "tanpa batas");
 
 /** What a single row is worth saying out loud. */
 export function judge(row: Row, minimumResolved: number): { label: string; tone: string; why: string } {
@@ -79,7 +81,9 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
   const [distances, setDistances] = useState("5");
   const [atrMultiple, setAtrMultiple] = useState(1.5);
   const [useAtr, setUseAtr] = useState(false);
-  const [timeouts, setTimeouts] = useState("24");
+  // Blank by default: a $5 target on gold does not sit open for days, so a
+  // limit is a knob in the way of the question rather than part of it.
+  const [timeouts, setTimeouts] = useState("");
   // One number is the normal case. Comparing several at once is a deliberate
   // extra, not the shape the first-time reader has to decode.
   const [compare, setCompare] = useState(false);
@@ -106,7 +110,7 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
       ...numbers(distances).slice(0, useAtr ? 3 : 4).map(value => ({ kind: "FIXED", value })),
       ...(useAtr ? [{ kind: "ATR", multiple: atrMultiple, period: 14 }] : []),
     ],
-    timeouts: numbers(timeouts).map(value => Math.round(value)),
+    timeouts: numbers(timeouts).map(value => Math.round(value)),   // [] means no limit
     spread_price: spread,
   }), [timeframe, kind, period, distances, useAtr, atrMultiple, timeouts, spread]);
 
@@ -150,10 +154,10 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
             ? <input aria-label="TP dan SL" value={distances} onChange={event => setDistances(event.target.value)} />
             : <input aria-label="TP dan SL" type="number" min="0.1" step="0.1" value={distances} onChange={event => setDistances(event.target.value)} />}
             <small>Keduanya sama besar. Isi <strong>5</strong> berarti TP $5 dan SL $5.</small></label>
-          <label>Ditunggu berapa candle{compare
-            ? <input aria-label="Ditunggu berapa candle" value={timeouts} onChange={event => setTimeouts(event.target.value)} />
-            : <input aria-label="Ditunggu berapa candle" type="number" min="1" step="1" value={timeouts} onChange={event => setTimeouts(event.target.value)} />}
-            <small>Kalau sampai sekian candle belum kena TP maupun SL, posisi dianggap <strong>belum selesai</strong> dan tidak dihitung menang atau kalah.</small></label>
+          <label>Batas waktu (opsional){compare
+            ? <input aria-label="Batas waktu" placeholder="kosongkan = tanpa batas" value={timeouts} onChange={event => setTimeouts(event.target.value)} />
+            : <input aria-label="Batas waktu" type="number" min="1" step="1" placeholder="kosongkan = tanpa batas" value={timeouts} onChange={event => setTimeouts(event.target.value)} />}
+            <small><strong>Kosongkan saja</strong> — posisi diikuti sampai kena TP atau SL. Isi angka hanya kalau Anda memang mau menutup paksa setelah sekian candle.</small></label>
           <label>Spread<input aria-label="Spread" type="number" min="0" step="0.01" value={spread} onChange={event => setSpread(event.target.valueAsNumber)} />
             <small>Ongkos masuk, dibebankan ke harga entry.</small></label>
           <label>Kelipatan ATR<input aria-label="Kelipatan ATR" type="number" min="0.1" step="0.1" value={atrMultiple} disabled={!useAtr} onChange={event => setAtrMultiple(event.target.valueAsNumber)} />
@@ -198,7 +202,7 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
           </div></div>
           <div className="explorer-table">
             <table>
-              <thead><tr><th>Kejadian</th><th>TP/SL</th><th>Batas</th><th>Sentuhan</th><th>Selesai</th><th>Winrate</th><th>Med. candle ke TP</th><th>Penilaian</th><th /></tr></thead>
+              <thead><tr><th>Kejadian</th><th>TP/SL</th><th>Batas waktu</th><th>Sentuhan</th><th>Selesai</th><th>Winrate</th><th>Med. candle ke TP</th><th>Penilaian</th><th /></tr></thead>
               <tbody>
                 {ranked.map(row => {
                   const key = rowKey(row);
@@ -209,7 +213,7 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
                     <tr>
                       <td><strong>{EVENT_LABEL[row.event] ?? row.event}</strong></td>
                       <td>{row.distance.replace("FIXED_", "$").replace("ATR_", "ATR ")}</td>
-                      <td>{row.timeout_bars}</td>
+                      <td>{timeoutLabel(row.timeout_bars)}</td>
                       <td>{count(row.events)}</td>
                       <td>{count(row.target_first + row.stop_first)}<small>{percent(resolvedShare(row))} dari sentuhan</small></td>
                       <td><strong>{percent(row.target_rate_of_resolved)}</strong></td>
