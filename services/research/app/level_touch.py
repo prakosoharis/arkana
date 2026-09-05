@@ -267,6 +267,19 @@ def resolve(bars: list[dict], entry_index: int, entry: float, stop: float, targe
     The ambiguity rule is the canonical kernel's: when a bar contains both the
     stop and the target, the stop wins. Any other choice here would let this
     screen report a win the backtester would call a loss.
+
+    ARK-S31-03.  The walk starts on the entry bar, not after it.
+
+    It used to start one bar later, which handed every trade immunity on the
+    very candle it was filled on -- and that candle is systematically the
+    largest one around, because the trigger is an event. The canonical kernel
+    has always exposed the entry candle (`backtesting.py`: "The entry candle
+    participates in STOP_FIRST just as the original loop did"), so this screen
+    was not measuring what the backtester would trade, while its own docstring
+    claimed it was. Every level-touch number before this fix was optimistic.
+
+    `step` therefore counts bars held including the fill bar: 0 means the trade
+    opened and closed on the same candle.
     """
     limits = [NO_LIMIT_CEILING if value == NO_LIMIT else value for value in timeouts]
     longest = max(limits)
@@ -274,7 +287,7 @@ def resolve(bars: list[dict], entry_index: int, entry: float, stop: float, targe
     decided: str | None = None
     decided_after = 0
     walked = 0
-    for step in range(1, longest + 1):
+    for step in range(0, longest + 1):
         index = entry_index + step
         if index >= len(bars):
             break

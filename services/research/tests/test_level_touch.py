@@ -676,3 +676,41 @@ def test_a_nonsensical_target_multiple_is_refused(multiple):
 def test_the_default_geometry_is_still_symmetric():
     assert probe.normalize_spec({})["target_multiple"] == 1.0
     assert probe.break_even_rate(1.0) == 0.5
+
+
+# ---- ARK-S31-03 the entry bar is exposed, like the kernel's ----------------
+
+def test_the_bar_the_trade_is_filled_on_can_stop_it():
+    """Found by an adversarial re-measurement of the large-candle hypothesis.
+
+    The walk used to start one bar after the fill, so a trade was never exposed
+    to the range of the candle it opened on -- and that candle is systematically
+    the largest one around, because the trigger is an event. Every level-touch
+    number before this fix was optimistic.
+    """
+    # The entry bar itself sweeps down through the stop and back up.
+    bars = _series([(100, 100, 100, 100), (100, 101.0, 94.0, 100.5), (100, 100.5, 99.5, 100.0)])
+    assert probe.resolve(bars, 1, 100.0, 95.0, 105.0, True, [24])[24] == ("STOP", 0)
+
+
+def test_a_trade_can_open_and_close_on_the_same_candle():
+    """`step` counts bars held including the fill bar, so 0 is a same-candle
+    exit -- which is what the canonical kernel records too."""
+    bars = _series([(100, 100, 100, 100), (100, 106.0, 99.5, 105.0)])
+    verdict, steps = probe.resolve(bars, 1, 100.0, 95.0, 105.0, True, [24])[24]
+    assert (verdict, steps) == ("TARGET", 0)
+
+
+def test_the_entry_bar_obeys_stop_first_like_every_other_bar():
+    bars = _series([(100, 100, 100, 100), (100, 106.0, 94.0, 100.0)])
+    assert probe.resolve(bars, 1, 100.0, 95.0, 105.0, True, [24])[24] == ("STOP", 0)
+
+
+def test_the_screen_and_the_kernel_now_agree_about_the_entry_candle():
+    """The property the docstring always claimed and the code did not have."""
+    import inspect
+    from app import backtesting
+    kernel = inspect.getsource(backtesting.simulate_kernel)
+    assert "The entry candle participates in STOP_FIRST" in kernel
+    walk = inspect.getsource(probe.resolve)
+    assert "for step in range(0, longest + 1)" in walk
