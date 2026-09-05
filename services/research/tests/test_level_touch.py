@@ -159,9 +159,11 @@ def test_every_outcome_is_accounted_for():
     result = probe.measure_bars(_oscillating(), spec)
     for row in result["summary"]:
         assert row["target_first"] + row["stop_first"] + row["unresolved"] == row["events"]
+    # ARK-S30-02 split every row by trend regime, so the whole is the SEMUA row;
+    # summing across regimes would count each touch more than once.
     per_event = {}
     for row in result["summary"]:
-        if row["timeout_bars"] == 24:
+        if row["timeout_bars"] == 24 and row["regime"] == "SEMUA":
             per_event[row["event"]] = row["events"] + row["beyond_data"]
     assert per_event == {key: value for key, value in result["coverage"]["touches"].items() if value}
 
@@ -172,10 +174,10 @@ def test_the_year_rows_sum_to_the_summary_rows():
     result = probe.measure_bars(_oscillating(), spec)
     totals: dict[tuple, int] = {}
     for row in result["per_year"]:
-        key = (row["event"], row["distance"], row["timeout_bars"])
+        key = (row["event"], row["distance"], row["timeout_bars"], row["regime"])
         totals[key] = totals.get(key, 0) + row["events"]
     for row in result["summary"]:
-        assert totals[(row["event"], row["distance"], row["timeout_bars"])] == row["events"]
+        assert totals[(row["event"], row["distance"], row["timeout_bars"], row["regime"])] == row["events"]
 
 
 def test_the_month_rows_carry_frequency_without_the_timing_payload():
@@ -420,3 +422,127 @@ def test_using_everything_says_what_it_costs():
     assert "juri netral" in everything["warning"]
     research = probe.serialize(record_for("RESEARCH"))
     assert "80%" in research["warning"]
+
+
+# ---- ARK-S30-01 the line is computed in one pass, not one window per bar ----
+
+@pytest.mark.parametrize("kind,period", [("EMA", 5), ("EMA", 20), ("EMA", 23), ("EMA", 50),
+                                         ("SMA", 5), ("SMA", 20), ("SMA", 50)])
+def test_the_one_pass_line_reproduces_the_definition_it_replaced(kind, period):
+    """It is an exact rearrangement of `moving_average`, not an approximation of
+    it. If it drifts, the screen advertises a line the engine does not use."""
+    import math
+    from app.completed_candle_evaluator import moving_average, warmup_bars
+    closes = [2000 + 50 * math.sin(index / 97.0) + index * 0.001 for index in range(4000)]
+    bars = [{"close": value} for value in closes]
+    fast = probe.level_series(bars, kind, period)
+    span = period if kind == "SMA" else warmup_bars(period)
+    assert all(value is None for value in fast[:span - 1])
+    for index in (span - 1, span + 7, 2000, 3999):
+        assert fast[index] == pytest.approx(moving_average(closes[index + 1 - span:index + 1], period, kind), abs=1e-8)
+
+
+# ---- ARK-S30-02 the trend regime, and respect ------------------------------
+
+@pytest.mark.parametrize("slope,expected", [(1.0, "NAIK"), (-1.0, "TURUN"), (0.0, "DATAR")])
+def test_the_regime_reads_the_line_s_own_slope(slope, expected):
+    levels = [100.0 + step * slope for step in range(30)]
+    assert probe.trend_regime(levels, 25, 20, 0.15) == expected
+
+
+def test_a_bar_too_early_to_have_a_slope_belongs_to_no_regime():
+    """Inventing one would file the warm-up under whichever bucket sorts first."""
+    assert probe.trend_regime([100.0] * 30, 5, 20, 0.15) is None
+
+
+def test_respect_is_bounces_over_bounces_plus_breaks():
+    rates = probe.respect_rates({"BOUNCE_FROM_ABOVE": 60, "BREAK_DOWN": 40,
+                                 "BOUNCE_FROM_BELOW": 30, "BREAK_UP": 70})
+    assert rates["BUY"]["respect_rate"] == pytest.approx(0.6)
+    assert rates["SELL"]["respect_rate"] == pytest.approx(0.3)
+    assert rates["BUY"]["touches"] == 100
+
+
+def test_respect_without_a_single_touch_is_unknown_not_zero():
+    rates = probe.respect_rates({event: 0 for event in probe.EVENTS})
+    assert rates["BUY"]["respect_rate"] is None
+
+
+def test_every_row_carries_its_regime_and_the_whole_is_always_there():
+    """A split that cannot be compared with the whole is a number without a
+    control."""
+    spec = probe.normalize_spec({"timeframe": "M5", "level": {"kind": "EMA", "period": 23},
+                                 "distances": [{"kind": "FIXED", "value": 1.0}], "timeouts": [12]})
+    result = probe.measure_bars(_oscillating(1200), spec)
+    assert "SEMUA" in {row["regime"] for row in result["summary"]}
+    assert {row["regime"] for row in result["summary"]} <= set(probe.ALL_REGIMES)
+    assert set(result["respect"]) == set(probe.ALL_REGIMES)
+
+
+def test_the_regimes_partition_the_touches_they_cover():
+    spec = probe.normalize_spec({"timeframe": "M5", "level": {"kind": "SMA", "period": 10},
+                                 "distances": [{"kind": "FIXED", "value": 1.0}], "timeouts": [12]})
+    result = probe.measure_bars(_oscillating(1200), spec)
+    whole = result["respect"]["SEMUA"]["BUY"]["touches"]
+    parts = sum(result["respect"][name]["BUY"]["touches"] for name in probe.TREND_REGIMES)
+    # Touches before the slope lookback belong to no regime, so the parts can
+    # only fall short of the whole -- never exceed it.
+    assert parts <= whole
+
+
+@pytest.mark.parametrize("trend,fragment", [
+    ({"lookback": 1}, "lookback must be an integer"),
+    ({"lookback": 501}, "lookback must be an integer"),
+    ({"threshold_percent": -1}, "threshold_percent must be a number"),
+    ({"threshold_percent": 99}, "threshold_percent must be a number"),
+])
+def test_a_malformed_trend_setting_is_refused(trend, fragment):
+    with pytest.raises(ValueError, match=fragment):
+        probe.normalize_spec({"trend": trend})
+
+
+def test_the_trend_default_is_recorded_rather_than_implied():
+    assert probe.normalize_spec({})["trend"] == {"lookback": 20, "threshold_percent": 0.15}
+
+
+# ---- ARK-S30-03 the scan ----------------------------------------------------
+
+def test_the_scan_covers_every_period_and_method_asked_for():
+    spec = probe.normalize_scan({"timeframe": "M5", "kinds": ["EMA", "SMA"],
+                                 "minimum_period": 5, "maximum_period": 8})
+    rows = probe.scan_bars(_oscillating(1500), spec)["rows"]
+    assert {(row["kind"], row["period"]) for row in rows} == {
+        (kind, period) for kind in ("EMA", "SMA") for period in range(5, 9)}
+    for row in rows:
+        assert set(row["respect"]) == set(probe.ALL_REGIMES)
+
+
+@pytest.mark.parametrize("spec,fragment", [
+    ({"timeframe": "D1"}, "timeframe must be one of"),
+    ({"kinds": []}, "kinds must be a non-empty list"),
+    ({"kinds": ["WMA"]}, "kinds must be a non-empty list"),
+    ({"minimum_period": 1}, "periods must be integers"),
+    ({"minimum_period": 50, "maximum_period": 20}, "cannot exceed"),
+    ({"minimum_period": 2, "maximum_period": 200}, "at most"),
+    ({"coverage": "SOMETHING"}, "coverage must be one of"),
+])
+def test_a_silly_scan_is_refused_before_anything_is_computed(spec, fragment):
+    with pytest.raises(ValueError, match=fragment):
+        probe.normalize_scan(spec)
+
+
+def test_the_scan_says_it_measures_respect_and_not_profit():
+    """ARK-S30-02 measured the gap between the two directly, and it is wide: a
+    line that is bounced 56% of the time still produced a 47% trade."""
+    record = type("Record", (), {
+        "id": "x", "protocol_version": probe.SCAN_PROTOCOL_VERSION, "fingerprint": "f" * 64,
+        "spec": probe.normalize_scan({}), "dataset_fingerprint": "a" * 64,
+        "created_at": datetime(2026, 1, 1), "result": {"rows": []}})()
+    payload = probe.serialize_scan(record)
+    assert payload["policy"]["measures"] == "RESPECT_RATE_ONLY"
+    assert "bukan seberapa untung" in payload["warning"]
+
+
+def test_the_scan_route_refuses_an_invalid_request():
+    with TestClient(app) as client:
+        assert client.post("/api/v1/level-touch/scan", json={"timeframe": "D1"}).status_code == 422

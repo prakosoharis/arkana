@@ -37,6 +37,7 @@ from .models import Dataset, LevelTouchProbe
 from .oos_validation import split_bounds
 
 PROTOCOL_VERSION = "LEVEL_TOUCH_PROBE_V1"
+SCAN_PROTOCOL_VERSION = "LEVEL_RESPECT_SCAN_V1"
 
 # ARK-S28-03. The partitions this probe may read.
 #
@@ -105,6 +106,42 @@ LONG_EVENTS = {"BOUNCE_FROM_ABOVE", "BREAK_UP"}
 
 ATR_PERIOD = 14
 
+# ARK-S30-02. The Owner's own hypothesis, made measurable: a moving average is
+# support while it rises and resistance while it falls, and means nothing while
+# it is flat. The regime is read from the line's own slope over `lookback` bars,
+# as a percentage, so it is scale-free across nine years of gold.
+#
+# "SEMUA" is always emitted beside the three, because a split that cannot be
+# compared with the whole is a number without a control.
+TREND_REGIMES = ("NAIK", "DATAR", "TURUN")
+ALL_REGIMES = ("SEMUA", *TREND_REGIMES)
+DEFAULT_TREND = {"lookback": 20, "threshold_percent": 0.15}
+
+
+def trend_regime(levels: list[float | None], index: int, lookback: int, threshold: float) -> str | None:
+    """Which way the line itself was pointing when the bar closed."""
+    earlier = index - lookback
+    if earlier < 0 or levels[index] is None or levels[earlier] is None or not levels[earlier]:
+        return None
+    slope = (levels[index] - levels[earlier]) / levels[earlier] * 100.0
+    return "NAIK" if slope > threshold else "TURUN" if slope < -threshold else "DATAR"
+
+
+def respect_rates(touches: dict[str, int]) -> dict[str, Any]:
+    """How often the line turned price away rather than letting it through.
+
+    This is not the same question as whether the trade won, and conflating the
+    two is how a level gets a reputation it has not earned: a bounce is a candle
+    closing back on its own side, while a win is a journey of several dollars.
+    """
+    def rate(bounce: str, through: str) -> dict[str, Any]:
+        held, crossed = touches.get(bounce, 0), touches.get(through, 0)
+        total = held + crossed
+        return {"touches": total, "bounced": held, "broke": crossed,
+                "respect_rate": held / total if total else None}
+    return {"BUY": rate("BOUNCE_FROM_ABOVE", "BREAK_DOWN"),
+            "SELL": rate("BOUNCE_FROM_BELOW", "BREAK_UP")}
+
 
 def _atr_series(bars: list[dict], period: int) -> list[float | None]:
     """Wilder-free simple mean true range, aligned to each bar's own index.
@@ -135,16 +172,52 @@ def level_series(bars: list[dict], kind: str, period: int) -> list[float | None]
     Index `i` holds the level as it stood when bar `i` closed. A touch on bar
     `i` is therefore judged against a line that bar `i` helped form, which is
     what a chart shows and what a person would have seen.
+
+    ARK-S30-01.  Recomputed in one pass instead of one window per bar.
+    Scanning thirty periods across two methods costs a billion operations the
+    naive way, which is why the Owner could not ask "which average is most
+    respected" at all. Both forms are exact rearrangements of the definition
+    `moving_average` uses -- not approximations of it -- and a test pins them
+    against it bar for bar.
+
+    The windowed EMA is `seed x (1-a)^L` plus a truncated geometric sum, and
+    both halves slide in constant time:
+
+        seed_i  rolling mean of `period` closes at the window's start
+        T_i     a*c_i + (1-a)*T_(i-1) - a*(1-a)^L*c_(i-L)
     """
     closes = [float(bar["close"]) for bar in bars]
-    # The same `moving_average` the evaluator uses, so a finding here and a
-    # strategy built from it read the identical line. Only the last `span`
-    # closes can affect the answer, and passing the whole prefix instead would
-    # copy a growing list on every bar -- quadratic on a 1.8M-bar asset.
-    span = period if kind == "SMA" else warmup_bars(period)
-    values: list[float | None] = [None] * len(bars)
-    for index in range(span - 1, len(bars)):
-        values[index] = moving_average(closes[index + 1 - span:index + 1], period, kind)
+    count = len(closes)
+    values: list[float | None] = [None] * count
+
+    if kind == "SMA":
+        if period > count:
+            return values
+        running = sum(closes[:period])
+        values[period - 1] = running / period
+        for index in range(period, count):
+            running += closes[index] - closes[index - period]
+            values[index] = running / period
+        return values
+
+    span = warmup_bars(period)
+    tail = span - period
+    if span > count:
+        return values
+    alpha = 2.0 / (period + 1)
+    keep = 1.0 - alpha
+    decay = keep ** tail
+
+    start = span - 1
+    seed_sum = sum(closes[start - span + 1:start - span + 1 + period])
+    geometric = 0.0
+    for offset in range(tail):
+        geometric = geometric * keep + alpha * closes[start - tail + 1 + offset]
+    values[start] = seed_sum / period * decay + geometric
+    for index in range(start + 1, count):
+        seed_sum += closes[index - span + period] - closes[index - span]
+        geometric = alpha * closes[index] + keep * geometric - alpha * decay * closes[index - tail]
+        values[index] = seed_sum / period * decay + geometric
     return values
 
 
@@ -315,6 +388,17 @@ def normalize_spec(spec: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(f"each timeout must be an integer between 1 and {MAXIMUM_TIMEOUT_BARS} bars, or omitted for no limit")
         clean_timeouts.append(value)
 
+    trend = spec.get("trend")
+    trend = DEFAULT_TREND if trend is None else trend
+    if not isinstance(trend, dict):
+        raise ValueError("trend must be an object with lookback and threshold_percent")
+    lookback = trend.get("lookback", DEFAULT_TREND["lookback"])
+    threshold = trend.get("threshold_percent", DEFAULT_TREND["threshold_percent"])
+    if not isinstance(lookback, int) or isinstance(lookback, bool) or not 2 <= lookback <= 500:
+        raise ValueError("trend.lookback must be an integer between 2 and 500 bars")
+    if not isinstance(threshold, (int, float)) or isinstance(threshold, bool) or not 0 <= threshold <= 10:
+        raise ValueError("trend.threshold_percent must be a number between 0 and 10")
+
     coverage = str(spec.get("coverage", "RESEARCH")).upper()
     if coverage not in COVERAGES:
         raise ValueError(f"coverage must be one of {', '.join(COVERAGES)}")
@@ -326,6 +410,7 @@ def normalize_spec(spec: dict[str, Any]) -> dict[str, Any]:
     return {"timeframe": timeframe, "level": {"kind": kind, "period": period},
             "distances": clean_distances, "timeouts": sorted(set(clean_timeouts)),
             "spread_price": float(spread), "protocol_version": PROTOCOL_VERSION,
+            "trend": {"lookback": int(lookback), "threshold_percent": float(threshold)},
             "coverage": coverage,
             "splits": ["all"] if coverage == "ALL" else list(READABLE_SPLITS)}
 
@@ -346,10 +431,14 @@ def measure_bars(bars: list[dict], spec: dict[str, Any]) -> dict[str, Any]:
     timeouts = spec["timeouts"]
     labels = [_distance_label(item) for item in spec["distances"]]
 
-    overall: dict[tuple[str, str, int], _Tally] = defaultdict(_Tally)
-    yearly: dict[tuple[str, str, int, int], _Tally] = defaultdict(_Tally)
-    monthly: dict[tuple[str, str, int, str], _Tally] = defaultdict(_Tally)
+    lookback = spec["trend"]["lookback"]
+    threshold = spec["trend"]["threshold_percent"]
+
+    overall: dict[tuple, _Tally] = defaultdict(_Tally)
+    yearly: dict[tuple, _Tally] = defaultdict(_Tally)
+    monthly: dict[tuple, _Tally] = defaultdict(_Tally)
     touches = {event: 0 for event in EVENTS}
+    touches_by_regime: dict[str, dict[str, int]] = {name: {event: 0 for event in EVENTS} for name in ALL_REGIMES}
     skipped_without_distance = 0
     first: datetime | None = None
     last: datetime | None = None
@@ -366,6 +455,12 @@ def measure_bars(bars: list[dict], spec: dict[str, Any]) -> dict[str, Any]:
         if event is None:
             continue
         touches[event] += 1
+        regime = trend_regime(levels, index, lookback, threshold)
+        # A bar too early to have a slope belongs to no regime, and inventing
+        # one for it would put the warm-up into whichever bucket sorts first.
+        regimes = ("SEMUA", regime) if regime else ("SEMUA",)
+        for name in regimes:
+            touches_by_regime[name][event] += 1
         long = event in LONG_EVENTS
         entry_bar = bars[index + 1]
         # The kernel's own entry: the open of the bar after the signal, moved
@@ -387,15 +482,16 @@ def measure_bars(bars: list[dict], spec: dict[str, Any]) -> dict[str, Any]:
             target = entry + distance if long else entry - distance
             outcomes = resolve(bars, index + 1, entry, stop, target, long, timeouts)
             for timeout, (verdict, steps) in outcomes.items():
-                overall[(event, label, timeout)].add(verdict, steps)
-                yearly[(event, label, timeout, year)].add(verdict, steps)
-                monthly[(event, label, timeout, month)].add(verdict, steps)
+                for name in regimes:
+                    overall[(event, label, timeout, name)].add(verdict, steps)
+                    yearly[(event, label, timeout, name, year)].add(verdict, steps)
+                    monthly[(event, label, timeout, name, month)].add(verdict, steps)
 
     def rows(source: dict, extra: tuple[str, ...], *, timing: bool = True) -> list[dict[str, Any]]:
         result = []
         for key in sorted(source, key=lambda item: [str(part) for part in item]):
-            event, label, timeout, *rest = key
-            entry = {"event": event, "distance": label, "timeout_bars": timeout}
+            event, label, timeout, regime, *rest = key
+            entry = {"event": event, "distance": label, "timeout_bars": timeout, "regime": regime}
             entry.update(dict(zip(extra, rest)))
             result.append({**entry, **source[key].read(timing=timing)})
         return result
@@ -405,6 +501,7 @@ def measure_bars(bars: list[dict], spec: dict[str, Any]) -> dict[str, Any]:
                      "end": last.isoformat() if last else None,
                      "touches": touches, "touches_total": sum(touches.values()),
                      "skipped_without_distance": skipped_without_distance},
+        "respect": {name: respect_rates(touches_by_regime[name]) for name in ALL_REGIMES},
         "summary": rows(overall, ()),
         "per_year": rows(yearly, ("year",)),
         # Timing statistics per month would multiply the payload for numbers
@@ -499,5 +596,131 @@ def serialize(record: LevelTouchProbe) -> dict[str, Any]:
                        if record.spec.get("coverage") == "ALL" else
                        " Memakai 80% data pertama; 20% terakhir dikunci supaya masih ada yang bisa "
                        "memberi vonis nanti.")),
+        **record.result,
+    }
+
+
+# ---------------------------------------------------- ARK-S30-03 the MA scan
+
+SCAN_MINIMUM_PERIOD = 2
+SCAN_MAXIMUM_PERIOD = 200
+SCAN_MAXIMUM_SPAN = 60
+
+
+def normalize_scan(spec: dict[str, Any]) -> dict[str, Any]:
+    """A sweep of averages, refused before anything is computed if it is silly."""
+    timeframe = str(spec.get("timeframe", "M15")).upper()
+    if timeframe not in TIMEFRAMES:
+        raise ValueError(f"timeframe must be one of {', '.join(TIMEFRAMES)}")
+    # `or` would turn an explicitly empty list into the default, answering a
+    # question the caller did not ask. Same trap as the distances list.
+    kinds = spec.get("kinds")
+    if kinds is None:
+        kinds = list(LEVEL_KINDS)
+    if not isinstance(kinds, list) or not kinds or any(str(item).upper() not in LEVEL_KINDS for item in kinds):
+        raise ValueError(f"kinds must be a non-empty list from {', '.join(LEVEL_KINDS)}")
+    lowest = spec.get("minimum_period", 20)
+    highest = spec.get("maximum_period", 50)
+    for value in (lowest, highest):
+        if not isinstance(value, int) or isinstance(value, bool) or not SCAN_MINIMUM_PERIOD <= value <= SCAN_MAXIMUM_PERIOD:
+            raise ValueError(f"periods must be integers between {SCAN_MINIMUM_PERIOD} and {SCAN_MAXIMUM_PERIOD}")
+    if lowest > highest:
+        raise ValueError("minimum_period cannot exceed maximum_period")
+    if highest - lowest + 1 > SCAN_MAXIMUM_SPAN:
+        raise ValueError(f"a scan covers at most {SCAN_MAXIMUM_SPAN} periods at a time")
+    coverage = str(spec.get("coverage", "ALL")).upper()
+    if coverage not in COVERAGES:
+        raise ValueError(f"coverage must be one of {', '.join(COVERAGES)}")
+    trend = spec.get("trend")
+    trend = DEFAULT_TREND if trend is None else trend
+    if not isinstance(trend, dict):
+        raise ValueError("trend must be an object with lookback and threshold_percent")
+    lookback = trend.get("lookback", DEFAULT_TREND["lookback"])
+    threshold = trend.get("threshold_percent", DEFAULT_TREND["threshold_percent"])
+    if not isinstance(lookback, int) or isinstance(lookback, bool) or not 2 <= lookback <= 500:
+        raise ValueError("trend.lookback must be an integer between 2 and 500 bars")
+    if not isinstance(threshold, (int, float)) or isinstance(threshold, bool) or not 0 <= threshold <= 10:
+        raise ValueError("trend.threshold_percent must be a number between 0 and 10")
+    return {"timeframe": timeframe, "kinds": sorted({str(item).upper() for item in kinds}),
+            "minimum_period": lowest, "maximum_period": highest, "coverage": coverage,
+            "trend": {"lookback": int(lookback), "threshold_percent": float(threshold)},
+            "protocol_version": SCAN_PROTOCOL_VERSION}
+
+
+def scan_bars(bars: list[dict], spec: dict[str, Any]) -> dict[str, Any]:
+    """How often each average turns price away, for buying and for selling.
+
+    Counting only touches costs one pass per average and no forward walk at
+    all, which is what makes sweeping thirty periods across two methods a
+    question the Owner can ask rather than a job someone runs overnight.
+
+    It answers "which line is respected", not "which line is profitable" --
+    ARK-S30-02 measured the gap between those two directly, and it is wide.
+    """
+    lookback = spec["trend"]["lookback"]
+    threshold = spec["trend"]["threshold_percent"]
+    rows: list[dict[str, Any]] = []
+    for kind in spec["kinds"]:
+        for period in range(spec["minimum_period"], spec["maximum_period"] + 1):
+            levels = level_series(bars, kind, period)
+            counts: dict[str, dict[str, int]] = {name: {event: 0 for event in EVENTS} for name in ALL_REGIMES}
+            for index in range(1, len(bars) - 1):
+                level = levels[index]
+                if level is None:
+                    continue
+                event = classify(bars[index], level, float(bars[index - 1]["close"]))
+                if event is None:
+                    continue
+                regime = trend_regime(levels, index, lookback, threshold)
+                for name in (("SEMUA", regime) if regime else ("SEMUA",)):
+                    counts[name][event] += 1
+            rows.append({"kind": kind, "period": period,
+                         "respect": {name: respect_rates(counts[name]) for name in ALL_REGIMES}})
+    return {"rows": rows}
+
+
+def scan(session: Session, spec: dict[str, Any], *, symbol: str = "XAUUSD",
+         refresh: bool = False) -> tuple[LevelTouchProbe, bool]:
+    clean = normalize_scan(spec)
+    dataset = latest_dataset(session, symbol)
+    if dataset is None:
+        raise ValueError(f"no registered dataset for {symbol}")
+    if not refresh:
+        stored = session.scalar(select(LevelTouchProbe).where(
+            LevelTouchProbe.fingerprint == fingerprint(dataset.fingerprint, clean)))
+        if stored is not None:
+            return stored, True
+    asset = next((item for item in dataset.bars if item.timeframe == clean["timeframe"]), None)
+    if asset is None:
+        raise ValueError(f"timeframe {clean['timeframe']} is not registered for this dataset")
+    bars = readable_bars(asset, coverage=clean["coverage"])
+    result = scan_bars(bars, clean)
+    result["coverage"] = {"bars": len(bars),
+                          "start": bars[0]["timestamp"].isoformat() if bars else None,
+                          "end": bars[-1]["timestamp"].isoformat() if bars else None}
+    result["asset"] = {"timeframe": clean["timeframe"], "registered_row_count": asset.row_count,
+                       "measured_row_count": len(bars), "coverage": clean["coverage"]}
+    record = LevelTouchProbe(
+        dataset_id=dataset.id, dataset_fingerprint=dataset.fingerprint,
+        timeframe=clean["timeframe"], protocol_version=SCAN_PROTOCOL_VERSION,
+        fingerprint=fingerprint(dataset.fingerprint, clean),
+        spec=clean, touches=0, result=result)
+    session.add(record); session.commit(); session.refresh(record)
+    return record, False
+
+
+def serialize_scan(record: LevelTouchProbe) -> dict[str, Any]:
+    return {
+        "id": record.id, "protocol_version": record.protocol_version,
+        "fingerprint": record.fingerprint, "spec": record.spec,
+        "dataset_fingerprint": record.dataset_fingerprint,
+        "created_at": record.created_at.isoformat() + "Z",
+        "policy": {"coverage": record.spec.get("coverage"),
+                   "measures": "RESPECT_RATE_ONLY",
+                   "regimes": list(ALL_REGIMES)},
+        "warning": ("Ini mengukur seberapa sering harga MEMANTUL di garis, bukan seberapa untung. "
+                    "Keduanya berbeda jauh: garis yang sering dipantuli belum tentu menghasilkan "
+                    "trade yang menang, karena mantul itu reaksi satu candle sedangkan menang butuh "
+                    "perjalanan beberapa dolar."),
         **record.result,
     }

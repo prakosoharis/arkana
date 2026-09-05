@@ -48,7 +48,8 @@ from .market_explorer import (TIMEFRAMES as MARKET_EXPLORER_TIMEFRAMES, TIMEZONE
                               clock_disclosure as market_exploration_clock, existing as market_exploration_cached,
                               measure as measure_market, serialize as serialize_market_exploration)
 from .level_touch import (COVERAGES as TOUCH_COVERAGES, LEVEL_KINDS, TIMEFRAMES as TOUCH_TIMEFRAMES, measure as measure_level_touch,
-                          normalize_spec as normalize_touch_spec, serialize as serialize_level_touch)
+                          normalize_spec as normalize_touch_spec, scan as scan_level_respect,
+                          serialize as serialize_level_touch, serialize_scan as serialize_level_scan)
 from .operational_health import assess as assess_operational_health
 from .sprint23_acceptance import latest as latest_sprint23_acceptance, materialize as materialize_sprint23_acceptance, serialize as serialize_sprint23_acceptance, verify as verify_sprint23_acceptance
 from .strategy_lineage import materialize_all as materialize_strategy_lineage, overview as strategy_lineage_overview, serialize as serialize_strategy_lineage, latest_for as latest_strategy_lineage, summary as lineage_summary
@@ -1230,6 +1231,15 @@ def run_level_touch(payload: dict, refresh: bool = False, session: Session = Dep
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
     return {**serialize_level_touch(record), "reused": reused}
+
+
+@app.post("/api/v1/level-touch/scan")
+def run_level_respect_scan(payload: dict, refresh: bool = False, session: Session = Depends(get_session)) -> dict:
+    try:
+        record, reused = scan_level_respect(session, payload or {}, refresh=refresh)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    return {**serialize_level_scan(record), "reused": reused}
 
 
 @app.get("/api/v1/edge-search/owner-overview")

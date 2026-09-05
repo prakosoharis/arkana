@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { judge, LevelTouchLab, resolvedShare, timeoutLabel } from "./level-touch-lab";
+import { judge, LevelTouchLab, resolvedShare, timeoutLabel, topRespected } from "./level-touch-lab";
 
 const row = (over: Partial<Parameters<typeof judge>[0]> = {}) => ({
   event: "BOUNCE_FROM_ABOVE", distance: "FIXED_5", timeout_bars: 24,
@@ -88,5 +88,56 @@ describe("LevelTouchLab coverage (ARK-S29-02)", () => {
     expect(markup).toContain("Seluruh data dipakai");
     expect(markup).toContain("juri netral");
     expect(markup).toContain("forward test");
+  });
+});
+
+describe("topRespected (ARK-S30-03)", () => {
+  const line = (kind: string, period: number, rate: number, touches: number) => ({
+    kind, period,
+    respect: {
+      SEMUA: { BUY: { touches, bounced: Math.round(touches * rate), broke: touches - Math.round(touches * rate), respect_rate: rate },
+               SELL: { touches, bounced: 0, broke: touches, respect_rate: 1 - rate } },
+      NAIK: { BUY: { touches, bounced: 0, broke: 0, respect_rate: rate + 0.05 },
+              SELL: { touches, bounced: 0, broke: 0, respect_rate: rate } },
+    },
+  });
+
+  it("ranks by the regime being shown, not by the whole history", () => {
+    const rows = [line("EMA", 28, 0.507, 24000), line("SMA", 43, 0.509, 16000)] as never[];
+    expect(topRespected(rows, "BUY", "SEMUA", 500).map(r => r.period)).toEqual([43, 28]);
+    // Under NAIK both gain the same amount, so the order is unchanged --
+    // the point is that it read the NAIK numbers at all.
+    expect(topRespected(rows, "BUY", "NAIK", 500)[0].respect.NAIK.BUY.respect_rate).toBeCloseTo(0.559, 3);
+  });
+
+  it("drops a line with too few touches rather than letting it top the table", () => {
+    const rows = [line("EMA", 28, 0.51, 24000), line("EMA", 199, 0.99, 12)] as never[];
+    expect(topRespected(rows, "BUY", "SEMUA", 500).map(r => r.period)).toEqual([28]);
+  });
+
+  it("returns nothing at all when the regime was never measured", () => {
+    const rows = [line("EMA", 28, 0.51, 24000)] as never[];
+    expect(topRespected(rows, "BUY", "TURUN", 500)).toEqual([]);
+  });
+
+  it("takes only the requested number", () => {
+    const rows = Array.from({ length: 12 }, (_, index) => line("EMA", 20 + index, 0.5 + index / 1000, 5000)) as never[];
+    expect(topRespected(rows, "BUY", "SEMUA", 500)).toHaveLength(5);
+    expect(topRespected(rows, "BUY", "SEMUA", 500, 3)).toHaveLength(3);
+  });
+});
+
+describe("LevelTouchLab respect and scan", () => {
+  it("offers the scan and says what it does not measure", () => {
+    const markup = renderToStaticMarkup(<LevelTouchLab />);
+    expect(markup).toContain("garis mana yang paling di-respect");
+    expect(markup).toContain("bukan untung rugi");
+    expect(markup).toContain("BELUM DIPINDAI");
+  });
+
+  it("exposes the trend controls that define the regimes", () => {
+    const markup = renderToStaticMarkup(<LevelTouchLab />);
+    expect(markup).toContain("Trend dinilai dari berapa candle");
+    expect(markup).toContain("Ambang trend");
   });
 });

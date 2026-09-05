@@ -16,6 +16,7 @@ type Row = {
   event: string;
   distance: string;
   timeout_bars: number;
+  regime: string;
   events: number;
   target_first: number;
   stop_first: number;
@@ -33,8 +34,9 @@ type Probe = {
   fingerprint: string;
   reused: boolean;
   touches: number;
-  spec: { timeframe: string; level: { kind: string; period: number }; spread_price: number; splits: string[]; coverage: string };
+  spec: { timeframe: string; level: { kind: string; period: number }; spread_price: number; splits: string[]; coverage: string; trend: { lookback: number; threshold_percent: number } };
   policy: { coverage: string; coverages: string[]; readable_splits: string[]; ambiguity: string; entry: string };
+  respect: Respect;
   warning: string;
   asset: { timeframe: string; registered_row_count: number; measured_row_count: number };
   coverage: { bars: number; start: string | null; end: string | null; touches: Record<string, number>; touches_total: number };
@@ -43,7 +45,34 @@ type Probe = {
   per_month: Row[];
 };
 
+type Side = { touches: number; bounced: number; broke: number; respect_rate: number | null };
+type Respect = Record<string, { BUY: Side; SELL: Side }>;
+type ScanRow = { kind: string; period: number; respect: Respect };
+type Scan = { rows: ScanRow[]; coverage: { bars: number; start: string | null; end: string | null }; warning: string; reused: boolean };
+
 type Options = { level_kinds: string[]; coverages?: string[]; timeframes: Array<{ timeframe: string; rows: number }> };
+
+// ARK-S30-02. The Owner's hypothesis, made selectable: a moving average is
+// support while it rises and resistance while it falls, and means nothing while
+// it is flat. "Semua" stays beside the three, because a split without its own
+// control is a number nobody can check.
+const REGIMES = [
+  { id: "SEMUA", label: "Semua kondisi" },
+  { id: "NAIK", label: "Saat garis naik" },
+  { id: "DATAR", label: "Saat garis datar" },
+  { id: "TURUN", label: "Saat garis turun" },
+] as const;
+
+type RegimeId = (typeof REGIMES)[number]["id"];
+
+/** The most respected lines for one side, under one regime, thin rows dropped. */
+export function topRespected(rows: ScanRow[], side: "BUY" | "SELL", regime: string, minimumTouches: number, take = 5): ScanRow[] {
+  return rows
+    .filter(row => (row.respect[regime]?.[side]?.touches ?? 0) >= minimumTouches)
+    .filter(row => row.respect[regime]?.[side]?.respect_rate != null)
+    .sort((a, b) => (b.respect[regime][side].respect_rate ?? 0) - (a.respect[regime][side].respect_rate ?? 0))
+    .slice(0, take);
+}
 
 // ARK-S29-02. The Owner asked for the latest synced bar, and was right to: with
 // the reserve held back the M5 window ends in December 2024 while they trade
@@ -100,6 +129,12 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
   const [compare, setCompare] = useState(false);
   const [spread, setSpread] = useState(0.25);
   const [coverage, setCoverage] = useState<CoverageId>("ALL");
+  const [regime, setRegime] = useState<RegimeId>("SEMUA");
+  const [trendLookback, setTrendLookback] = useState(20);
+  const [trendThreshold, setTrendThreshold] = useState(0.15);
+  const [scan, setScan] = useState<Scan | null>(null);
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanRange, setScanRange] = useState({ from: 20, to: 50 });
   const [data, setData] = useState<Probe | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -125,7 +160,8 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
     timeouts: numbers(timeouts).map(value => Math.round(value)),   // [] means no limit
     spread_price: spread,
     coverage,
-  }), [timeframe, kind, period, distances, useAtr, atrMultiple, timeouts, spread, coverage]);
+    trend: { lookback: trendLookback, threshold_percent: trendThreshold },
+  }), [timeframe, kind, period, distances, useAtr, atrMultiple, timeouts, spread, coverage, trendLookback, trendThreshold]);
 
   const run = useCallback(async () => {
     setBusy(true); setMessage("Menghitung… M1 bisa memakan waktu sekitar semenit."); setData(null); setOpenRow(null);
@@ -145,10 +181,27 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
 
   const ranked = useMemo(() => {
     if (!data) return [];
-    return [...data.summary].sort((a, b) => (b.target_rate_of_resolved ?? -1) - (a.target_rate_of_resolved ?? -1));
-  }, [data]);
+    return data.summary.filter(row => row.regime === regime)
+      .sort((a, b) => (b.target_rate_of_resolved ?? -1) - (a.target_rate_of_resolved ?? -1));
+  }, [data, regime]);
 
-  const rowKey = (row: Row) => `${row.event}|${row.distance}|${row.timeout_bars}`;
+  const runScan = useCallback(async () => {
+    setScanBusy(true); setScan(null);
+    try {
+      const response = await fetch("/api/v1/level-touch/scan", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ timeframe, kinds: ["EMA", "SMA"], minimum_period: scanRange.from, maximum_period: scanRange.to,
+                               coverage, trend: { lookback: trendLookback, threshold_percent: trendThreshold } }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.detail ?? "Pemindaian gagal.");
+      setScan(body);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Pemindaian gagal.");
+    } finally {
+      setScanBusy(false);
+    }
+  }, [timeframe, scanRange, coverage, trendLookback, trendThreshold]);
+
+  const rowKey = (row: Row) => `${row.event}|${row.distance}|${row.timeout_bars}|${row.regime}`;
 
   const body = <>
       <section className="panel backtest-config">
@@ -184,6 +237,12 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
           <input type="checkbox" checked={useAtr} onChange={event => setUseAtr(event.target.checked)} />
           Tambahkan sekalian jarak yang mengikuti volatilitas (ATR)
         </label>
+        <div className="backtest-form">
+          <label>Trend dinilai dari berapa candle<input aria-label="Trend lookback" type="number" min="2" max="500" value={trendLookback} onChange={event => setTrendLookback(Math.round(event.target.valueAsNumber))} />
+            <small>Kemiringan garis diukur dari sekian candle ke belakang.</small></label>
+          <label>Ambang trend (%)<input aria-label="Ambang trend" type="number" min="0" step="0.05" value={trendThreshold} onChange={event => setTrendThreshold(event.target.valueAsNumber)} />
+            <small>Di atas ini disebut naik, di bawah minusnya disebut turun, di antaranya datar.</small></label>
+        </div>
         <p className="muted">Sampai data kapan?</p>
         <div className="timeframes">
           {COVERAGES.map(item => <button key={item.id} className={item.id === coverage ? "selected" : ""} onClick={() => setCoverage(item.id)}>
@@ -218,9 +277,36 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
 
         <section className="panel result-panel">
           <div className="panel-header"><div>
+            <h2>Seberapa sering garisnya di-respect</h2>
+            <p>Mantul artinya candle-nya ditutup kembali di sisi asalnya. Ini bukan soal untung — mantul itu reaksi satu candle, menang butuh perjalanan beberapa dolar.</p>
+          </div></div>
+          <div className="explorer-table"><table>
+            <thead><tr><th>Kondisi garis</th><th>BUY: sentuhan dari atas</th><th>Mantul</th><th>Tembus</th><th>Respect</th><th>SELL: sentuhan dari bawah</th><th>Mantul</th><th>Tembus</th><th>Respect</th></tr></thead>
+            <tbody>{REGIMES.map(item => {
+              const value = data.respect?.[item.id];
+              if (!value) return null;
+              return <tr key={item.id} className={item.id === regime ? "explorer-detail" : undefined}>
+                <td><strong>{item.label}</strong></td>
+                <td>{count(value.BUY.touches)}</td><td>{count(value.BUY.bounced)}</td><td>{count(value.BUY.broke)}</td>
+                <td><strong>{percent(value.BUY.respect_rate)}</strong></td>
+                <td>{count(value.SELL.touches)}</td><td>{count(value.SELL.bounced)}</td><td>{count(value.SELL.broke)}</td>
+                <td><strong>{percent(value.SELL.respect_rate)}</strong></td>
+              </tr>;
+            })}</tbody>
+          </table></div>
+        </section>
+
+        <section className="panel result-panel">
+          <div className="panel-header"><div>
             <h2>Hasil, diurutkan dari winrate tertinggi</h2>
             <p>Winrate dihitung dari kejadian yang <em>selesai</em> saja. Yang belum selesai dalam batas waktu dihitung terpisah, bukan disembunyikan.</p>
           </div></div>
+          <div className="explorer-controls">
+            <div className="timeframes">
+              {REGIMES.map(item => <button key={item.id} className={item.id === regime ? "selected" : ""} onClick={() => setRegime(item.id)}>{item.label}</button>)}
+            </div>
+            <p className="muted">Kondisi garis dinilai dari kemiringannya sendiri selama {data.spec.trend.lookback} candle terakhir, ambang {data.spec.trend.threshold_percent}%.</p>
+          </div>
           <div className="explorer-table">
             <table>
               <thead><tr><th>Kejadian</th><th>TP/SL</th><th>Batas waktu</th><th>Sentuhan</th><th>Selesai</th><th>Winrate</th><th>Med. candle ke TP</th><th>Penilaian</th><th /></tr></thead>
@@ -269,6 +355,42 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
           <p className="warning-line">{data.warning}</p>
         </section>
       </>}
+
+      <section className="panel result-panel">
+        <div className="panel-header"><div>
+          <h2>Pindai: garis mana yang paling di-respect?</h2>
+          <p>Menyapu EMA dan SMA sekaligus di {timeframe}, lalu memberi lima teratas untuk BUY dan untuk SELL. Hanya menghitung mantul versus tembus — bukan untung rugi.</p>
+        </div><span className="mode-badge">{scan ? `${scan.rows.length} GARIS` : "BELUM DIPINDAI"}</span></div>
+        <div className="explorer-controls">
+          <div className="backtest-form">
+            <label>Periode dari<input aria-label="Periode dari" type="number" min="2" max="200" value={scanRange.from} onChange={event => setScanRange(current => ({ ...current, from: Math.round(event.target.valueAsNumber) }))} /></label>
+            <label>sampai<input aria-label="Periode sampai" type="number" min="2" max="200" value={scanRange.to} onChange={event => setScanRange(current => ({ ...current, to: Math.round(event.target.valueAsNumber) }))} /></label>
+          </div>
+          <div className="actions"><button className="run-button" disabled={scanBusy} onClick={() => void runScan()}>{scanBusy ? "Memindai…" : `Pindai ${timeframe}`}</button></div>
+        </div>
+        {scan && <>
+          <p className="muted explorer-note">{scan.coverage.start?.slice(0, 10)} sampai {scan.coverage.end?.slice(0, 10)} · {count(scan.coverage.bars)} candle · kondisi garis: <strong>{REGIMES.find(item => item.id === regime)?.label}</strong> (ganti di atas).</p>
+          <div className="explorer-runs">
+            {(["BUY", "SELL"] as const).map(side => {
+              const top = topRespected(scan.rows, side, regime, 500);
+              return <section key={side}>
+                <h3>{side === "BUY" ? "Untuk BUY — sentuhan dari atas lalu mantul" : "Untuk SELL — sentuhan dari bawah lalu mantul"}</h3>
+                {top.length ? <table>
+                  <thead><tr><th>Garis</th><th>Respect</th><th>Mantul</th><th>Tembus</th><th>Semua kondisi</th></tr></thead>
+                  <tbody>{top.map(row => <tr key={`${row.kind}${row.period}`}>
+                    <td><strong>{row.kind} {row.period}</strong></td>
+                    <td><strong>{percent(row.respect[regime][side].respect_rate)}</strong></td>
+                    <td>{count(row.respect[regime][side].bounced)}</td>
+                    <td>{count(row.respect[regime][side].broke)}</td>
+                    <td className="muted">{percent(row.respect.SEMUA?.[side]?.respect_rate)}</td>
+                  </tr>)}</tbody>
+                </table> : <p className="muted">Tidak ada garis dengan sampel cukup (min 500 sentuhan) di kondisi ini.</p>}
+              </section>;
+            })}
+          </div>
+          <p className="warning-line">{scan.warning}</p>
+        </>}
+      </section>
   </>;
 
   if (embedded) return body;
