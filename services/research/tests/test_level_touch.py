@@ -214,7 +214,7 @@ def test_an_atr_distance_that_cannot_be_computed_is_skipped_not_defaulted():
     ({"distances": []}, "distances are required"),
     ({"distances": [{"kind": "FIXED", "value": 0}]}, "positive value"),
     ({"distances": [{"kind": "ATR", "multiple": -1}]}, "positive multiple"),
-    ({"distances": [{"kind": "PERCENT", "value": 1}]}, "must be FIXED or ATR"),
+    ({"distances": [{"kind": "TICKS", "value": 1}]}, "must be FIXED, PERCENT or ATR"),
     ({"timeouts": [-1]}, "timeout must be an integer"),
     ({"timeouts": [10_000]}, "timeout must be an integer"),
     ({"timeouts": [1, 2, 3, 4, 5]}, "timeouts are required"),
@@ -546,3 +546,133 @@ def test_the_scan_says_it_measures_respect_and_not_profit():
 def test_the_scan_route_refuses_an_invalid_request():
     with TestClient(app) as client:
         assert client.post("/api/v1/level-touch/scan", json={"timeframe": "D1"}).status_code == 422
+
+
+# ---- ARK-S31-01 a distance that means the same thing at any price ----------
+
+def test_a_percent_distance_scales_with_the_price_it_is_measured_at():
+    """$5 is 0.11% at 4,500 and 0.25% at 2,000. Nine years of a fixed dollar
+    distance is not one experiment, it is two mixed together."""
+    def resolved(price: float) -> float:
+        spec = probe.normalize_spec({"timeframe": "M5", "level": {"kind": "SMA", "period": 3},
+                                     "distances": [{"kind": "PERCENT", "value": 1.0}]})
+        # A single touch, then a bar that reaches exactly 1% above the entry.
+        bars = _series([(price, price, price, price), (price, price, price, price),
+                        (price, price * 1.02, price * 0.999, price * 1.01),
+                        (price, price * 1.02, price * 0.999, price * 1.01)])
+        return probe.measure_bars(bars, spec)["coverage"]["bars"]
+    assert resolved(2000.0) == resolved(4500.0) == 4
+
+
+def test_the_percent_distance_is_read_off_the_entry_price():
+    spec = probe.normalize_spec({"distances": [{"kind": "PERCENT", "value": 0.5}]})
+    assert spec["distances"] == [{"kind": "PERCENT", "value": 0.5}]
+
+
+@pytest.mark.parametrize("value", [0, -1, 51])
+def test_a_nonsensical_percent_is_refused(value):
+    with pytest.raises(ValueError, match="PERCENT distance needs a value"):
+        probe.normalize_spec({"distances": [{"kind": "PERCENT", "value": value}]})
+
+
+def test_the_distance_label_names_its_own_unit():
+    """Two rows reading '5' would be indistinguishable, one being dollars and
+    the other a fifth of a percent."""
+    assert probe._distance_label({"kind": "FIXED", "value": 5.0}) == "FIXED_5"
+    assert probe._distance_label({"kind": "PERCENT", "value": 0.12}) == "PERCENT_0.12"
+
+
+# ---- ARK-S31-02 the win rate is a dial; the edge is not --------------------
+
+@pytest.mark.parametrize("multiple,expected", [(1.0, 0.5), (0.5, 2 / 3), (2.0, 1 / 3), (3.0, 0.25)])
+def test_break_even_is_decided_by_the_geometry_alone(multiple, expected):
+    """The Owner wants a win rate above 60%. Halving the target delivers that
+    for free and loses money, which is why the break-even travels with it."""
+    assert probe.break_even_rate(multiple) == pytest.approx(expected)
+
+
+def test_every_row_carries_its_break_even_and_its_distance_from_it():
+    spec = probe.normalize_spec({"timeframe": "M5", "level": {"kind": "SMA", "period": 10},
+                                 "distances": [{"kind": "FIXED", "value": 1.0}], "target_multiple": 2.0})
+    result = probe.measure_bars(_oscillating(1200), spec)
+    assert result["geometry"]["break_even_rate"] == pytest.approx(1 / 3)
+    for row in result["summary"]:
+        assert row["break_even_rate"] == pytest.approx(1 / 3)
+        if row["target_rate_of_resolved"] is None:
+            assert row["edge"] is None
+        else:
+            assert row["edge"] == pytest.approx(row["target_rate_of_resolved"] - 1 / 3)
+
+
+def _walk(count: int = 6000) -> list[dict]:
+    """A deterministic two-sided random walk.
+
+    Neither existing fixture can show the geometry dial. `_oscillating` swings
+    three dollars with wide wicks, so a one-dollar stop is hit on the entry bar
+    and the target never gets a say. A smooth sine is worse: from any touch the
+    price travels one way for hundreds of bars, so whichever barrier lies in
+    that direction is hit first whatever its distance, and every multiple
+    returns the identical rate.
+
+    Only genuine two-sided noise makes a nearer target easier to reach than a
+    far one, which is the property under test. The generator is a plain LCG so
+    the fixture is reproducible without depending on `random`'s internals.
+    """
+    seed = 20260905
+    price = 100.0
+    rows = []
+    for _ in range(count):
+        seed = (1103515245 * seed + 12345) % (1 << 31)
+        step = (seed / (1 << 31) - 0.5) * 0.4
+        open_ = price
+        price += step
+        rows.append((open_, max(open_, price) + 0.03, min(open_, price) - 0.03, price))
+    return _series(rows)
+
+
+def test_a_bigger_target_is_reached_less_often_than_a_smaller_one():
+    """The dial, demonstrated: same trigger, same stop, only the target moves.
+
+    This is the whole reason a win rate cannot be read on its own -- the Owner
+    can have any win rate they name by choosing the multiple.
+    """
+    def win_rate(multiple: float) -> float:
+        spec = probe.normalize_spec({"timeframe": "M5", "level": {"kind": "SMA", "period": 10},
+                                     "distances": [{"kind": "FIXED", "value": 0.5}],
+                                     "target_multiple": multiple})
+        row = next(item for item in probe.measure_bars(_walk(), spec)["summary"]
+                   if item["event"] == "BOUNCE_FROM_ABOVE" and item["regime"] == "SEMUA")
+        return row["target_rate_of_resolved"]
+    small, even, large = win_rate(0.5), win_rate(1.0), win_rate(3.0)
+    assert small > even > large, (small, even, large)
+
+
+def test_on_a_fair_walk_with_no_spread_a_symmetric_bracket_is_a_coin_flip():
+    """The control that makes every other number readable.
+
+    A fair walk has no edge to find, so a symmetric bracket must come out at
+    the break-even. It does -- once the spread is switched off. Left on at 0.25
+    against a 0.5 stop the same walk reads 29%, because the target then sits
+    0.75 away and the stop 0.25 away. That is not the market losing; it is the
+    cost, and it is the same arithmetic that puts the real EMA touch at 47%.
+    """
+    def win_rate(spread: float) -> float:
+        spec = probe.normalize_spec({"timeframe": "M5", "level": {"kind": "SMA", "period": 10},
+                                     "distances": [{"kind": "FIXED", "value": 0.5}],
+                                     "spread_price": spread})
+        row = next(item for item in probe.measure_bars(_walk(), spec)["summary"]
+                   if item["event"] == "BOUNCE_FROM_ABOVE" and item["regime"] == "SEMUA")
+        return row["target_rate_of_resolved"]
+    assert abs(win_rate(0.0) - 0.5) < 0.05
+    assert win_rate(0.25) < win_rate(0.0) - 0.1
+
+
+@pytest.mark.parametrize("multiple", [0, 0.05, 11, "two"])
+def test_a_nonsensical_target_multiple_is_refused(multiple):
+    with pytest.raises(ValueError, match="target_multiple must be a number"):
+        probe.normalize_spec({"target_multiple": multiple})
+
+
+def test_the_default_geometry_is_still_symmetric():
+    assert probe.normalize_spec({})["target_multiple"] == 1.0
+    assert probe.break_even_rate(1.0) == 0.5

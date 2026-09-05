@@ -17,6 +17,8 @@ type Row = {
   distance: string;
   timeout_bars: number;
   regime: string;
+  break_even_rate: number;
+  edge: number | null;
   events: number;
   target_first: number;
   stop_first: number;
@@ -37,6 +39,7 @@ type Probe = {
   spec: { timeframe: string; level: { kind: string; period: number }; spread_price: number; splits: string[]; coverage: string; trend: { lookback: number; threshold_percent: number } };
   policy: { coverage: string; coverages: string[]; readable_splits: string[]; ambiguity: string; entry: string };
   respect: Respect;
+  geometry: { target_multiple: number; break_even_rate: number; note: string };
   warning: string;
   asset: { timeframe: string; registered_row_count: number; measured_row_count: number };
   coverage: { bars: number; start: string | null; end: string | null; touches: Record<string, number>; touches_total: number };
@@ -99,13 +102,23 @@ const bars = (value: number | null | undefined) => (value === null || value === 
 export const timeoutLabel = (value: number) => (value ? `${value}` : "tanpa batas");
 
 /** What a single row is worth saying out loud. */
+/** Points of win rate above the break-even the geometry itself imposes. */
+export const edgeLabel = (edge: number | null | undefined) =>
+  edge === null || edge === undefined ? "—" : `${edge >= 0 ? "+" : ""}${(edge * 100).toFixed(1)}`;
+export const edgeTone = (edge: number | null | undefined) =>
+  edge === null || edge === undefined ? "muted" : edge > 0.015 ? "edge-good" : edge > 0 ? "edge-thin" : "edge-bad";
+
 export function judge(row: Row, minimumResolved: number): { label: string; tone: string; why: string } {
   const resolved = row.target_first + row.stop_first;
   if (resolved < minimumResolved) return { label: "SAMPEL KURANG", tone: "weak", why: `Baru ${count(resolved)} kejadian yang selesai.` };
-  const rate = row.target_rate_of_resolved ?? 0;
-  if (rate >= 0.55) return { label: "MENARIK", tone: "strong", why: "Di atas 55% — layak diperiksa per tahun." };
-  if (rate >= 0.50) return { label: "TIPIS", tone: "medium", why: "Di atas 50% tapi belum tentu menutup spread." };
-  return { label: "TIDAK UNGGUL", tone: "weak", why: "Di bawah 50% — kalah lebih sering dari menang." };
+  // ARK-S31-02: judged on the edge, never on the raw win rate. A 66% win rate
+  // at a break-even of 66.7% is a losing row, and ranking it first would be the
+  // exact trap the multiple control exists to expose.
+  const edge = row.edge;
+  if (edge === null || edge === undefined) return { label: "TIDAK TERUKUR", tone: "weak", why: "Tidak ada kejadian yang selesai." };
+  if (edge > 0.015) return { label: "MENARIK", tone: "strong", why: `Unggul ${edgeLabel(edge)} poin di atas impas ${percent(row.break_even_rate)}.` };
+  if (edge > 0) return { label: "TIPIS", tone: "medium", why: `Cuma ${edgeLabel(edge)} poin di atas impas — bisa hilang oleh komisi dan slippage.` };
+  return { label: "TIDAK UNGGUL", tone: "weak", why: `${edgeLabel(edge)} poin terhadap impas ${percent(row.break_even_rate)} — rugi pelan tapi pasti.` };
 }
 
 export function resolvedShare(row: Row): number | null {
@@ -118,7 +131,10 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
   const [timeframe, setTimeframe] = useState("M15");
   const [kind, setKind] = useState("EMA");
   const [period, setPeriod] = useState(23);
-  const [distances, setDistances] = useState("5");
+  // ARK-S31-01: percent of price, because $5 is 0.11% at 4,500 and 0.25% at 2,000.
+  const [distanceKind, setDistanceKind] = useState<"PERCENT" | "FIXED">("PERCENT");
+  const [distances, setDistances] = useState("0.12");
+  const [targetMultiple, setTargetMultiple] = useState(1);
   const [atrMultiple, setAtrMultiple] = useState(1.5);
   const [useAtr, setUseAtr] = useState(false);
   // Blank by default: a $5 target on gold does not sit open for days, so a
@@ -154,14 +170,15 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
     timeframe,
     level: { kind, period },
     distances: [
-      ...numbers(distances).slice(0, useAtr ? 3 : 4).map(value => ({ kind: "FIXED", value })),
+      ...numbers(distances).slice(0, useAtr ? 3 : 4).map(value => ({ kind: distanceKind, value })),
       ...(useAtr ? [{ kind: "ATR", multiple: atrMultiple, period: 14 }] : []),
     ],
+    target_multiple: targetMultiple,
     timeouts: numbers(timeouts).map(value => Math.round(value)),   // [] means no limit
     spread_price: spread,
     coverage,
     trend: { lookback: trendLookback, threshold_percent: trendThreshold },
-  }), [timeframe, kind, period, distances, useAtr, atrMultiple, timeouts, spread, coverage, trendLookback, trendThreshold]);
+  }), [timeframe, kind, period, distanceKind, distances, targetMultiple, useAtr, atrMultiple, timeouts, spread, coverage, trendLookback, trendThreshold]);
 
   const run = useCallback(async () => {
     setBusy(true); setMessage("Menghitung… M1 bisa memakan waktu sekitar semenit."); setData(null); setOpenRow(null);
@@ -182,7 +199,7 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
   const ranked = useMemo(() => {
     if (!data) return [];
     return data.summary.filter(row => row.regime === regime)
-      .sort((a, b) => (b.target_rate_of_resolved ?? -1) - (a.target_rate_of_resolved ?? -1));
+      .sort((a, b) => (b.edge ?? -1) - (a.edge ?? -1));
   }, [data, regime]);
 
   const runScan = useCallback(async () => {
@@ -216,10 +233,17 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
             <small>Garis yang harus disentuh harga.</small></label>
           <label>Periode<input aria-label="Periode" type="number" min="1" max="500" value={period} onChange={event => setPeriod(Math.round(event.target.valueAsNumber))} />
             <small>Berapa candle dipakai untuk menghitung garisnya.</small></label>
-          <label>TP dan SL (dolar){compare
-            ? <input aria-label="TP dan SL" value={distances} onChange={event => setDistances(event.target.value)} />
-            : <input aria-label="TP dan SL" type="number" min="0.1" step="0.1" value={distances} onChange={event => setDistances(event.target.value)} />}
-            <small>Keduanya sama besar. Isi <strong>5</strong> berarti TP $5 dan SL $5.</small></label>
+          <label>Satuan jarak<select value={distanceKind} onChange={event => setDistanceKind(event.target.value as "PERCENT" | "FIXED")}>
+              <option value="PERCENT">Persen dari harga</option>
+              <option value="FIXED">Dolar tetap</option>
+            </select>
+            <small>$5 itu 0,11% saat emas 4.500 tapi 0,25% saat 2.000. Persen tetap berarti sama sepanjang sejarah.</small></label>
+          <label>Jarak SL ({distanceKind === "PERCENT" ? "%" : "dolar"}){compare
+            ? <input aria-label="Jarak SL" value={distances} onChange={event => setDistances(event.target.value)} />
+            : <input aria-label="Jarak SL" type="number" min="0.01" step={distanceKind === "PERCENT" ? "0.01" : "0.1"} value={distances} onChange={event => setDistances(event.target.value)} />}
+            <small>{distanceKind === "PERCENT" ? "0,12% kira-kira setara 50 pips saat emas di 4.500." : "Isi 5 berarti SL $5."}</small></label>
+          <label>TP = SL x berapa<input aria-label="TP dikali" type="number" min="0.1" max="10" step="0.1" value={targetMultiple} onChange={event => setTargetMultiple(event.target.valueAsNumber)} />
+            <small>1 berarti TP = SL, impas di 50%. Isi 0,5 dan winrate naik sendirinya — tapi impasnya ikut naik ke 66,7%. Yang penting selisihnya.</small></label>
           <label>Batas waktu (opsional){compare
             ? <input aria-label="Batas waktu" placeholder="kosongkan = tanpa batas" value={timeouts} onChange={event => setTimeouts(event.target.value)} />
             : <input aria-label="Batas waktu" type="number" min="1" step="1" placeholder="kosongkan = tanpa batas" value={timeouts} onChange={event => setTimeouts(event.target.value)} />}
@@ -252,7 +276,7 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
         <div className="actions explorer-actions">
           <button className="run-button" disabled={busy} onClick={() => void run()}>Ukur</button>
         </div>
-        <p className="muted">TP dan SL selalu sama besar, jadi <strong>winrate adalah satu-satunya angka yang penting</strong>. Kalau SL dan TP tersentuh di candle yang sama, SL yang menang — aturan paling pesimis, sama dengan mesin backtest.</p>
+        <p className="muted">Kalau SL dan TP tersentuh di candle yang sama, SL yang menang — aturan paling pesimis, sama dengan mesin backtest. Impas untuk bentuk sekarang: <strong>{(100 / (1 + targetMultiple)).toFixed(1)}%</strong>. Winrate di bawah itu berarti rugi, berapa pun besarnya.</p>
         {coverage === "ALL"
           ? <p className="muted"><strong>Seluruh data dipakai, sampai sync terakhir.</strong> Hasilnya ikut berubah setiap kali Anda sync. Konsekuensinya: tidak ada lagi potongan sejarah yang belum pernah Anda lihat, jadi tidak ada yang bisa jadi juri netral. Pembuktian yang tersisa adalah <strong>forward test</strong> — catat sinyalnya mulai hari ini, lalu bandingkan dengan kenyataan.</p>
           : <p className="muted">Membaca <strong>80% data pertama</strong>. 20% terakhir dikunci dan tidak pernah dibaca di sini, supaya masih ada bagian yang bisa memberi vonis netral nanti — dengan harga datanya berhenti lebih awal.</p>}
@@ -298,8 +322,8 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
 
         <section className="panel result-panel">
           <div className="panel-header"><div>
-            <h2>Hasil, diurutkan dari winrate tertinggi</h2>
-            <p>Winrate dihitung dari kejadian yang <em>selesai</em> saja. Yang belum selesai dalam batas waktu dihitung terpisah, bukan disembunyikan.</p>
+            <h2>Hasil, diurutkan dari selisih terhadap impas</h2>
+            <p>Winrate dihitung dari kejadian yang <em>selesai</em> saja. <strong>Winrate saja tidak berarti apa-apa</strong> — perkecil TP dan winrate naik sendirinya, tapi impasnya ikut naik. Kolom <strong>Selisih</strong> itu yang menentukan untung atau rugi.</p>
           </div></div>
           <div className="explorer-controls">
             <div className="timeframes">
@@ -309,7 +333,7 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
           </div>
           <div className="explorer-table">
             <table>
-              <thead><tr><th>Kejadian</th><th>TP/SL</th><th>Batas waktu</th><th>Sentuhan</th><th>Selesai</th><th>Winrate</th><th>Med. candle ke TP</th><th>Penilaian</th><th /></tr></thead>
+              <thead><tr><th>Kejadian</th><th>TP/SL</th><th>Batas waktu</th><th>Sentuhan</th><th>Selesai</th><th>Winrate</th><th>Impas</th><th>Selisih</th><th>Med. candle ke TP</th><th>Penilaian</th><th /></tr></thead>
               <tbody>
                 {ranked.map(row => {
                   const key = rowKey(row);
@@ -324,11 +348,13 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
                       <td>{count(row.events)}</td>
                       <td>{count(row.target_first + row.stop_first)}<small>{percent(resolvedShare(row))} dari sentuhan</small></td>
                       <td><strong>{percent(row.target_rate_of_resolved)}</strong></td>
+                      <td className="muted">{percent(row.break_even_rate)}</td>
+                      <td className={edgeTone(row.edge)}><strong>{edgeLabel(row.edge)}</strong></td>
                       <td>{bars(row.median_bars_to_target)}</td>
                       <td><span className={`explorer-verdict ${state.tone}`}>{state.label}</span><small>{state.why}</small></td>
                       <td><button className="sample-use" onClick={() => setOpenRow(openRow === key ? null : key)}>{openRow === key ? "Tutup" : "Rinci"}</button></td>
                     </tr>
-                    {openRow === key && <tr className="explorer-detail"><td colSpan={9}>
+                    {openRow === key && <tr className="explorer-detail"><td colSpan={11}>
                       <h3>Per tahun</h3>
                       <table>
                         <thead><tr><th>Tahun</th><th>Sentuhan</th><th>TP</th><th>SL</th><th>Belum selesai</th><th>Winrate</th></tr></thead>

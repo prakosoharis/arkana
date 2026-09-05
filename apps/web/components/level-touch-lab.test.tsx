@@ -1,12 +1,13 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { judge, LevelTouchLab, resolvedShare, timeoutLabel, topRespected } from "./level-touch-lab";
+import { edgeLabel, edgeTone, judge, LevelTouchLab, resolvedShare, timeoutLabel, topRespected } from "./level-touch-lab";
 
 const row = (over: Partial<Parameters<typeof judge>[0]> = {}) => ({
   event: "BOUNCE_FROM_ABOVE", distance: "FIXED_5", timeout_bars: 24,
   events: 8366, target_first: 3389, stop_first: 3693, unresolved: 1284, beyond_data: 0,
   target_rate: 0.405, target_rate_of_resolved: 0.479,
+  regime: "SEMUA", break_even_rate: 0.5, edge: -0.021,
   ...over,
 } as Parameters<typeof judge>[0]);
 
@@ -23,8 +24,15 @@ describe("judge", () => {
   });
 
   it("separates barely-above-even from genuinely interesting", () => {
-    expect(judge(row({ target_rate_of_resolved: 0.52 }), 300).label).toBe("TIPIS");
-    expect(judge(row({ target_rate_of_resolved: 0.57 }), 300).label).toBe("MENARIK");
+    // ARK-S31-02: the win rate alone no longer decides. Raising it without
+    // moving the edge changes nothing, which is the whole point -- so these
+    // fixtures set the edge, and a win rate on its own would not.
+    expect(judge(row({ target_rate_of_resolved: 0.52, edge: 0.01 } as never), 300).label).toBe("TIPIS");
+    expect(judge(row({ target_rate_of_resolved: 0.57, edge: 0.07 } as never), 300).label).toBe("MENARIK");
+  });
+
+  it("ignores a raised win rate that did not move the edge", () => {
+    expect(judge(row({ target_rate_of_resolved: 0.72 } as never), 300).label).toBe("TIDAK UNGGUL");
   });
 });
 
@@ -46,7 +54,9 @@ describe("LevelTouchLab", () => {
     // The default reaches the latest synced bar, so the disclosure shown first
     // is the one that belongs to that choice.
     expect(markup).toContain("Seluruh data dipakai");
-    expect(markup).toContain("winrate adalah satu-satunya angka yang penting");
+    // ARK-S31-02 replaced this copy: the win rate stopped being the headline
+    // once the break-even it has to beat moved with the geometry.
+    expect(markup).toContain("Impas untuk bentuk sekarang");
   });
 
   it("does not offer to deploy, validate or confirm anything", () => {
@@ -139,5 +149,49 @@ describe("LevelTouchLab respect and scan", () => {
     const markup = renderToStaticMarkup(<LevelTouchLab />);
     expect(markup).toContain("Trend dinilai dari berapa candle");
     expect(markup).toContain("Ambang trend");
+  });
+});
+
+describe("edge over break-even (ARK-S31-02)", () => {
+  it("labels the edge with its sign, and nothing when it is unmeasured", () => {
+    expect(edgeLabel(0.023)).toBe("+2.3");
+    expect(edgeLabel(-0.031)).toBe("-3.1");
+    expect(edgeLabel(null)).toBe("—");
+  });
+
+  it("colours a losing edge as losing however high the win rate is", () => {
+    expect(edgeTone(0.02)).toBe("edge-good");
+    expect(edgeTone(0.005)).toBe("edge-thin");
+    expect(edgeTone(-0.01)).toBe("edge-bad");
+  });
+
+  it("judges a 66% win rate against a 66.7% break-even as a loss", () => {
+    // The exact trap: shrinking the target buys a win rate the Owner asked for
+    // and loses money. Ranking on the win rate would put this row first.
+    const state = judge(row({ target_rate_of_resolved: 0.66, break_even_rate: 2 / 3, edge: -0.0067,
+                              target_first: 6600, stop_first: 3400 } as never), 300);
+    expect(state.label).toBe("TIDAK UNGGUL");
+    expect(state.why).toContain("66.7%");
+  });
+
+  it("only calls a row interesting when it clears break-even by a real margin", () => {
+    expect(judge(row({ edge: 0.025, break_even_rate: 0.5 } as never), 300).label).toBe("MENARIK");
+    expect(judge(row({ edge: 0.004, break_even_rate: 0.5 } as never), 300).label).toBe("TIPIS");
+    expect(judge(row({ edge: 0.02 } as never), 300).tone).toBe("strong");
+  });
+});
+
+describe("LevelTouchLab geometry controls", () => {
+  it("offers percent distances and says why they exist", () => {
+    const markup = renderToStaticMarkup(<LevelTouchLab />);
+    expect(markup).toContain("Persen dari harga");
+    expect(markup).toContain("0,11% saat emas 4.500");
+    expect(markup).toContain("TP = SL x berapa");
+  });
+
+  it("states the break-even the current geometry implies", () => {
+    const markup = renderToStaticMarkup(<LevelTouchLab />);
+    expect(markup).toContain("Impas untuk bentuk sekarang");
+    expect(markup).toContain("50.0%");
   });
 });

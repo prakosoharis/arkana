@@ -106,6 +106,29 @@ LONG_EVENTS = {"BOUNCE_FROM_ABOVE", "BREAK_UP"}
 
 ATR_PERIOD = 14
 
+# ARK-S31-01.  The Owner caught a flaw in the fixed dollar distance: $5 is
+# 0.11% when gold trades at 4,500 and 0.25% when it trades at 2,000. Over nine
+# years of history that is not one experiment, it is two mixed together. A
+# PERCENT distance is scale-free and is what a rule written today will still
+# mean next year.
+#
+# ARK-S31-02.  Target and stop no longer have to be equal.
+#
+# This matters more than it looks. A win rate is not something a market hands
+# out -- it is largely a dial the geometry sets. Halve the target and the win
+# rate rises mechanically; double it and the win rate falls. The Owner asking
+# for "above 60%" is asking for a number they can have for free by shrinking
+# the target, and it would still lose money.
+#
+# What cannot be dialled is beating the break-even rate the geometry implies:
+#
+#     break_even = stop / (stop + target) = 1 / (1 + multiple)
+#
+# So every row reports its own break-even and the distance from it. That
+# difference, not the win rate, is the number that means "profitable".
+BREAK_EVEN_NOTE = ("Winrate impas ditentukan oleh bentuk TP/SL, bukan oleh pasar. "
+                   "Yang menentukan untung adalah selisih winrate terhadap impas itu.")
+
 # ARK-S30-02. The Owner's own hypothesis, made measurable: a moving average is
 # support while it rises and resistance while it falls, and means nothing while
 # it is flat. The regime is read from the line's own slope over `lookback` bars,
@@ -329,7 +352,19 @@ def _median(values: list[int]) -> float | None:
 def _distance_label(distance: dict[str, Any]) -> str:
     if distance["kind"] == "FIXED":
         return f"FIXED_{float(distance['value']):g}"
+    if distance["kind"] == "PERCENT":
+        return f"PERCENT_{float(distance['value']):g}"
     return f"ATR_{float(distance['multiple']):g}x{int(distance.get('period', ATR_PERIOD))}"
+
+
+def break_even_rate(target_multiple: float) -> float:
+    """The win rate a geometry needs before costs, and nothing to do with skill.
+
+    Symmetric is 0.5. A target at half the stop needs two thirds. A target at
+    twice the stop needs a third. Quoting a win rate without this is quoting
+    half a sentence.
+    """
+    return 1.0 / (1.0 + target_multiple)
 
 
 def normalize_spec(spec: dict[str, Any]) -> dict[str, Any]:
@@ -362,6 +397,11 @@ def normalize_spec(spec: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
                 raise ValueError("a FIXED distance needs a positive value")
             clean_distances.append({"kind": "FIXED", "value": float(value)})
+        elif str(item.get("kind", "")).upper() == "PERCENT":
+            value = item.get("value")
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or not 0 < value <= 50:
+                raise ValueError("a PERCENT distance needs a value above 0 and at most 50")
+            clean_distances.append({"kind": "PERCENT", "value": float(value)})
         elif str(item.get("kind", "")).upper() == "ATR":
             multiple = item.get("multiple")
             atr_period = item.get("period", ATR_PERIOD)
@@ -371,7 +411,7 @@ def normalize_spec(spec: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError("an ATR distance needs a period between 2 and 200")
             clean_distances.append({"kind": "ATR", "multiple": float(multiple), "period": int(atr_period)})
         else:
-            raise ValueError("distance.kind must be FIXED or ATR")
+            raise ValueError("distance.kind must be FIXED, PERCENT or ATR")
 
     # No timeout at all is the default and means "follow it until it resolves".
     timeouts = spec.get("timeouts")
@@ -399,6 +439,10 @@ def normalize_spec(spec: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(threshold, (int, float)) or isinstance(threshold, bool) or not 0 <= threshold <= 10:
         raise ValueError("trend.threshold_percent must be a number between 0 and 10")
 
+    multiple = spec.get("target_multiple", 1.0)
+    if not isinstance(multiple, (int, float)) or isinstance(multiple, bool) or not 0.1 <= multiple <= 10:
+        raise ValueError("target_multiple must be a number between 0.1 and 10")
+
     coverage = str(spec.get("coverage", "RESEARCH")).upper()
     if coverage not in COVERAGES:
         raise ValueError(f"coverage must be one of {', '.join(COVERAGES)}")
@@ -410,6 +454,7 @@ def normalize_spec(spec: dict[str, Any]) -> dict[str, Any]:
     return {"timeframe": timeframe, "level": {"kind": kind, "period": period},
             "distances": clean_distances, "timeouts": sorted(set(clean_timeouts)),
             "spread_price": float(spread), "protocol_version": PROTOCOL_VERSION,
+            "target_multiple": float(multiple),
             "trend": {"lookback": int(lookback), "threshold_percent": float(threshold)},
             "coverage": coverage,
             "splits": ["all"] if coverage == "ALL" else list(READABLE_SPLITS)}
@@ -433,6 +478,8 @@ def measure_bars(bars: list[dict], spec: dict[str, Any]) -> dict[str, Any]:
 
     lookback = spec["trend"]["lookback"]
     threshold = spec["trend"]["threshold_percent"]
+    multiple = spec.get("target_multiple", 1.0)
+    even = break_even_rate(multiple)
 
     overall: dict[tuple, _Tally] = defaultdict(_Tally)
     yearly: dict[tuple, _Tally] = defaultdict(_Tally)
@@ -472,6 +519,10 @@ def measure_bars(bars: list[dict], spec: dict[str, Any]) -> dict[str, Any]:
         for item, label in zip(spec["distances"], labels):
             if item["kind"] == "FIXED":
                 distance = item["value"]
+            elif item["kind"] == "PERCENT":
+                # Read off the entry price itself, so the rule means the same
+                # thing whether gold trades at 1,200 or 4,500.
+                distance = entry * item["value"] / 100.0
             else:
                 measured = atr[item["period"]][index]
                 if measured is None or measured <= 0:
@@ -479,7 +530,8 @@ def measure_bars(bars: list[dict], spec: dict[str, Any]) -> dict[str, Any]:
                     continue
                 distance = measured * item["multiple"]
             stop = entry - distance if long else entry + distance
-            target = entry + distance if long else entry - distance
+            reach = distance * multiple
+            target = entry + reach if long else entry - reach
             outcomes = resolve(bars, index + 1, entry, stop, target, long, timeouts)
             for timeout, (verdict, steps) in outcomes.items():
                 for name in regimes:
@@ -493,7 +545,12 @@ def measure_bars(bars: list[dict], spec: dict[str, Any]) -> dict[str, Any]:
             event, label, timeout, regime, *rest = key
             entry = {"event": event, "distance": label, "timeout_bars": timeout, "regime": regime}
             entry.update(dict(zip(extra, rest)))
-            result.append({**entry, **source[key].read(timing=timing)})
+            read = source[key].read(timing=timing)
+            # The win rate alone is half a sentence. What decides profit is how
+            # far it sits from the break-even the geometry itself imposes.
+            rate = read["target_rate_of_resolved"]
+            result.append({**entry, **read, "break_even_rate": even,
+                           "edge": None if rate is None else rate - even})
         return result
 
     return {
@@ -502,6 +559,7 @@ def measure_bars(bars: list[dict], spec: dict[str, Any]) -> dict[str, Any]:
                      "touches": touches, "touches_total": sum(touches.values()),
                      "skipped_without_distance": skipped_without_distance},
         "respect": {name: respect_rates(touches_by_regime[name]) for name in ALL_REGIMES},
+        "geometry": {"target_multiple": multiple, "break_even_rate": even, "note": BREAK_EVEN_NOTE},
         "summary": rows(overall, ()),
         "per_year": rows(yearly, ("year",)),
         # Timing statistics per month would multiply the payload for numbers

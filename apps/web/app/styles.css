@@ -44,3 +44,6 @@
 .workbench-tabs{margin-bottom:18px}
 .workbench-tabs button{padding:10px 14px;font-size:13px}
 .backtest-form label small{display:block;color:var(--muted);font-size:10px;line-height:1.4;margin-top:4px;text-transform:none}
+.edge-good{color:#5de4a2}
+.edge-thin{color:#ffcf7a}
+.edge-bad{color:#ff8993}
