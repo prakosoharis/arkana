@@ -129,6 +129,85 @@ ATR_PERIOD = 14
 BREAK_EVEN_NOTE = ("Winrate impas ditentukan oleh bentuk TP/SL, bukan oleh pasar. "
                    "Yang menentukan untung adalah selisih winrate terhadap impas itu.")
 
+# ARK-S32-01.  Break-even removes the geometry dial. It does not remove drift.
+#
+# A ten-agent investigation swept 112 moving-average cells and found exactly
+# five with a positive edge over break-even. Every one was a buy. Then somebody
+# ran the control nobody had run: enter LONG at random bars with the identical
+# geometry. It scored +0.86 points on ~30,000 samples -- better than the best
+# of the 112. The five "edges" were gold's 2017-2026 uptrend read through a
+# wide barrier, and the signal was worth about -0.2 points against doing
+# nothing clever.
+#
+# So every row now also reports what a coin flip of the same direction, on the
+# same bars, with the same geometry and the same spread, would have scored.
+# `edge_over_baseline` is the number that cannot be faked by a trend.
+BASELINE_SAMPLES = 30_000
+
+
+def spread_cost_points(spread: float, distance: float, target_multiple: float) -> float:
+    """Win-rate points the spread alone removes, before any signal.
+
+    Derived, not fitted. Entering a long at `open + s` puts the target at
+    `d*m + s` from the market and the stop at `d - s`, so on a driftless walk
+
+        P(win) = (d - s) / ((d*m + s) + (d - s)) = (d - s) / ((1 + m) * d)
+
+    which sits exactly `s / ((1 + m) * d)` below the break-even `1/(1+m)`.
+    In points: 100 * s / ((1 + m) * d). At m = 1 that is the 50 * s / d the
+    Owner should keep in their head.
+    """
+    if distance <= 0:
+        return 0.0
+    return 100.0 * spread / ((1.0 + target_multiple) * distance)
+
+
+def _sampler(seed_text: str):
+    """A reproducible index generator, so a baseline is part of the record.
+
+    `random` would make the same request answer differently on two runs, and a
+    fingerprinted measurement cannot contain a number nobody can recompute.
+    """
+    state = int(sha256(seed_text.encode()).hexdigest()[:12], 16) or 1
+
+    def nextint(bound: int) -> int:
+        nonlocal state
+        state = (1103515245 * state + 12345) % (1 << 31)
+        return state % bound
+    return nextint
+
+
+def random_baseline(bars: list[dict], *, distance_of, long: bool, multiple: float,
+                    spread: float, timeouts: list[int], seed_text: str,
+                    samples: int = BASELINE_SAMPLES) -> dict[int, dict[str, Any]]:
+    """What a coin flip of this direction scores on these bars, per timeout.
+
+    `distance_of(index, entry)` returns the stop distance for a hypothetical
+    entry, so the baseline carries the same distance rule as the thing it is
+    the control for -- a fixed-dollar signal must be compared with a
+    fixed-dollar coin flip, not a percentage one.
+    """
+    if len(bars) < 3:
+        return {timeout: {"resolved": 0, "target_rate": None} for timeout in timeouts}
+    nextint = _sampler(seed_text)
+    tallies = {timeout: _Tally() for timeout in timeouts}
+    span = len(bars) - 2
+    for _ in range(samples):
+        index = nextint(span)
+        entry_bar = bars[index + 1]
+        entry = entry_bar["open"] + (spread if long else -spread)
+        distance = distance_of(index, entry)
+        if distance is None or distance <= 0:
+            continue
+        reach = distance * multiple
+        stop = entry - distance if long else entry + distance
+        target = entry + reach if long else entry - reach
+        for timeout, (verdict, steps) in resolve(bars, index + 1, entry, stop, target, long, timeouts).items():
+            tallies[timeout].add(verdict, steps)
+    return {timeout: {"resolved": tally.target + tally.stop,
+                      "target_rate": tally.read()["target_rate_of_resolved"]}
+            for timeout, tally in tallies.items()}
+
 # ARK-S30-02. The Owner's own hypothesis, made measurable: a moving average is
 # support while it rises and resistance while it falls, and means nothing while
 # it is flat. The regime is read from the line's own slope over `lookback` bars,
@@ -488,11 +567,33 @@ def measure_bars(bars: list[dict], spec: dict[str, Any]) -> dict[str, Any]:
     spread = spec["spread_price"]
     timeouts = spec["timeouts"]
     labels = [_distance_label(item) for item in spec["distances"]]
-
     lookback = spec["trend"]["lookback"]
     threshold = spec["trend"]["threshold_percent"]
     multiple = spec.get("target_multiple", 1.0)
     even = break_even_rate(multiple)
+
+    # ARK-S32-01: what a coin flip of the same direction, on the same bars,
+    # with the same geometry and the same spread would have scored. Computed
+    # per distance rule so a fixed-dollar signal is compared with a
+    # fixed-dollar coin flip, never a percentage one.
+    def distance_rule(item: dict[str, Any]):
+        def of(index: int, entry: float) -> float | None:
+            if item["kind"] == "FIXED":
+                return item["value"]
+            if item["kind"] == "PERCENT":
+                return entry * item["value"] / 100.0
+            measured = atr[item["period"]][index]
+            return measured * item["multiple"] if measured and measured > 0 else None
+        return of
+
+    baseline: dict[tuple[str, int, bool], dict[str, Any]] = {}
+    for item, label in zip(spec["distances"], labels):
+        for long_side in (True, False):
+            seed = f"{label}|{multiple}|{spread}|{long_side}|{len(bars)}"
+            for timeout, value in random_baseline(
+                    bars, distance_of=distance_rule(item), long=long_side, multiple=multiple,
+                    spread=spread, timeouts=timeouts, seed_text=seed).items():
+                baseline[(label, timeout, long_side)] = value
 
     overall: dict[tuple, _Tally] = defaultdict(_Tally)
     yearly: dict[tuple, _Tally] = defaultdict(_Tally)
@@ -560,10 +661,19 @@ def measure_bars(bars: list[dict], spec: dict[str, Any]) -> dict[str, Any]:
             entry.update(dict(zip(extra, rest)))
             read = source[key].read(timing=timing)
             # The win rate alone is half a sentence. What decides profit is how
-            # far it sits from the break-even the geometry itself imposes.
+            # far it sits from the break-even the geometry itself imposes --
+            # and, because break-even does not remove drift, how far it sits
+            # from a coin flip that took the same side on the same bars.
             rate = read["target_rate_of_resolved"]
-            result.append({**entry, **read, "break_even_rate": even,
-                           "edge": None if rate is None else rate - even})
+            control = baseline.get((label, timeout, event in LONG_EVENTS)) or {}
+            control_rate = control.get("target_rate")
+            result.append({
+                **entry, **read, "break_even_rate": even,
+                "edge": None if rate is None else rate - even,
+                "baseline_rate": control_rate,
+                "baseline_resolved": control.get("resolved", 0),
+                "edge_over_baseline": None if rate is None or control_rate is None else rate - control_rate,
+            })
         return result
 
     return {
@@ -572,7 +682,20 @@ def measure_bars(bars: list[dict], spec: dict[str, Any]) -> dict[str, Any]:
                      "touches": touches, "touches_total": sum(touches.values()),
                      "skipped_without_distance": skipped_without_distance},
         "respect": {name: respect_rates(touches_by_regime[name]) for name in ALL_REGIMES},
-        "geometry": {"target_multiple": multiple, "break_even_rate": even, "note": BREAK_EVEN_NOTE},
+        "geometry": {
+            "target_multiple": multiple, "break_even_rate": even, "note": BREAK_EVEN_NOTE,
+            "spread_price": spread, "baseline_samples": BASELINE_SAMPLES,
+            "spread_cost_points": {
+                label: spread_cost_points(
+                    spread,
+                    item["value"] if item["kind"] == "FIXED" else
+                    (fmean([bar["close"] for bar in bars]) * item["value"] / 100.0 if item["kind"] == "PERCENT" else
+                     fmean([value for value in atr[item["period"]] if value]) * item["multiple"]),
+                    multiple)
+                for item, label in zip(spec["distances"], labels)},
+            "baseline_note": ("Entry acak dengan arah, bentuk dan spread yang persis sama. "
+                              "Kalau sinyal Anda tidak mengalahkan angka ini, dia tidak menambah apa pun."),
+        },
         "summary": rows(overall, ()),
         "per_year": rows(yearly, ("year",)),
         # Timing statistics per month would multiply the payload for numbers

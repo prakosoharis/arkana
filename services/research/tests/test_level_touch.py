@@ -714,3 +714,84 @@ def test_the_screen_and_the_kernel_now_agree_about_the_entry_candle():
     assert "The entry candle participates in STOP_FIRST" in kernel
     walk = inspect.getsource(probe.resolve)
     assert "for step in range(0, longest + 1)" in walk
+
+
+# ---- ARK-S32-01 the control that break-even cannot provide ------------------
+
+@pytest.mark.parametrize("spread,distance,multiple,expected", [
+    (0.25, 1.0, 1.0, 12.5),
+    (0.25, 5.0, 1.0, 2.5),
+    (0.25, 20.0, 1.0, 0.625),
+    (0.25, 5.0, 2.0, 5.0 / 3),
+    (0.10, 5.0, 1.0, 1.0),
+    (0.0, 5.0, 1.0, 0.0),
+])
+def test_the_spread_cost_is_derived_not_fitted(spread, distance, multiple, expected):
+    """Entering long at `open + s` puts the target `d*m + s` away and the stop
+    `d - s` away, so the driftless win rate sits exactly `s/((1+m)d)` below
+    break-even. At m=1 that is the 50*s/d the Owner should carry in their head."""
+    assert probe.spread_cost_points(spread, distance, multiple) == pytest.approx(expected)
+
+
+def test_the_cost_formula_matches_what_a_fair_walk_actually_pays():
+    """The formula is only worth quoting if the engine reproduces it."""
+    spec = probe.normalize_spec({"timeframe": "M5", "level": {"kind": "SMA", "period": 10},
+                                 "distances": [{"kind": "FIXED", "value": 0.5}], "spread_price": 0.25})
+    row = next(item for item in probe.measure_bars(_walk(), spec)["summary"]
+               if item["event"] == "BOUNCE_FROM_ABOVE" and item["regime"] == "SEMUA")
+    predicted = probe.spread_cost_points(0.25, 0.5, 1.0) / 100.0
+    assert abs(row["edge"] + predicted) < 0.05
+
+
+def test_the_same_request_always_draws_the_same_random_control():
+    """A fingerprinted measurement cannot contain a number nobody can
+    recompute, so the sampler is seeded from the request rather than the clock."""
+    first, second = probe._sampler("seed"), probe._sampler("seed")
+    drawn = [first(1000) for _ in range(50)]
+    assert drawn == [second(1000) for _ in range(50)]
+    assert drawn != [probe._sampler("other")(1000) for _ in range(50)]
+
+
+def test_a_coin_flip_on_a_fair_walk_lands_on_break_even():
+    """The control's own control. If the baseline itself were biased, every
+    edge measured against it would inherit that bias."""
+    bars = _walk()
+    result = probe.random_baseline(bars, distance_of=lambda index, entry: 0.5, long=True,
+                                   multiple=1.0, spread=0.0, timeouts=[probe.NO_LIMIT],
+                                   seed_text="fair", samples=8000)
+    assert abs(result[probe.NO_LIMIT]["target_rate"] - 0.5) < 0.05
+    assert result[probe.NO_LIMIT]["resolved"] > 7000
+
+
+def test_the_baseline_charges_the_same_spread_the_signal_pays():
+    bars = _walk()
+    free = probe.random_baseline(bars, distance_of=lambda index, entry: 0.5, long=True, multiple=1.0,
+                                 spread=0.0, timeouts=[probe.NO_LIMIT], seed_text="s", samples=8000)
+    paid = probe.random_baseline(bars, distance_of=lambda index, entry: 0.5, long=True, multiple=1.0,
+                                 spread=0.25, timeouts=[probe.NO_LIMIT], seed_text="s", samples=8000)
+    assert paid[probe.NO_LIMIT]["target_rate"] < free[probe.NO_LIMIT]["target_rate"] - 0.1
+
+
+def test_every_row_is_scored_against_a_coin_flip_of_its_own_direction():
+    """A buy signal must be compared with a random buy. Comparing it with the
+    pooled baseline would hand it the drift it is supposed to be beating."""
+    spec = probe.normalize_spec({"timeframe": "M5", "level": {"kind": "SMA", "period": 10},
+                                 "distances": [{"kind": "FIXED", "value": 0.5}]})
+    result = probe.measure_bars(_walk(), spec)
+    longs = {row["baseline_rate"] for row in result["summary"] if row["event"] in probe.LONG_EVENTS}
+    shorts = {row["baseline_rate"] for row in result["summary"] if row["event"] not in probe.LONG_EVENTS}
+    assert len(longs) == 1 and len(shorts) == 1
+    assert longs != shorts
+    for row in result["summary"]:
+        if row["target_rate_of_resolved"] is not None and row["baseline_rate"] is not None:
+            assert row["edge_over_baseline"] == pytest.approx(
+                row["target_rate_of_resolved"] - row["baseline_rate"])
+
+
+def test_the_geometry_block_states_the_toll_before_anything_is_run():
+    spec = probe.normalize_spec({"timeframe": "M5", "level": {"kind": "SMA", "period": 10},
+                                 "distances": [{"kind": "FIXED", "value": 5.0}], "spread_price": 0.25})
+    geometry = probe.measure_bars(_walk(), spec)["geometry"]
+    assert geometry["spread_cost_points"]["FIXED_5"] == pytest.approx(2.5)
+    assert geometry["baseline_samples"] == probe.BASELINE_SAMPLES
+    assert "tidak menambah apa pun" in geometry["baseline_note"]

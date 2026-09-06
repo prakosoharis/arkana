@@ -1,13 +1,14 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { edgeLabel, edgeTone, judge, LevelTouchLab, resolvedShare, timeoutLabel, topRespected } from "./level-touch-lab";
+import { costPoints, edgeLabel, edgeTone, judge, LevelTouchLab, resolvedShare, timeoutLabel, topRespected } from "./level-touch-lab";
 
 const row = (over: Partial<Parameters<typeof judge>[0]> = {}) => ({
   event: "BOUNCE_FROM_ABOVE", distance: "FIXED_5", timeout_bars: 24,
   events: 8366, target_first: 3389, stop_first: 3693, unresolved: 1284, beyond_data: 0,
   target_rate: 0.405, target_rate_of_resolved: 0.479,
   regime: "SEMUA", break_even_rate: 0.5, edge: -0.021,
+  baseline_rate: null, baseline_resolved: 0, edge_over_baseline: null,
   ...over,
 } as Parameters<typeof judge>[0]);
 
@@ -20,7 +21,7 @@ describe("judge", () => {
   it("calls a below-even row exactly that", () => {
     // The real measurement: an EMA touch resolves in the trader's favour 47.9%
     // of the time, because the stop wins an ambiguous bar and the spread is paid.
-    expect(judge(row(), 300).label).toBe("TIDAK UNGGUL");
+    expect(judge(row(), 300).label).toBe("TIDAK TAMBAH APA-APA");
   });
 
   it("separates barely-above-even from genuinely interesting", () => {
@@ -32,7 +33,7 @@ describe("judge", () => {
   });
 
   it("ignores a raised win rate that did not move the edge", () => {
-    expect(judge(row({ target_rate_of_resolved: 0.72 } as never), 300).label).toBe("TIDAK UNGGUL");
+    expect(judge(row({ target_rate_of_resolved: 0.72 } as never), 300).label).toBe("TIDAK TAMBAH APA-APA");
   });
 });
 
@@ -170,7 +171,7 @@ describe("edge over break-even (ARK-S31-02)", () => {
     // and loses money. Ranking on the win rate would put this row first.
     const state = judge(row({ target_rate_of_resolved: 0.66, break_even_rate: 2 / 3, edge: -0.0067,
                               target_first: 6600, stop_first: 3400 } as never), 300);
-    expect(state.label).toBe("TIDAK UNGGUL");
+    expect(state.label).toBe("TIDAK TAMBAH APA-APA");
     expect(state.why).toContain("66.7%");
   });
 
@@ -193,5 +194,63 @@ describe("LevelTouchLab geometry controls", () => {
     const markup = renderToStaticMarkup(<LevelTouchLab />);
     expect(markup).toContain("Impas untuk bentuk sekarang");
     expect(markup).toContain("50.0%");
+  });
+});
+
+describe("costPoints (ARK-S32-01)", () => {
+  it("states the toll before anything is measured", () => {
+    expect(costPoints(0.25, "FIXED", 1, 1)).toBe("-12.50");
+    expect(costPoints(0.25, "FIXED", 5, 1)).toBe("-2.50");
+    expect(costPoints(0.25, "FIXED", 20, 1)).toBe("-0.63");
+    expect(costPoints(0.10, "FIXED", 5, 1)).toBe("-1.00");
+  });
+
+  it("reads a percent distance off the price it is a percent of", () => {
+    // 0.12% of 4,500 is $5.40, so the toll is a little under the $5 one.
+    expect(costPoints(0.25, "PERCENT", 0.12, 1, 4500)).toBe("-2.31");
+    expect(costPoints(0.25, "PERCENT", 0.12, 1, 2000)).toBe("-5.21");
+  });
+
+  it("says nothing rather than something wrong for an unusable input", () => {
+    expect(costPoints(0.25, "FIXED", 0, 1)).toBe("—");
+    expect(costPoints(0.25, "FIXED", NaN, 1)).toBe("—");
+  });
+});
+
+describe("judge against the random control", () => {
+  it("calls a signal that loses to a coin flip exactly that", () => {
+    // The real measurement: EMA 23 M15 at TP=4xSL scores +0.03 over break-even
+    // and -0.87 against a random long. Break-even alone would have passed it.
+    const state = judge(row({ edge: 0.0003, baseline_rate: 0.209, edge_over_baseline: -0.0087 } as never), 300);
+    expect(state.label).toBe("TIDAK TAMBAH APA-APA");
+    expect(state.why).toContain("lempar koin");
+  });
+
+  it("prefers the control over break-even whenever the control exists", () => {
+    const strong = judge(row({ edge: -0.05, baseline_rate: 0.40, edge_over_baseline: 0.03 } as never), 300);
+    expect(strong.label).toBe("MENARIK");
+    expect(strong.why).toContain("entry acak");
+  });
+
+  it("falls back to break-even only when no control was measured", () => {
+    const state = judge(row({ edge: 0.03, baseline_rate: null, edge_over_baseline: null } as never), 300);
+    expect(state.label).toBe("MENARIK");
+    expect(state.why).toContain("impas");
+  });
+});
+
+describe("LevelTouchLab control column", () => {
+  it("explains why break-even is not enough", () => {
+    // The control copy lives in the results panel, which only exists once a
+    // measurement has been run, so the wording is asserted on the verdict.
+    const state = judge(row({ edge: -0.05, baseline_rate: 0.48, edge_over_baseline: -0.01 } as never), 300);
+    expect(state.why).toContain("lempar koin");
+    expect(state.why).toContain("entry acak");
+  });
+
+  it("shows the toll on the form before anything is run", () => {
+    const markup = renderToStaticMarkup(<LevelTouchLab />);
+    expect(markup).toContain("poin winrate");
+    expect(markup).toContain("harus dilewati sinyal apa pun");
   });
 });

@@ -19,6 +19,9 @@ type Row = {
   regime: string;
   break_even_rate: number;
   edge: number | null;
+  baseline_rate: number | null;
+  baseline_resolved: number;
+  edge_over_baseline: number | null;
   events: number;
   target_first: number;
   stop_first: number;
@@ -39,7 +42,7 @@ type Probe = {
   spec: { timeframe: string; level: { kind: string; period: number }; spread_price: number; splits: string[]; coverage: string; trend: { lookback: number; threshold_percent: number } };
   policy: { coverage: string; coverages: string[]; readable_splits: string[]; ambiguity: string; entry: string };
   respect: Respect;
-  geometry: { target_multiple: number; break_even_rate: number; note: string };
+  geometry: { target_multiple: number; break_even_rate: number; note: string; spread_price: number; baseline_samples: number; spread_cost_points: Record<string, number>; baseline_note: string };
   warning: string;
   asset: { timeframe: string; registered_row_count: number; measured_row_count: number };
   coverage: { bars: number; start: string | null; end: string | null; touches: Record<string, number>; touches_total: number };
@@ -111,14 +114,25 @@ export const edgeTone = (edge: number | null | undefined) =>
 export function judge(row: Row, minimumResolved: number): { label: string; tone: string; why: string } {
   const resolved = row.target_first + row.stop_first;
   if (resolved < minimumResolved) return { label: "SAMPEL KURANG", tone: "weak", why: `Baru ${count(resolved)} kejadian yang selesai.` };
-  // ARK-S31-02: judged on the edge, never on the raw win rate. A 66% win rate
-  // at a break-even of 66.7% is a losing row, and ranking it first would be the
-  // exact trap the multiple control exists to expose.
-  const edge = row.edge;
+  // ARK-S32-01: judged against a coin flip of the same direction, not against
+  // break-even. Break-even removes the geometry dial; it does not remove gold's
+  // drift, and drift produced every positive number ever found here.
+  const edge = row.edge_over_baseline ?? row.edge;
   if (edge === null || edge === undefined) return { label: "TIDAK TERUKUR", tone: "weak", why: "Tidak ada kejadian yang selesai." };
-  if (edge > 0.015) return { label: "MENARIK", tone: "strong", why: `Unggul ${edgeLabel(edge)} poin di atas impas ${percent(row.break_even_rate)}.` };
-  if (edge > 0) return { label: "TIPIS", tone: "medium", why: `Cuma ${edgeLabel(edge)} poin di atas impas — bisa hilang oleh komisi dan slippage.` };
-  return { label: "TIDAK UNGGUL", tone: "weak", why: `${edgeLabel(edge)} poin terhadap impas ${percent(row.break_even_rate)} — rugi pelan tapi pasti.` };
+  const against = row.edge_over_baseline !== null && row.edge_over_baseline !== undefined
+    ? `entry acak (${percent(row.baseline_rate)})` : `impas ${percent(row.break_even_rate)}`;
+  if (edge > 0.015) return { label: "MENARIK", tone: "strong", why: `Unggul ${edgeLabel(edge)} poin di atas ${against}.` };
+  if (edge > 0) return { label: "TIPIS", tone: "medium", why: `Cuma ${edgeLabel(edge)} poin di atas ${against} — bisa hilang oleh komisi dan slippage.` };
+  return { label: "TIDAK TAMBAH APA-APA", tone: "weak", why: `${edgeLabel(edge)} poin terhadap ${against} — sinyalnya tidak lebih baik dari lempar koin.` };
+}
+
+/** The toll, stated before the measurement rather than discovered after it.
+ *  Entering long at `open + s` puts the target `d*m + s` away and the stop
+ *  `d - s` away, so a driftless walk lands `s/((1+m)d)` under break-even. */
+export function costPoints(spread: number, kind: "PERCENT" | "FIXED", value: number, multiple: number, price = 4500): string {
+  const distance = kind === "PERCENT" ? (price * value) / 100 : value;
+  if (!Number.isFinite(distance) || distance <= 0 || !Number.isFinite(spread)) return "—";
+  return `-${((100 * spread) / ((1 + multiple) * distance)).toFixed(2)}`;
 }
 
 export function resolvedShare(row: Row): number | null {
@@ -199,7 +213,7 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
   const ranked = useMemo(() => {
     if (!data) return [];
     return data.summary.filter(row => row.regime === regime)
-      .sort((a, b) => (b.edge ?? -1) - (a.edge ?? -1));
+      .sort((a, b) => ((b.edge_over_baseline ?? b.edge) ?? -1) - ((a.edge_over_baseline ?? a.edge) ?? -1));
   }, [data, regime]);
 
   const runScan = useCallback(async () => {
@@ -273,6 +287,7 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
             {item.label}<small> · {item.hint}</small>
           </button>)}
         </div>
+        <p className="muted">Dengan spread {spread} dan SL {distanceKind === "PERCENT" ? `${distances}%` : `$${distances}`}, ongkosnya kira-kira <strong>{costPoints(spread, distanceKind, Number(distances.split(",")[0]), targetMultiple, 4500)}</strong> poin winrate. Itu yang harus dilewati sinyal apa pun sebelum menghasilkan apa-apa.</p>
         <div className="actions explorer-actions">
           <button className="run-button" disabled={busy} onClick={() => void run()}>Ukur</button>
         </div>
@@ -322,8 +337,8 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
 
         <section className="panel result-panel">
           <div className="panel-header"><div>
-            <h2>Hasil, diurutkan dari selisih terhadap impas</h2>
-            <p>Winrate dihitung dari kejadian yang <em>selesai</em> saja. <strong>Winrate saja tidak berarti apa-apa</strong> — perkecil TP dan winrate naik sendirinya, tapi impasnya ikut naik. Kolom <strong>Selisih</strong> itu yang menentukan untung atau rugi.</p>
+            <h2>Hasil, diurutkan dari selisih terhadap entry acak</h2>
+            <p><strong>Winrate saja tidak berarti apa-apa</strong> — perkecil TP dan winrate naik sendirinya. <strong>Selisih terhadap impas pun belum cukup</strong>: emas naik terus 2017–2026, jadi asal beli pun kelihatan unggul. Kolom <strong>vs acak</strong> membandingkan sinyal Anda dengan lempar koin ke arah yang sama, di candle yang sama, dengan bentuk dan spread yang sama. Itu satu-satunya angka yang tidak bisa dipalsukan oleh tren.</p>
           </div></div>
           <div className="explorer-controls">
             <div className="timeframes">
@@ -333,7 +348,7 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
           </div>
           <div className="explorer-table">
             <table>
-              <thead><tr><th>Kejadian</th><th>TP/SL</th><th>Batas waktu</th><th>Sentuhan</th><th>Selesai</th><th>Winrate</th><th>Impas</th><th>Selisih</th><th>Med. candle ke TP</th><th>Penilaian</th><th /></tr></thead>
+              <thead><tr><th>Kejadian</th><th>TP/SL</th><th>Batas waktu</th><th>Sentuhan</th><th>Selesai</th><th>Winrate</th><th>Impas</th><th>vs impas</th><th>Entry acak</th><th>vs acak</th><th>Med. candle</th><th>Penilaian</th><th /></tr></thead>
               <tbody>
                 {ranked.map(row => {
                   const key = rowKey(row);
@@ -349,12 +364,14 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
                       <td>{count(row.target_first + row.stop_first)}<small>{percent(resolvedShare(row))} dari sentuhan</small></td>
                       <td><strong>{percent(row.target_rate_of_resolved)}</strong></td>
                       <td className="muted">{percent(row.break_even_rate)}</td>
-                      <td className={edgeTone(row.edge)}><strong>{edgeLabel(row.edge)}</strong></td>
+                      <td className="muted">{edgeLabel(row.edge)}</td>
+                      <td className="muted">{percent(row.baseline_rate)}</td>
+                      <td className={edgeTone(row.edge_over_baseline)}><strong>{edgeLabel(row.edge_over_baseline)}</strong></td>
                       <td>{bars(row.median_bars_to_target)}</td>
                       <td><span className={`explorer-verdict ${state.tone}`}>{state.label}</span><small>{state.why}</small></td>
                       <td><button className="sample-use" onClick={() => setOpenRow(openRow === key ? null : key)}>{openRow === key ? "Tutup" : "Rinci"}</button></td>
                     </tr>
-                    {openRow === key && <tr className="explorer-detail"><td colSpan={11}>
+                    {openRow === key && <tr className="explorer-detail"><td colSpan={13}>
                       <h3>Per tahun</h3>
                       <table>
                         <thead><tr><th>Tahun</th><th>Sentuhan</th><th>TP</th><th>SL</th><th>Belum selesai</th><th>Winrate</th></tr></thead>
@@ -378,6 +395,7 @@ export function LevelTouchLab({ embedded = false }: { embedded?: boolean } = {})
               </tbody>
             </table>
           </div>
+          <p className="warning-line">{data.geometry.baseline_note} Dibanding dengan {count(data.geometry.baseline_samples)} entry acak per arah.</p>
           <p className="warning-line">{data.warning}</p>
         </section>
       </>}
